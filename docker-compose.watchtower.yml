@@ -1,0 +1,14 @@
+# Optional automatic updates, matching the MoClo tool's setup.
+#
+#   SECRET_KEY=$(openssl rand -hex 32) \
+#     docker compose -f docker-compose.prod.yml -f docker-compose.watchtower.yml up -d
+#
+# To stop automatic updates:  docker rm -f plasmid-editor-watchtower
+services:
+  watchtower:
+    image: containrrr/watchtower
+    container_name: plasmid-editor-watchtower
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: --cleanup --interval 604800 plasmid-editor

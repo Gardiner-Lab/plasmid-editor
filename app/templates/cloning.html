@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Cloning &middot; Plasmid Editor{% endblock %}
+
+{% block content %}
+<div class="card card-compact">
+    <div class="btn-group">
+        <button class="tool-btn on" data-method="goldengate">Golden Gate</button>
+        <button class="tool-btn" data-method="gibson">Gibson / overlap</button>
+        <button class="tool-btn" data-method="ligate">Restriction + ligation</button>
+        <button class="tool-btn" data-method="recombine">Recombination (Gateway, Cre-lox)</button>
+    </div>
+</div>
+
+<div class="grid-2">
+    <div>
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title">Parts for the reaction</div>
+                <span class="hint" id="pickCount"></span>
+            </div>
+            <p class="hint" id="methodHelp"></p>
+            <div class="field">
+                <input type="search" id="search" placeholder="Search your sequences and the MoClo library">
+            </div>
+            <div class="panel-scroll panel-body-flush">
+                <ul class="item-list" id="sourceList"></ul>
+            </div>
+        </div>
+    </div>
+
+    <div>
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title">Reaction</div>
+                <div class="btn-group">
+                    <button class="btn btn-sm btn-secondary" id="btnClear">Clear</button>
+                    <button class="btn btn-sm" id="btnRun">Run</button>
+                </div>
+            </div>
+            <ul class="item-list" id="pickedList"></ul>
+            <div id="options" style="margin-top:.75rem"></div>
+        </div>
+
+        <div class="card">
+            <div class="card-title" style="margin-bottom:.5rem">Result</div>
+            <div id="result"><div class="empty">Choose parts and run the reaction.</div></div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/cloning.js') }}?v={{ app_version }}"></script>
+{% endblock %}

@@ -1,0 +1,22 @@
+# The editor without the shared MoClo library: everything works except
+# browsing MoClo parts and contributing Golden Gate parts, which are hidden
+# and explained in the interface when the shared databases are absent.
+#
+#   SECRET_KEY=$(openssl rand -hex 32) docker compose -f docker-compose.standalone.yml up -d
+services:
+  web:
+    image: ghcr.io/gardiner-lab/plasmid-editor:latest
+    container_name: plasmid-editor
+    ports:
+      - "5001:5001"
+    volumes:
+      - plasmid-editor-data:/data
+    environment:
+      - FLASK_ENV=production
+      - SECRET_KEY=${SECRET_KEY:?set SECRET_KEY to a random value, e.g. openssl rand -hex 32}
+      - EDITOR_DATABASE_PATH=/data/plasmid_editor.db
+      - MOCLO_URL=${MOCLO_URL:-}
+    restart: unless-stopped
+
+volumes:
+  plasmid-editor-data:

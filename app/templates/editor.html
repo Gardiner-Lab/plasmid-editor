@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+{% block title %}Editor &middot; Plasmid Editor{% endblock %}
+
+{% block content %}
+<div class="toolbar" id="toolbar">
+    <button class="tool-btn" id="btnNew" title="New empty sequence">＋ New</button>
+    <label class="tool-btn" for="fileInput" title="Open GenBank, FASTA, SnapGene, ApE or ABI files">
+        📂 Open
+        <input type="file" id="fileInput" multiple accept=".gb,.gbk,.genbank,.ape,.embl,.fa,.fasta,.fna,.seq,.txt,.dna,.ab1" hidden>
+    </label>
+    <button class="tool-btn" id="btnSave" title="Save to the lab library (Ctrl+S)">💾 Save</button>
+    <div class="tool-sep"></div>
+
+    <button class="tool-btn" id="btnCopy" title="Copy selection (Ctrl+C)">Copy</button>
+    <button class="tool-btn" id="btnCopyRC" title="Copy reverse complement">Copy RC</button>
+    <button class="tool-btn" id="btnCopyProtein" title="Copy translation of the selection">Copy AA</button>
+    <button class="tool-btn" id="btnPaste" title="Replace the selection with pasted sequence">Paste</button>
+    <button class="tool-btn" id="btnDelete" title="Delete the selected bases">Delete</button>
+    <div class="tool-sep"></div>
+
+    <button class="tool-btn" id="btnRevComp" title="Reverse complement the whole sequence">⇄ Rev-comp</button>
+    <button class="tool-btn" id="btnTopology" title="Switch between circular and linear">↻ Topology</button>
+    <button class="tool-btn" id="btnOrigin" title="Set the selection start as position 1">Set origin</button>
+    <button class="tool-btn" id="btnFeature" title="Make a feature from the selection">🏷 Add feature</button>
+    <div class="tool-sep"></div>
+
+    <span class="tool-label">Show</span>
+    <button class="tool-btn on" id="tglComplement" title="Show the complement strand">Complement</button>
+    <button class="tool-btn" id="tglTranslation" title="Show a reading frame translation">Translate</button>
+    <select id="frameSelect" style="width:auto;padding:.2rem .3rem;font-size:.8rem" title="Reading frame">
+        <option value="1">Frame +1</option><option value="2">Frame +2</option><option value="3">Frame +3</option>
+        <option value="-1">Frame −1</option><option value="-2">Frame −2</option><option value="-3">Frame −3</option>
+    </select>
+    <button class="tool-btn on" id="tglFeatures" title="Show feature bars">Features</button>
+    <button class="tool-btn on" id="tglEnzymes" title="Show restriction cut sites">Enzymes</button>
+    <div class="tool-sep"></div>
+    <span class="tool-label">View</span>
+    <button class="tool-btn on" id="tabSequence">Sequence</button>
+    <button class="tool-btn" id="tabMap">Map</button>
+</div>
+
+<div class="editor-shell">
+    <!-- Left: open documents + quick tools -->
+    <div>
+        <div class="panel">
+            <div class="panel-head">Open
+                <span class="hint" id="docCount"></span>
+            </div>
+            <ul class="item-list" id="docList"></ul>
+        </div>
+
+        <div class="panel">
+            <div class="panel-head">Find</div>
+            <div class="panel-body">
+                <div class="field">
+                    <input type="search" id="findQuery" class="mono" placeholder="GAATTC or GANTTC">
+                </div>
+                <div class="field">
+                    <select id="findMode">
+                        <option value="dna">DNA (IUPAC, both strands)</option>
+                        <option value="protein">Protein (six frames)</option>
+                    </select>
+                </div>
+                <div class="btn-group">
+                    <button class="btn btn-sm" id="btnFind">Find all</button>
+                    <button class="btn btn-sm btn-secondary" id="btnFindNext">Next</button>
+                    <button class="btn btn-sm btn-secondary" id="btnFindClear">Clear</button>
+                </div>
+                <div class="hint" id="findStatus" style="margin-top:.5rem"></div>
+            </div>
+        </div>
+
+        <div class="panel">
+            <div class="panel-head">Analysis</div>
+            <div class="panel-body">
+                <div class="btn-group">
+                    <button class="btn btn-sm btn-secondary" id="btnOrfs">ORFs</button>
+                    <button class="btn btn-sm btn-secondary" id="btnAnnotate">Auto-annotate</button>
+                    <button class="btn btn-sm btn-secondary" id="btnDigest">Digest / gel</button>
+                    <button class="btn btn-sm btn-secondary" id="btnSilent">Silent sites</button>
+                    <button class="btn btn-sm btn-secondary" id="btnPrimer">Design primers</button>
+                    <button class="btn btn-sm btn-secondary" id="btnPcr">Simulate PCR</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Centre: sequence or map -->
+    <div class="editor-main">
+        <div class="card card-compact" style="margin-bottom:.75rem">
+            <div class="card-header" style="margin-bottom:.5rem">
+                <div style="flex:1;min-width:12rem">
+                    <input type="text" id="docName" placeholder="Sequence name" style="font-weight:600">
+                </div>
+                <div class="btn-group">
+                    <span class="badge" id="badgeTopology">linear</span>
+                    <span class="badge badge-gg" id="badgeGG" hidden>Golden Gate</span>
+                    <span class="badge badge-moclo" id="badgeMoclo" hidden>In MoClo library</span>
+                </div>
+            </div>
+            <label class="checkbox" title="Mark this plasmid as Golden Gate / MoClo compatible">
+                <input type="checkbox" id="chkGoldenGate">
+                <span>
+                    <b>Golden Gate ready</b> — this plasmid is a MoClo-compatible part.
+                    <span class="hint">Ticking this lets you add it to the shared MoClo parts library.</span>
+                </span>
+            </label>
+            <div id="ggPanel" style="margin-top:.6rem" hidden></div>
+        </div>
+
+        <div class="seq-stats" id="seqStats"></div>
+        <div id="sequencePane"></div>
+        <div id="mapPane" class="map-wrap card" hidden></div>
+    </div>
+
+    <!-- Right: features, enzymes, details -->
+    <div>
+        <div class="panel">
+            <div class="panel-head">
+                Features <span class="hint" id="featureCount"></span>
+            </div>
+            <div class="panel-scroll panel-body-flush">
+                <ul class="item-list" id="featureList"></ul>
+            </div>
+        </div>
+
+        <div class="panel">
+            <div class="panel-head">
+                Enzymes
+                <select id="enzymeSet" style="width:auto;padding:.15rem .3rem;font-size:.75rem"></select>
+            </div>
+            <div class="panel-body">
+                <div class="field">
+                    <input type="search" id="enzymeFilter" placeholder="Filter enzymes">
+                </div>
+                <label class="checkbox"><input type="checkbox" id="chkUniqueOnly"> <span>Unique cutters only</span></label>
+                <label class="checkbox"><input type="checkbox" id="chkNonCutters"> <span>Show non-cutters</span></label>
+            </div>
+            <div class="panel-scroll panel-body-flush">
+                <table>
+                    <thead><tr><th>Enzyme</th><th class="num">Sites</th><th>Positions</th></tr></thead>
+                    <tbody id="enzymeRows"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/seqview.js') }}?v={{ app_version }}"></script>
+<script src="{{ url_for('static', filename='js/plasmidmap.js') }}?v={{ app_version }}"></script>
+<script src="{{ url_for('static', filename='js/tools.js') }}?v={{ app_version }}"></script>
+<script src="{{ url_for('static', filename='js/editor.js') }}?v={{ app_version }}"></script>
+{% endblock %}

@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Log in &middot; Plasmid Editor{% endblock %}
+{% block container_class %}{% endblock %}
+
+{% block content %}
+<div class="auth-wrap">
+    <div class="card">
+        <div class="auth-title">Plasmid Editor</div>
+        <p class="hint" style="margin-bottom:1.25rem">
+            Sequence editing, annotation, cloning simulation and sequencing alignment
+            for the Gardiner Lab.
+        </p>
+
+        <div class="auth-tabs">
+            <button class="auth-tab active" data-tab="login" type="button">Log in</button>
+            <button class="auth-tab" data-tab="register" type="button" id="registerTab">Register</button>
+        </div>
+
+        <div id="alert"></div>
+
+        <form id="authForm" autocomplete="on">
+            <div class="field">
+                <label for="username">Username</label>
+                <input type="text" id="username" name="username" required autocomplete="username">
+            </div>
+            <div class="field">
+                <label for="password">Password</label>
+                <input type="password" id="password" name="password" required autocomplete="current-password">
+            </div>
+            <div class="field" id="labField" hidden>
+                <label for="lab_source">Lab</label>
+                <input type="text" id="lab_source" name="lab_source" placeholder="Gardiner Lab">
+                <span class="hint">Recorded as the lab source on parts you contribute to the MoClo library.</span>
+            </div>
+            <button class="btn" type="submit" style="width:100%" id="submitBtn">Log in</button>
+        </form>
+    </div>
+    <p class="hint" style="text-align:center">
+        <a href="/about">About this tool and its attribution</a>
+    </p>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/auth.js') }}?v={{ app_version }}"></script>
+{% endblock %}

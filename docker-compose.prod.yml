@@ -1,0 +1,47 @@
+# Production stack for the Plasmid Editor.
+#
+#   SECRET_KEY=$(openssl rand -hex 32) docker compose -f docker-compose.prod.yml up -d
+#
+# The editor's own database lives in the plasmid-editor-data volume. The MoClo
+# Library Tool's volume is mounted as well, so parts and plasmids are shared
+# between the two tools: the editor reads them, and writes a new row into
+# parts.db when a user contributes a Golden Gate ready plasmid.
+#
+# `moclo-data` is the volume the MoClo tool already created. It is declared
+# external here so this stack never creates an empty one by accident: if the
+# name differs on your server, set MOCLO_VOLUME to the real name, e.g.
+#   MOCLO_VOLUME=mocllibrarytool_moclo-data docker compose ... up -d
+# (`docker volume ls` lists them.) To run without the shared library at all,
+# use docker-compose.standalone.yml instead.
+
+services:
+  web:
+    image: ghcr.io/gardiner-lab/plasmid-editor:latest
+    container_name: plasmid-editor
+    ports:
+      - "5001:5001"
+    volumes:
+      - plasmid-editor-data:/data
+      - moclo-data:/moclo
+    environment:
+      - FLASK_ENV=production
+      - SECRET_KEY=${SECRET_KEY:?set SECRET_KEY to a random value, e.g. openssl rand -hex 32}
+      - EDITOR_DATABASE_PATH=/data/plasmid_editor.db
+      # The MoClo tool's databases, read for browsing and written only when a
+      # user contributes a part.
+      - PARTS_DATABASE_PATH=/moclo/parts.db
+      - MOCLO_DATABASE_PATH=/moclo/moclo.db
+      # Shown in the navbar so people can jump to the other tool.
+      - MOCLO_URL=${MOCLO_URL:-}
+      - ALLOW_REGISTRATION=${ALLOW_REGISTRATION:-true}
+      - DEFAULT_LAB_SOURCE=${DEFAULT_LAB_SOURCE:-}
+      # Optional: create the first admin on an empty database.
+      - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
+    restart: unless-stopped
+
+volumes:
+  plasmid-editor-data:
+  moclo-data:
+    external: true
+    name: ${MOCLO_VOLUME:-moclo-data}

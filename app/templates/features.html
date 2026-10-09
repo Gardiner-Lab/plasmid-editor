@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Feature library &middot; Plasmid Editor{% endblock %}
+
+{% block content %}
+<div class="grid-2">
+    <div>
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title">Feature library</div>
+                <div class="btn-group">
+                    <label class="btn btn-sm btn-secondary" for="libInput">
+                        Import ApE library
+                        <input type="file" id="libInput" hidden accept=".txt,.tsv,.csv">
+                    </label>
+                    <button class="btn btn-sm btn-secondary" id="btnExport">Export</button>
+                </div>
+            </div>
+            <p class="hint">
+                Used by “Auto-annotate” in the editor. ApE feature library files are tab separated
+                (name, sequence, type, colour) and can be imported and exported unchanged.
+            </p>
+            <div class="field"><input type="search" id="search" placeholder="Filter by name or sequence"></div>
+            <div class="table-scroll">
+                <table>
+                    <thead><tr><th>Name</th><th>Type</th><th class="num">Length</th><th>Sequence</th><th>Source</th><th></th></tr></thead>
+                    <tbody id="rows"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div>
+        <div class="card">
+            <div class="card-title" style="margin-bottom:.5rem">Add an element</div>
+            <div class="field">
+                <label for="fName">Name</label>
+                <input type="text" id="fName" placeholder="35S promoter">
+            </div>
+            <div class="field-row">
+                <div class="field">
+                    <label for="fType">Type</label>
+                    <select id="fType"></select>
+                </div>
+                <div class="field" style="flex:0 0 6rem">
+                    <label for="fColor">Colour</label>
+                    <input type="color" id="fColor" value="#34d399">
+                </div>
+            </div>
+            <div class="field">
+                <label for="fSeq">Sequence</label>
+                <textarea id="fSeq" class="mono" rows="5" placeholder="ACGT…"></textarea>
+                <span class="hint">IUPAC codes are allowed, so degenerate motifs work too.</span>
+            </div>
+            <button class="btn" id="btnAdd" style="width:100%">Add to library</button>
+            <div id="addStatus" style="margin-top:.5rem"></div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/features.js') }}?v={{ app_version }}"></script>
+{% endblock %}

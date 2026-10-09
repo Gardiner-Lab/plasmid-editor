@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}My sequences &middot; Plasmid Editor{% endblock %}
+
+{% block content %}
+<div class="grid-2">
+    <div>
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title">Lab sequence library</div>
+                <div class="btn-group">
+                    <button class="btn btn-sm btn-secondary" id="btnBundle">Download selected</button>
+                    <a class="btn btn-sm" href="/editor">Open editor</a>
+                </div>
+            </div>
+            <div class="field-row">
+                <div class="field"><input type="search" id="search" placeholder="Search by name or description"></div>
+                <div class="field" style="flex:0 0 auto">
+                    <label class="checkbox"><input type="checkbox" id="chkMine"> <span>Only mine</span></label>
+                </div>
+                <div class="field" style="flex:0 0 auto">
+                    <label class="checkbox"><input type="checkbox" id="chkGG"> <span>Golden Gate ready</span></label>
+                </div>
+            </div>
+            <div class="table-scroll">
+                <table>
+                    <thead>
+                        <tr>
+                            <th style="width:1.5rem"></th>
+                            <th>Name</th>
+                            <th class="num">Length</th>
+                            <th>Topology</th>
+                            <th>Reads</th>
+                            <th>Tags</th>
+                            <th>Updated</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody id="rows"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div>
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title">MoClo library</div>
+                <span class="badge" id="mocloStatus">checking…</span>
+            </div>
+            <p class="hint">
+                Parts, backbones and assembled plasmids from the shared MoClo Library Tool database.
+                Open one here to edit, align sequencing reads against it, or use it in a cloning simulation.
+            </p>
+            <div class="field"><input type="search" id="mocloSearch" placeholder="Search MoClo parts"></div>
+            <div class="panel-scroll">
+                <ul class="item-list" id="mocloList"></ul>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-title" style="margin-bottom:.5rem">Add a sequence</div>
+            <p class="hint" style="margin-bottom:.75rem">
+                GenBank, FASTA, EMBL, SnapGene (.dna), ApE (.ape) or plain sequence.
+            </p>
+            <label class="btn btn-secondary" for="uploadInput" style="width:100%">
+                📂 Choose files to import
+                <input type="file" id="uploadInput" multiple hidden
+                       accept=".gb,.gbk,.genbank,.ape,.embl,.fa,.fasta,.fna,.seq,.txt,.dna">
+            </label>
+            <div id="uploadStatus" style="margin-top:.5rem"></div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/library.js') }}?v={{ app_version }}"></script>
+{% endblock %}

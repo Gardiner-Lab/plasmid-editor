@@ -1,0 +1,12 @@
+# Web framework
+Flask==3.0.3
+
+# Authentication
+bcrypt==4.2.1
+
+# Bioinformatics: sequence I/O, REBASE enzymes, alignment, melting temperatures
+biopython==1.85
+
+# Testing
+pytest==8.3.4
+pytest-cov==6.0.0

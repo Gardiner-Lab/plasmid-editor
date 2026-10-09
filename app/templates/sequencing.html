@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}Sequencing &middot; Plasmid Editor{% endblock %}
+
+{% block content %}
+<div class="grid-2">
+    <div>
+        <div class="card">
+            <div class="card-title" style="margin-bottom:.5rem">1. Reference sequence</div>
+            <div class="field">
+                <select id="refSelect"><option value="">Loading…</option></select>
+            </div>
+            <div id="refInfo" class="hint"></div>
+        </div>
+
+        <div class="card">
+            <div class="card-title" style="margin-bottom:.5rem">2. Sequencing reads</div>
+            <p class="hint" style="margin-bottom:.75rem">
+                ABI chromatograms (.ab1) or FASTA reads. Reads are aligned to both strands and may cross the origin.
+                Low-quality ends of a chromatogram are trimmed before alignment.
+            </p>
+            <label class="btn btn-secondary" for="readInput" style="width:100%" id="readLabel">
+                📂 Add reads
+                <input type="file" id="readInput" multiple hidden accept=".ab1,.abi,.fa,.fasta,.seq,.txt">
+            </label>
+            <div id="uploadStatus" style="margin-top:.5rem"></div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title">Reads</div>
+                <button class="btn btn-sm btn-secondary" id="btnRealign" title="Re-align every read to the current reference">Re-align all</button>
+            </div>
+            <ul class="item-list" id="readList"></ul>
+        </div>
+    </div>
+
+    <div>
+        <div class="card">
+            <div class="card-title" style="margin-bottom:.5rem">Coverage</div>
+            <div class="coverage-bar" id="coverage"></div>
+            <div class="hint" id="coverageText" style="margin-top:.35rem"></div>
+        </div>
+
+        <div class="card">
+            <div class="card-title" style="margin-bottom:.5rem">Alignment</div>
+            <div id="alignment"><div class="empty">Select a read to see its alignment.</div></div>
+        </div>
+
+        <div class="card" id="traceCard" hidden>
+            <div class="card-header">
+                <div class="card-title">Chromatogram</div>
+                <div class="btn-group">
+                    <button class="btn btn-sm btn-secondary" id="traceZoomOut">−</button>
+                    <button class="btn btn-sm btn-secondary" id="traceZoomIn">+</button>
+                </div>
+            </div>
+            <div class="trace-wrap"><canvas id="traceCanvas" height="170"></canvas></div>
+            <div class="hint" style="margin-top:.35rem">
+                <span style="color:var(--base-a)">A</span>
+                <span style="color:var(--base-c)">C</span>
+                <span style="color:var(--base-g)">G</span>
+                <span style="color:var(--base-t)">T</span>
+                — base calls below the trace; grey bars are Phred quality.
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/sequencing.js') }}?v={{ app_version }}"></script>
+{% endblock %}

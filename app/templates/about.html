@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}About &middot; Plasmid Editor{% endblock %}
+{% block container_class %}{% endblock %}
+
+{% block content %}
+<div style="max-width:52rem;margin:0 auto">
+    <div class="card">
+        <div class="card-title">Plasmid Editor</div>
+        <p>
+            Sequence editing, annotation, restriction analysis, cloning simulation and
+            sequencing alignment for the Gardiner Lab. It is the general-purpose companion
+            to the <b>MoClo Library Tool</b>: use the MoClo tool to manage a Golden Gate
+            parts library and plan modular assemblies, and this editor whenever the work is
+            not MoClo based — aligning sequencing reads, classical restriction cloning,
+            Gibson assembly, Gateway reactions, primer design, or simply manipulating DNA by hand.
+        </p>
+    </div>
+
+    <div class="card">
+        <div class="card-title">Attribution</div>
+        <p>
+            The functionality of this tool is modelled on <b>ApE (A Plasmid Editor)</b> by
+            M. Wayne Davis, the desktop program this lab has used for years. ApE is a closed-source
+            Tcl/Tk application, so none of its code is used, bundled or derived from here: the
+            features were <b>re-implemented independently</b> in Python and JavaScript against
+            published algorithms and standard libraries. Where ApE's conventions are useful for
+            interoperability they are followed deliberately — ApE's tab-separated feature-library
+            format is read and written unchanged, and ApE's <code>ApEinfo_fwdcolor</code> /
+            <code>ApEinfo_revcolor</code> GenBank qualifiers are honoured, so files move between
+            the two programs without losing annotations or colours.
+        </p>
+        <p style="margin-top:.75rem">
+            If you use this tool in published work, please cite ApE as the origin of the
+            feature set, and note which analyses were run here:
+        </p>
+        <blockquote style="margin:.75rem 0;padding:.75rem 1rem;border-left:3px solid var(--border-color);background:var(--bg-color);border-radius:.25rem">
+            Davis MW, Jorgensen EM (2022). ApE, A Plasmid Editor: A Freely Available DNA
+            Manipulation and Visualization Program. <i>Frontiers in Bioinformatics</i> 2:818619.
+            <a href="https://doi.org/10.3389/fbinf.2022.818619" target="_blank" rel="noopener">doi:10.3389/fbinf.2022.818619</a>
+        </blockquote>
+        <p class="hint">
+            ApE itself is available from
+            <a href="https://jorgensen.biology.utah.edu/wayned/ape/" target="_blank" rel="noopener">jorgensen.biology.utah.edu/wayned/ape</a>.
+            This project is not affiliated with or endorsed by its author.
+        </p>
+    </div>
+
+    <div class="card">
+        <div class="card-title">Other software used</div>
+        <ul style="margin-left:1.1rem">
+            <li><b>Biopython</b> — sequence file parsing, REBASE enzyme data, pairwise alignment, melting temperatures.
+                Cock PJA et al. (2009) <i>Bioinformatics</i> 25:1422–1423.</li>
+            <li><b>REBASE</b> — restriction enzyme recognition sites and cut positions, via Biopython.
+                Roberts RJ et al. (2015) <i>Nucleic Acids Res</i> 43:D298–D299.</li>
+            <li><b>Flask</b> — the web framework.</li>
+        </ul>
+    </div>
+
+    <div class="card">
+        <div class="card-title">How it fits with the MoClo Library Tool</div>
+        <p>
+            The two tools run side by side on the same server and <b>share the MoClo databases</b>.
+            Parts, backbones and assembled plasmids from the MoClo tool can be opened here for
+            editing or read alignment.
+        </p>
+        <p style="margin-top:.75rem">
+            In the other direction, any plasmid in this editor can be ticked as
+            <b>Golden Gate ready</b>. The editor then checks that a single Type IIS enzyme releases
+            exactly one clean insert with two 4&nbsp;bp fusion sites, and offers to add it to the
+            shared MoClo parts library — stored the way the MoClo tool expects, with both fusion
+            sites included, so it is immediately usable in assemblies there. Plasmids that are not
+            Golden Gate compatible stay in this editor only, and the reason they cannot be
+            contributed is reported.
+        </p>
+        <p style="margin-top:.75rem" class="hint">
+            The shared logic lives in a standalone <code>dnakit</code> package inside this
+            repository, so the MoClo tool can adopt it later instead of keeping its own copies of
+            the restriction, translation and export routines.
+        </p>
+    </div>
+
+    <p style="text-align:center"><a href="/">Back to the editor</a></p>
+</div>
+{% endblock %}
