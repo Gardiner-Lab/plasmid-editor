@@ -212,12 +212,28 @@ const Editor = {
     document.getElementById('docName').addEventListener('change', (e) => {
       if (this.doc) { this.doc.name = e.target.value.trim() || 'Untitled'; this.markDirty(); }
     });
-    document.getElementById('chkGoldenGate').addEventListener('change', (e) => {
+    document.getElementById('chkGoldenGate').addEventListener('change', async (e) => {
       if (!this.doc) return;
-      this.doc.golden_gate = e.target.checked;
-      document.getElementById('ggPanel').hidden = !e.target.checked;
-      this.markDirty();
-      if (e.target.checked) this.renderGoldenGate();
+      const checked = e.target.checked;
+      this.doc.golden_gate = checked;
+      document.getElementById('ggPanel').hidden = !checked;
+      if (checked) this.renderGoldenGate();
+      // Persist the flag straight away. It is a property of the sequence
+      // rather than an edit to it, and contributing reads it from the server.
+      if (this.doc.id) {
+        try {
+          await API.patch(`/api/sequences/${this.doc.id}`, { golden_gate: checked, sync: false });
+        } catch (err) {
+          toast(`Could not save the Golden Gate setting: ${err.message}`, 'error');
+          this.doc.golden_gate = !checked;
+          e.target.checked = !checked;
+          document.getElementById('ggPanel').hidden = checked;
+          return;
+        }
+      } else {
+        this.markDirty();
+      }
+      this.updateBadges();
     });
 
     document.addEventListener('keydown', (e) => {
@@ -288,22 +304,24 @@ const Editor = {
       }
       this.updateBadges();
       this.refreshMocloLink();
+      return true;
     } catch (err) {
       // A 409 means the local save worked but MoClo was not updated.
       if (err.payload?.conflict) {
         this.dirty = false;
         this.updateBadges();
         this.resolveConflict(err.payload);
-        return;
+        return false;
       }
       if (err.payload?.sync_failed) {
         this.dirty = false;
         this.updateBadges();
         this.refreshMocloLink();
         toast(`Saved here, but MoClo was not updated: ${err.message}`, 'error', 9000);
-        return;
+        return false;
       }
       toast(err.message, 'error');
+      return false;
     }
   },
 
@@ -980,15 +998,17 @@ const Editor = {
       el('div', { class: 'btn-group', style: 'margin-top:.5rem' },
         el('button', {
           class: 'btn btn-sm',
-          disabled: !canContribute || !this.doc.id,
-          title: !this.doc.id ? 'Save the sequence first'
-            : !canContribute ? 'The shared MoClo parts database is not mounted on this server' : '',
+          disabled: !canContribute,
+          title: canContribute ? '' : 'The shared MoClo parts database is not mounted on this server',
           onclick: () => this.contribute(result),
         }, '➕ Add to MoClo parts library'),
         this.doc.moclo_part_id
           ? el('span', { class: 'hint' }, 'Already contributed.')
-          : !this.doc.id ? el('span', { class: 'hint' }, 'Save this sequence to enable contributing.')
-            : !canContribute ? el('span', { class: 'hint' }, 'Shared MoClo database not available here.') : null));
+          : !canContribute
+            ? el('span', { class: 'hint' }, 'Shared MoClo database not available here.')
+            : !this.doc.id
+              ? el('span', { class: 'hint' }, 'It will be saved to the lab library first.')
+              : null));
   },
 
   contribute(result) {
@@ -1061,6 +1081,10 @@ const Editor = {
                 location_96_plate: document.getElementById('cPlate').value.trim(),
               },
             };
+            if ((!doc.id || this.dirty) && !(await this.save())) {
+              toast('The sequence could not be saved, so it was not contributed', 'error');
+              return false;
+            }
             const res = await API.post(`/api/sequences/${doc.id}/contribute`, payload);
             doc.moclo_part_id = res.contributed.part_id;
             this.updateBadges();

@@ -398,3 +398,57 @@ def test_mounting_under_a_url_prefix(monkeypatch, tmp_dbs):
     assert 'plasmid_editor_session' in (cookie or ''.join(jar)) or 'plasmid_editor_session' in str(jar)
     assert app.config['SESSION_COOKIE_PATH'] == '/editor'
     assert app.config['SESSION_COOKIE_NAME'] == 'plasmid_editor_session'
+
+
+def test_golden_gate_flag_persists_on_its_own(user_client, moclo_parts_db, rand_dna):
+    """
+    Ticking "Golden Gate ready" must reach the server by itself.
+
+    The flag used to live only in the browser until the next full save, so
+    contributing a sequence that had just been ticked failed with
+    "Mark this plasmid as Golden Gate ready before contributing it".
+    """
+    insert = rand_dna(400)
+    seq = 'GGTCTCA' + 'AATG' + insert + 'GCTT' + 'TGAGACC' + rand_dna(1500)
+    sid = user_client.post('/api/sequences', json={
+        'document': model.make_document('gNP184', seq, True)}).get_json()['sequence']['id']
+    assert user_client.get(f'/api/sequences/{sid}').get_json()['sequence']['golden_gate'] is False
+
+    # What the checkbox now sends on its own, with no document body.
+    r = user_client.patch(f'/api/sequences/{sid}', json={'golden_gate': True, 'sync': False})
+    assert r.status_code == 200
+    assert r.get_json()['sequence']['golden_gate'] is True
+
+    # The sequence is unchanged by the flag alone.
+    stored = user_client.get(f'/api/sequences/{sid}').get_json()['sequence']
+    assert stored['sequence'] == seq.upper() and stored['name'] == 'gNP184'
+
+    # And contributing now succeeds.
+    r = user_client.post(f'/api/sequences/{sid}/contribute', json={'lab_source': 'Gardiner Lab'})
+    assert r.status_code == 201, r.get_json()
+    assert r.get_json()['contributed']['overhang_5prime'] == 'AATG'
+
+
+def test_non_standard_fusion_sites_still_contribute(user_client, moclo_parts_db, rand_dna):
+    """
+    A BbsI module with overhangs outside the canonical MoClo set is a valid
+    part; "standard_moclo: false" is a note, not a refusal.
+    """
+    # The filler must not contain further BbsI sites, or the part is not clean.
+    no_bbsi = ('GAATTC', 'GGTCTC', 'GAGACC', 'GAAGAC', 'GTCTTC')
+    seq = ('GAAGACAA' + 'ACTA' + rand_dna(600, no_bbsi) + 'TTAC'
+           + 'TTGTCTTC' + rand_dna(1200, no_bbsi))
+    sid = user_client.post('/api/sequences', json={
+        'document': model.make_document('gNP184-like', seq, True),
+        'golden_gate': True}).get_json()['sequence']['id']
+
+    analysis = user_client.post('/api/sequences/golden-gate/analyze', json={
+        'document': model.make_document('gNP184-like', seq, True)}).get_json()
+    assert analysis['ready'] is True
+    assert analysis['best']['enzyme'] in ('BbsI', 'BpiI')
+    assert analysis['best']['standard_moclo'] is False
+
+    r = user_client.post(f'/api/sequences/{sid}/contribute', json={'lab_source': 'Gardiner Lab'})
+    assert r.status_code == 201, r.get_json()
+    out = r.get_json()['contributed']
+    assert (out['overhang_5prime'], out['overhang_3prime']) == ('ACTA', 'TTAC')
