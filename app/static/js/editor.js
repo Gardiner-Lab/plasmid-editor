@@ -23,6 +23,10 @@ const Editor = {
     this.view.onSelect = () => this.refreshStats();
     this.view.onCaret = () => this.refreshStats();
     this.view.onFeatureClick = (f) => this.editFeature(f);
+    // Typing, Backspace and Delete in the sequence view land here.
+    this.view.onEdit = ({ start, end, text }) => {
+      this.replaceRange({ start, end }, text, { collapse: true });
+    };
     this.map.onFeatureClick = (f) => this.editFeature(f);
 
     this.bindToolbar();
@@ -109,7 +113,7 @@ const Editor = {
     this.dirty = true;
     const doc = this.doc;
     if (!doc) return;
-    this.view.setDocument(doc);
+    this.view.setDocument(doc, { keepSelection: true });
     this.renderFeatures();
     this.refreshSites();
     this.renderDocList();
@@ -123,6 +127,9 @@ const Editor = {
     document.getElementById('badgeTopology').className = `badge ${doc?.circular ? 'badge-circular' : ''}`;
     document.getElementById('badgeGG').hidden = !doc?.golden_gate;
     document.getElementById('badgeMoclo').hidden = !doc?.moclo_part_id;
+    const unsaved = document.getElementById('badgeUnsaved');
+    if (unsaved) unsaved.hidden = !this.dirty;
+    this.updateUndoButtons();
     this.refreshStats();
   },
 
@@ -156,6 +163,9 @@ const Editor = {
     on('btnNew', () => this.addDocument({ name: 'Untitled', sequence: '', circular: true, features: [] }));
     document.getElementById('fileInput').addEventListener('change', (e) => this.openFiles(e.target.files));
     on('btnSave', () => this.save());
+    on('btnSaveAs', () => this.saveAs());
+    on('btnUndo', () => this.undo());
+    on('btnRedo', () => this.redo());
 
     on('btnCopy', () => this.copy(this.view.selectedSequence()));
     on('btnCopyRC', () => this.copy(DNA.revComp(this.view.selectedSequence())));
@@ -201,9 +211,18 @@ const Editor = {
 
     document.addEventListener('keydown', (e) => {
       if (!(e.ctrlKey || e.metaKey)) return;
+      // Leave the browser's own editing shortcuts alone inside form fields.
+      const tag = (e.target.tagName || '').toLowerCase();
+      if (tag === 'input' || tag === 'textarea' || tag === 'select' || e.target.isContentEditable) return;
       const key = e.key.toLowerCase();
-      if (key === 's') { e.preventDefault(); this.save(); }
+      if (key === 's') {
+        e.preventDefault();
+        e.shiftKey ? this.saveAs() : this.save();
+      }
+      if (key === 'z' && !e.shiftKey) { e.preventDefault(); this.undo(); }
+      if ((key === 'z' && e.shiftKey) || key === 'y') { e.preventDefault(); this.redo(); }
       if (key === 'c' && this.view.selectionLength()) { e.preventDefault(); this.copy(this.view.selectedSequence()); }
+      if (key === 'v') { e.preventDefault(); this.paste(); }
       if (key === 'f') { e.preventDefault(); document.getElementById('findQuery').focus(); }
       if (key === 'a' && this.doc) {
         e.preventDefault();
@@ -257,6 +276,73 @@ const Editor = {
     }
   },
 
+  /** Save a copy under a new name, or write the sequence out as a file. */
+  saveAs() {
+    const doc = this.doc;
+    if (!doc || !doc.sequence) { toast('Nothing to save', 'error'); return; }
+    modal({
+      title: 'Save as',
+      build: (body) => {
+        body.append(
+          el('div', { class: 'field' },
+            el('label', { for: 'saName' }, 'Name'),
+            el('input', { type: 'text', id: 'saName', value: doc.id ? `${doc.name} copy` : doc.name })),
+          el('div', { class: 'field' },
+            el('label', { for: 'saWhere' }, 'Save to'),
+            el('select', { id: 'saWhere' },
+              el('option', { value: 'library', text: 'Lab library (a new, separate entry)' }),
+              el('option', { value: 'genbank', text: 'Download as GenBank (.gb)' }),
+              el('option', { value: 'fasta', text: 'Download as FASTA (.fasta)' }),
+              el('option', { value: 'json', text: 'Download as JSON (.json)' }))),
+          el('p', { class: 'hint', id: 'saHint' },
+            'The open sequence keeps its own entry; this creates a second one and switches to it.'));
+        const where = body.querySelector('#saWhere');
+        where.addEventListener('change', () => {
+          body.querySelector('#saHint').textContent = where.value === 'library'
+            ? 'The open sequence keeps its own entry; this creates a second one and switches to it.'
+            : 'Downloads a file. Nothing is added to the lab library.';
+        });
+        setTimeout(() => body.querySelector('#saName')?.select(), 0);
+      },
+      buttons: [
+        { label: 'Cancel', kind: 'secondary' },
+        {
+          label: 'Save',
+          onClick: async ({ body }) => {
+            const name = body.querySelector('#saName').value.trim();
+            const where = body.querySelector('#saWhere').value;
+            if (!name) { toast('A name is required', 'error'); return false; }
+            const payload = { ...this.payloadDoc(), name };
+
+            if (where !== 'library') {
+              const ext = where === 'genbank' ? 'gb' : where === 'fasta' ? 'fasta' : 'json';
+              await downloadFrom('/api/sequences/convert', `${name}.${ext}`,
+                                 { document: payload, format: where });
+              toast(`Downloaded ${name}.${ext}`, 'success');
+              return true;
+            }
+
+            const saved = await API.post('/api/sequences', {
+              document: payload,
+              golden_gate: !!doc.golden_gate,
+              golden_gate_enzyme: doc.golden_gate_enzyme,
+            });
+            // Work on the copy from here, leaving the original entry untouched.
+            doc.id = saved.sequence.id;
+            doc.name = name;
+            doc.moclo_part_id = null;
+            this.dirty = false;
+            document.getElementById('docName').value = name;
+            this.renderDocList();
+            this.updateBadges();
+            toast(`Saved as “${name}”`, 'success');
+            return true;
+          },
+        },
+      ],
+    });
+  },
+
   async copy(text) {
     if (!text) { toast('Nothing selected', 'error'); return; }
     try {
@@ -308,58 +394,111 @@ const Editor = {
   /* --- editing ---------------------------------------------------------- */
 
   /**
-   * Replace a range with new text and move every feature accordingly.
-   * Features inside the removed range are dropped; features spanning it are
-   * shortened. A null range inserts at the caret.
+   * Replace a range with new text, moving every feature to match (see
+   * applyEdit). A null range inserts at the end. With `collapse` the caret is
+   * left after the inserted text, as when typing; otherwise the inserted text
+   * is selected, as when pasting.
    */
-  replaceRange(range, text) {
+  replaceRange(range, text, { collapse = false, undoable = true } = {}) {
     const doc = this.doc;
     if (!doc) return;
     const n = doc.sequence.length;
     const start = range ? range.start : n;
     const end = range ? (range.end > range.start ? range.end : range.start) : start;
-    const removed = end - start;
-    const delta = text.length - removed;
+    if (undoable) this.pushUndo();
 
-    doc.sequence = doc.sequence.slice(0, start) + text + doc.sequence.slice(end);
+    const next = applyEdit(doc, start, end, text);
+    doc.sequence = next.sequence;
+    doc.features = next.features;
 
-    const shift = (p) => {
-      if (p <= start) return p;
-      if (p >= end) return p + delta;
-      return start + text.length;   // inside the replaced range
-    };
-    doc.features = doc.features
-      .map((f) => {
-        const g = { ...f };
-        if (f.end > f.start) {
-          g.start = shift(f.start);
-          g.end = shift(f.end);
-        } else {
-          // A feature wrapping the origin: shift each half independently.
-          g.start = shift(f.start);
-          g.end = shift(f.end);
-        }
-        if (g.segments) g.segments = g.segments.map(([s, e]) => [shift(s), shift(e)]);
-        return g;
-      })
-      .filter((f) => f.end !== f.start);
-
-    this.view.selection = { start, end: start + text.length };
+    if (collapse) {
+      this.view.caret = start + text.length;
+      this.view._anchor = this.view.caret;
+      this.view.selection = { start: this.view.caret, end: this.view.caret };
+    } else {
+      this.view.selection = { start, end: start + text.length };
+      this.view.caret = start + text.length;
+      this.view._anchor = start;
+    }
     this.markDirty();
+    this.view.scrollCaretIntoView();
+  },
+
+  /* --- undo / redo ------------------------------------------------------ */
+
+  undoStack: [],
+  redoStack: [],
+  MAX_UNDO: 200,
+
+  snapshot() {
+    const d = this.doc;
+    return JSON.stringify({ name: d.name, sequence: d.sequence, circular: d.circular,
+                            description: d.description || '', features: d.features });
+  },
+
+  pushUndo() {
+    if (!this.doc) return;
+    this.undoStack.push({ index: this.index, state: this.snapshot() });
+    if (this.undoStack.length > this.MAX_UNDO) this.undoStack.shift();
+    this.redoStack.length = 0;
+    this.updateUndoButtons();
+  },
+
+  restore(entry) {
+    const target = this.docs[entry.index];
+    if (!target) return false;
+    const state = JSON.parse(entry.state);
+    Object.assign(target, state);
+    if (this.index !== entry.index) this.setActive(entry.index);
+    return true;
+  },
+
+  undo() {
+    if (!this.undoStack.length) return;
+    const entry = this.undoStack.pop();
+    this.redoStack.push({ index: this.index, state: this.snapshot() });
+    if (this.restore(entry)) {
+      this.dirty = true;
+      this.view.setDocument(this.doc, { keepSelection: true });
+      this.renderFeatures();
+      this.refreshSites();
+      this.updateBadges();
+    }
+    this.updateUndoButtons();
+  },
+
+  redo() {
+    if (!this.redoStack.length) return;
+    const entry = this.redoStack.pop();
+    this.undoStack.push({ index: this.index, state: this.snapshot() });
+    if (this.restore(entry)) {
+      this.dirty = true;
+      this.view.setDocument(this.doc, { keepSelection: true });
+      this.renderFeatures();
+      this.refreshSites();
+      this.updateBadges();
+    }
+    this.updateUndoButtons();
+  },
+
+  updateUndoButtons() {
+    const u = document.getElementById('btnUndo');
+    const r = document.getElementById('btnRedo');
+    if (u) u.disabled = !this.undoStack.length;
+    if (r) r.disabled = !this.redoStack.length;
   },
 
   deleteSelection() {
     const len = this.view.selectionLength();
     if (!len) { toast('Nothing selected', 'error'); return; }
-    this.replaceRange(this.view.selection, '');
-    this.view.selection = null;
-    this.markDirty();
+    this.replaceRange(this.view.selection, '', { collapse: true });
     toast(`Deleted ${fmt(len)} bp`, 'success', 2000);
   },
 
   reverseComplement() {
     const doc = this.doc;
     if (!doc || !doc.sequence) return;
+    this.pushUndo();
     const n = doc.sequence.length;
     doc.sequence = DNA.revComp(doc.sequence);
     doc.features = doc.features.map((f) => ({
@@ -381,6 +520,7 @@ const Editor = {
       toast('Linearise at a point outside the features that cross the origin first', 'error', 6000);
       return;
     }
+    this.pushUndo();
     doc.circular = !doc.circular;
     this.markDirty();
     toast(doc.circular ? 'Now circular' : 'Now linear', 'success', 2000);
@@ -391,6 +531,7 @@ const Editor = {
     const sel = this.view.selection;
     if (!doc || !doc.circular) { toast('Only a circular sequence has a movable origin', 'error'); return; }
     if (!sel) { toast('Click the base that should become position 1', 'error'); return; }
+    this.pushUndo();
     const k = sel.start;
     const n = doc.sequence.length;
     doc.sequence = doc.sequence.slice(k) + doc.sequence.slice(0, k);
@@ -491,6 +632,7 @@ const Editor = {
           label: 'Delete',
           kind: 'danger',
           onClick: () => {
+            this.pushUndo();
             doc.features = doc.features.filter((f) => f.id !== feature.id);
             this.markDirty();
           },
@@ -522,6 +664,7 @@ const Editor = {
               color: document.getElementById('fColor').value,
               qualifiers: feature.qualifiers || {},
             };
+            this.pushUndo();
             doc.features = isNew
               ? [...doc.features, next]
               : doc.features.map((f) => (f.id === feature.id ? next : f));

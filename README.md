@@ -16,11 +16,15 @@ re-implemented independently; see [Attribution](#attribution).
 - Open **GenBank, FASTA, EMBL, SnapGene (.dna), ApE (.ape), ABI (.ab1)** and raw sequence files
 - Wrapped sequence view with complement strand, any of the six reading frames, feature
   bars and restriction cut marks
+- **Type directly into the sequence**: click to place a cursor and type A/C/G/T, or use
+  Backspace and Delete; arrow keys, Home/End and shift-select behave as in a text editor
+- Undo and redo (Ctrl+Z / Ctrl+Shift+Z) across every editing operation
 - Click and drag selection; cut, copy (plain, reverse complement or translated), paste and delete
 - Reverse complement, circular ⇄ linear, move the origin of a circular plasmid
 - Circular and linear plasmid maps as SVG, with features and cut sites
 - Feature editing with colours, strand and types; features that cross the origin are handled
   throughout, and move correctly when the sequence is edited
+- Save as: a copy in the lab library under a new name, or a downloaded file
 - Export GenBank, FASTA or JSON, singly or as a zip
 
 ### Analysis
@@ -126,7 +130,7 @@ EDITOR_DATABASE_PATH=./data/editor.db \
 ### Tests
 
 ```bash
-pytest -q                       # 48 backend tests
+pytest -q                       # 51 backend tests
 node tests/js/helpers.test.js   # frontend sequence helpers
 ```
 

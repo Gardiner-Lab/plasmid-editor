@@ -19,24 +19,39 @@ class SeqView {
       showFeatures: true,
       showEnzymes: true,
       uppercase: true,
+      editable: true,
       ...opts,
     };
     this.selection = null;       // {start, end} half-open, start may exceed end only via wrap
+    this.caret = null;           // insertion point; equals selection.start when collapsed
     this.sites = [];
     this.highlights = [];        // [{start, end, class}]
     this.onSelect = null;
     this.onFeatureClick = null;
     this.onCaret = null;
+    this.onEdit = null;          // ({start, end, text}) => void, applied by the owner
     this._drag = null;
+    this._anchor = null;         // fixed end of a shift-extended selection
     container.classList.add('seqmap');
+    container.setAttribute('tabindex', '0');
+    container.setAttribute('role', 'textbox');
+    container.setAttribute('aria-multiline', 'true');
+    container.setAttribute('aria-label', 'DNA sequence, editable');
     container.addEventListener('mousedown', (e) => this._mousedown(e));
     window.addEventListener('mouseup', () => { this._drag = null; });
     container.addEventListener('mousemove', (e) => this._mousemove(e));
+    container.addEventListener('keydown', (e) => this._keydown(e));
   }
 
-  setDocument(doc) {
+  setDocument(doc, { keepSelection = false } = {}) {
     this.doc = doc;
-    this.selection = null;
+    if (!keepSelection) {
+      this.selection = null;
+      this.caret = null;
+      this._anchor = null;
+    } else if (this.caret !== null) {
+      this.caret = Math.min(this.caret, doc.sequence.length);
+    }
     this.render();
   }
 
@@ -57,21 +72,50 @@ class SeqView {
 
   setSelection(sel, notify = true) {
     this.selection = sel;
+    this.caret = sel ? sel.end : null;
+    this._anchor = sel ? sel.start : null;
     this.render();
     if (notify) this.onSelect?.(sel);
+  }
+
+  /** Put the insertion point at `pos`, optionally extending from the anchor. */
+  setCaret(pos, extend = false) {
+    const n = this.doc.sequence.length;
+    pos = Math.max(0, Math.min(n, pos));
+    if (extend && this._anchor !== null) {
+      this.selection = { start: Math.min(this._anchor, pos), end: Math.max(this._anchor, pos) };
+    } else {
+      this._anchor = pos;
+      this.selection = { start: pos, end: pos };
+    }
+    this.caret = pos;
+    this.render();
+    this.onSelect?.(this.selection);
+    this.scrollCaretIntoView();
+  }
+
+  isCollapsed() {
+    const s = this.selection;
+    return !s || s.start === s.end;
+  }
+
+  scrollCaretIntoView() {
+    if (this.caret === null) return;
+    const block = this.container.querySelectorAll('.seqmap-block')[Math.floor(this.caret / this.opts.width)];
+    block?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   }
 
   /** The selected sequence, following the wrap on a circular molecule. */
   selectedSequence() {
     const sel = this.selection;
-    if (!sel) return '';
+    if (!sel || sel.start === sel.end) return '';   // a bare caret selects nothing
     const s = this.doc.sequence;
     return sel.end > sel.start ? s.slice(sel.start, sel.end) : s.slice(sel.start) + s.slice(0, sel.end);
   }
 
   selectionLength() {
     const sel = this.selection;
-    if (!sel) return 0;
+    if (!sel || sel.start === sel.end) return 0;
     return sel.end > sel.start ? sel.end - sel.start : this.doc.sequence.length - sel.start + sel.end;
   }
 
@@ -108,15 +152,72 @@ class SeqView {
     }
     const pos = this._posFromEvent(e);
     if (pos === null) return;
+    this.container.focus({ preventScroll: true });
     this._drag = pos;
-    if (e.shiftKey && this.selection) {
-      this.setSelection({ start: Math.min(this.selection.start, pos), end: Math.max(this.selection.end, pos) });
+    if (e.shiftKey && this._anchor !== null) {
+      this.setCaret(pos, true);
     } else {
-      this.setSelection(null, false);
+      this.setCaret(pos, false);
       this.onCaret?.(pos);
-      this.selection = { start: pos, end: pos };
-      this.render();
     }
+  }
+
+  /**
+   * Edit and navigation keys. Typing a base, Backspace and Delete all go
+   * through onEdit so the owner can apply them (and record undo) in one place.
+   */
+  _keydown(e) {
+    if (!this.opts.editable || !this.doc) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;   // shortcuts belong to the page
+
+    const n = this.doc.sequence.length;
+    const w = this.opts.width;
+    const sel = this.selection;
+    const caret = this.caret ?? (sel ? sel.start : 0);
+
+    const nav = (pos) => { e.preventDefault(); this.setCaret(pos, e.shiftKey); };
+    switch (e.key) {
+      case 'ArrowLeft':  return nav(caret - 1);
+      case 'ArrowRight': return nav(caret + 1);
+      case 'ArrowUp':    return nav(caret - w);
+      case 'ArrowDown':  return nav(caret + w);
+      case 'Home':       return nav(caret - (caret % w));
+      case 'End':        return nav(Math.min(n, caret - (caret % w) + w));
+      case 'PageUp':     return nav(caret - w * 10);
+      case 'PageDown':   return nav(caret + w * 10);
+      case 'Escape':     e.preventDefault(); this.setCaret(caret, false); return;
+      default: break;
+    }
+
+    // A selection that wraps the origin has no single linear range to replace,
+    // so collapse to its start and carry on from there.
+    const range = (sel && sel.end < sel.start) ? { start: sel.start, end: sel.start } : sel;
+    const hasSelection = range && range.end > range.start;
+
+    if (e.key === 'Backspace') {
+      e.preventDefault();
+      if (hasSelection) this._edit(range.start, range.end, '');
+      else if (caret > 0) this._edit(caret - 1, caret, '');
+      return;
+    }
+    if (e.key === 'Delete') {
+      e.preventDefault();
+      if (hasSelection) this._edit(range.start, range.end, '');
+      else if (caret < n) this._edit(caret, caret + 1, '');
+      return;
+    }
+
+    // A single IUPAC base (or a run pasted by the OS as keystrokes).
+    if (e.key.length === 1 && /^[acgturykmswbdhvn]$/i.test(e.key)) {
+      e.preventDefault();
+      const base = this.opts.uppercase ? e.key.toUpperCase() : e.key;
+      if (hasSelection) this._edit(range.start, range.end, base);
+      else this._edit(caret, caret, base);
+    }
+  }
+
+  _edit(start, end, text) {
+    this.onEdit?.({ start, end, text });
   }
 
   _mousemove(e) {
@@ -126,6 +227,8 @@ class SeqView {
     const sel = { start: Math.min(this._drag, pos), end: Math.max(this._drag, pos) };
     if (sel.start === sel.end) return;
     this.selection = sel;
+    this._anchor = this._drag;
+    this.caret = pos;
     this.render();
     this.onSelect?.(sel);
   }
@@ -224,6 +327,15 @@ class SeqView {
       basesRow.dataset.start = String(start);
       basesRow.dataset.len = String(len);
       basesRow.append(...this._styledBases(text, start, end, sel, selLen));
+      // The caret belongs to the block it starts in; at the very end of the
+      // sequence it sits just past the last base of the final block.
+      if (this.opts.editable && this.caret !== null
+          && this.caret >= start && (this.caret < end || (this.caret === n && end === n))) {
+        basesRow.appendChild(el('span', {
+          class: 'seq-caret',
+          style: `left:${(this.caret - start) * this._charWidth()}px`,
+        }));
+      }
       rows.appendChild(basesRow);
 
       if (comp) {

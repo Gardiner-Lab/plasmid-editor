@@ -76,6 +76,7 @@ const Tools = {
 
   annotateOrfs(orfs) {
     const doc = Editor.doc;
+    Editor.pushUndo();
     let i = 1;
     for (const o of orfs) {
       doc.features.push({
@@ -123,6 +124,7 @@ const Tools = {
               const picked = [...body.querySelectorAll('input[type=checkbox]')]
                 .filter((c) => c.checked)
                 .map((c) => found[Number(c.dataset.i)]);
+              Editor.pushUndo();
               doc.features.push(...picked);
               Editor.markDirty();
               toast(`Added ${picked.length} feature(s)`, 'success');
@@ -350,6 +352,7 @@ const Tools = {
                   class: 'btn btn-sm btn-secondary',
                   onclick: () => {
                     const doc2 = Editor.doc;
+                    Editor.pushUndo();
                     doc2.features.push(
                       { id: `pf${Date.now().toString(36)}`, name: 'Forward primer', type: 'primer_bind',
                         start: sel.start, end: sel.start + res.forward.length, strand: 1,

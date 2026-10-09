@@ -145,6 +145,33 @@ def export_sequence(user, sequence_id, fmt):
     return jsonify({'error': f'Unsupported format: {fmt}'}), 400
 
 
+@sequences_bp.route('/convert', methods=['POST'])
+@require_auth
+def convert(user):
+    """
+    Write an in-editor document out as a file without saving it to the library.
+
+    This is what "Save as -> download" uses, so a sequence that was never saved
+    can still be exported.
+    """
+    data = request.get_json(silent=True) or {}
+    try:
+        doc = model.normalize_document(data.get('document') or {})
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 400
+    if not doc['sequence']:
+        return jsonify({'error': 'The sequence is empty'}), 400
+    fmt = (data.get('format') or 'genbank').lower()
+    name = _safe(doc['name'])
+    if fmt in ('genbank', 'gb'):
+        return _download(seqio.write_genbank(doc), f'{name}.gb')
+    if fmt in ('fasta', 'fa'):
+        return _download(seqio.write_fasta(doc), f'{name}.fasta', 'text/x-fasta')
+    if fmt == 'json':
+        return _download(json.dumps(doc, indent=2), f'{name}.json', 'application/json')
+    return jsonify({'error': f'Unsupported format: {fmt}'}), 400
+
+
 @sequences_bp.route('/export/bundle', methods=['POST'])
 @require_auth
 def export_bundle(user):

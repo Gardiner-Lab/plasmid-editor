@@ -4,6 +4,40 @@ All notable changes to the Plasmid Editor are recorded here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses [semantic versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- **Direct sequence typing.** The sequence view is a focusable text field: click
+  to place a cursor, then type A/C/G/T (and other IUPAC codes) to insert, or use
+  Backspace and Delete. Arrow keys, Home, End, Page Up/Down and shift-select
+  navigate as in a text editor.
+- **Undo and redo** (Ctrl+Z / Ctrl+Shift+Z, plus toolbar buttons) covering typing,
+  deletion, paste, reverse complement, topology changes, origin moves, feature
+  edits, auto-annotation and silent mutations.
+- **Save as** (Ctrl+Shift+S): save a copy to the lab library under a new name, or
+  download the open sequence as GenBank, FASTA or JSON. Downloads work for
+  sequences that were never saved, via a new `POST /api/sequences/convert`.
+- An "Unsaved changes" badge in the editor header.
+
+### Fixed
+- A collapsed selection (a bare cursor) was measured as the whole sequence, so the
+  statistics line read "Selection 18-17 (129 bp)" and Ctrl+C would have copied the
+  entire sequence instead of nothing.
+- Ctrl+A, Ctrl+C and Ctrl+V no longer hijack the browser's own editing shortcuts
+  while the focus is in a text input.
+- Restriction-site labels on the circular map no longer overlap: only unique
+  cutters are labelled, crowded labels fan out across three rings, and a position
+  tick is dropped where an enzyme label would sit on top of it.
+- The MoClo library panel on the sequences page failed silently because of a
+  mismatched element id, and its error handler could itself throw.
+- `app/data/` was excluded by the `data/` ignore rule, so the built-in feature
+  library was missing from the repository and the container image.
+
+### Notes
+- Typing at a feature's edge leaves the new base outside that feature; only text
+  typed strictly inside a feature extends it. Overwriting a selection keeps the
+  (resized) feature, while deleting it outright removes it.
+
 ## [0.1.0] - 2026-10-09
 
 First release: a general-purpose plasmid editor to sit alongside the MoClo Library Tool.

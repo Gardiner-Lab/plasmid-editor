@@ -191,6 +191,20 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .feat-bar:hover { opacity: 1; outline: 1px solid var(--text-color); }
 .cut-mark { position: absolute; top: -.1em; width: 1px; height: 1.5em; background: #b45309; }
 
+/* Typing caret: the sequence map is focusable and edited like a text field. */
+.seqmap { outline: none; }
+.seqmap:focus-visible { box-shadow: 0 0 0 2px #bfdbfe; }
+.seq-caret {
+    position: absolute; top: -.05em; width: 0; height: 1.4em;
+    border-left: 2px solid var(--primary-color);
+    animation: caret-blink 1.05s steps(1) infinite;
+}
+.seqmap:not(:focus) .seq-caret { animation: none; opacity: .35; }
+@keyframes caret-blink { 50% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .seq-caret { animation: none; } }
+
+.badge-unsaved { background: #fffbeb; color: #92400e; border-color: #fde68a; }
+
 .seq-stats { display: flex; gap: 1.25rem; flex-wrap: wrap; font-size: .8125rem; color: var(--text-secondary); padding: .35rem .25rem .6rem; }
 .seq-stats b { color: var(--text-color); font-variant-numeric: tabular-nums; }
 

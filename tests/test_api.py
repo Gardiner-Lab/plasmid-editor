@@ -1,5 +1,6 @@
 """Tests for the web API, including the shared MoClo database bridge."""
 
+import json
 import sqlite3
 
 from dnakit import model
@@ -323,3 +324,49 @@ def test_contributed_parts_reassemble_under_moclo_rules(user_client, moclo_parts
     assembled = pro['sequence'] + cds['sequence'][4:]        # MoClo's rule
     assert assembled == 'GGAG' + body1 + 'AATG' + body2 + 'GCTT'
     assert assembled.count('AATG') >= 1 and assembled[4:4 + 300] == body1
+
+
+def test_convert_exports_without_saving(user_client, rand_dna):
+    """'Save as -> download' must work for a sequence that was never saved."""
+    seq = rand_dna(300)
+    doc = model.make_document('scratch', seq, True, [model.make_feature('f1', 10, 60, 1, 'CDS')])
+
+    r = user_client.post('/api/sequences/convert', json={'document': doc, 'format': 'genbank'})
+    assert r.status_code == 200
+    assert b'LOCUS' in r.data and b'f1' in r.data
+    assert 'scratch.gb' in r.headers['Content-Disposition']
+
+    r = user_client.post('/api/sequences/convert', json={'document': doc, 'format': 'fasta'})
+    assert r.status_code == 200 and r.data.startswith(b'>scratch')
+
+    r = user_client.post('/api/sequences/convert', json={'document': doc, 'format': 'json'})
+    assert r.status_code == 200 and json.loads(r.data)['sequence'] == seq
+
+    # Nothing was added to the library.
+    assert user_client.get('/api/sequences').get_json()['sequences'] == []
+
+
+def test_convert_rejects_bad_input(user_client, rand_dna):
+    doc = model.make_document('x', rand_dna(100), True)
+    assert user_client.post('/api/sequences/convert',
+                            json={'document': doc, 'format': 'docx'}).status_code == 400
+    assert user_client.post('/api/sequences/convert',
+                            json={'document': {'sequence': ''}}).status_code == 400
+
+
+def test_save_as_creates_a_separate_entry(user_client, rand_dna):
+    """A copy must not disturb the original entry."""
+    seq = rand_dna(400)
+    first = user_client.post('/api/sequences',
+                             json={'document': model.make_document('original', seq, True)})
+    original_id = first.get_json()['sequence']['id']
+
+    copy = user_client.post('/api/sequences',
+                            json={'document': model.make_document('original copy', seq, True)})
+    assert copy.status_code == 201
+    copy_id = copy.get_json()['sequence']['id']
+    assert copy_id != original_id
+
+    names = {s['name'] for s in user_client.get('/api/sequences').get_json()['sequences']}
+    assert names == {'original', 'original copy'}
+    assert user_client.get(f'/api/sequences/{original_id}').get_json()['sequence']['name'] == 'original'

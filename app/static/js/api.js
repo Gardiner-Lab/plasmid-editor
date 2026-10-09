@@ -171,6 +171,38 @@ const DNA = {
   featLength(f, n) { return f.end > f.start ? f.end - f.start : n - f.start + f.end; },
 };
 
+/**
+ * Replace doc.sequence[start:end] with `text`, moving every feature to match.
+ *
+ * Features are shifted when the edit falls before them, stretched or shortened
+ * when it falls inside them, and dropped when the edit removes them entirely.
+ * Pure: returns {sequence, features} and does not touch `doc`.
+ */
+function applyEdit(doc, start, end, text) {
+  const seq = doc.sequence;
+  const delta = text.length - (end - start);
+  // Typing exactly at a feature's edge puts the base outside that feature:
+  // a feature's start is pushed right by an insertion at its first base, while
+  // its end stays put for an insertion just after its last base. Only text
+  // typed strictly inside a feature extends it.
+  const shift = (p, isStart) => {
+    if (p < start) return p;
+    if (p > end) return p + delta;
+    if (start === end) return isStart ? p + delta : p;   // caret sits exactly here
+    if (p === start) return p;                           // left edge of a replaced range
+    if (p === end) return p + delta;                     // right edge
+    return start + text.length;                          // strictly inside it
+  };
+  const features = [];
+  for (const f of doc.features || []) {
+    const g = { ...f, start: shift(f.start, true), end: shift(f.end, false) };
+    if (f.segments) g.segments = f.segments.map(([s, e]) => [shift(s, true), shift(e, false)]);
+    if (g.start === g.end) continue;   // the edit removed the whole feature
+    features.push(g);
+  }
+  return { sequence: seq.slice(0, start) + text + seq.slice(end), features };
+}
+
 const CODONS = {
   TTT: 'F', TTC: 'F', TTA: 'L', TTG: 'L', CTT: 'L', CTC: 'L', CTA: 'L', CTG: 'L',
   ATT: 'I', ATC: 'I', ATA: 'I', ATG: 'M', GTT: 'V', GTC: 'V', GTA: 'V', GTG: 'V',

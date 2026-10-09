@@ -9,6 +9,11 @@
         <input type="file" id="fileInput" multiple accept=".gb,.gbk,.genbank,.ape,.embl,.fa,.fasta,.fna,.seq,.txt,.dna,.ab1" hidden>
     </label>
     <button class="tool-btn" id="btnSave" title="Save to the lab library (Ctrl+S)">💾 Save</button>
+    <button class="tool-btn" id="btnSaveAs" title="Save a copy, or download as a file (Ctrl+Shift+S)">Save as…</button>
+    <div class="tool-sep"></div>
+
+    <button class="tool-btn" id="btnUndo" title="Undo (Ctrl+Z)" disabled>↶ Undo</button>
+    <button class="tool-btn" id="btnRedo" title="Redo (Ctrl+Shift+Z)" disabled>↷ Redo</button>
     <div class="tool-sep"></div>
 
     <button class="tool-btn" id="btnCopy" title="Copy selection (Ctrl+C)">Copy</button>
@@ -96,6 +101,7 @@
                     <span class="badge" id="badgeTopology">linear</span>
                     <span class="badge badge-gg" id="badgeGG" hidden>Golden Gate</span>
                     <span class="badge badge-moclo" id="badgeMoclo" hidden>In MoClo library</span>
+                    <span class="badge badge-unsaved" id="badgeUnsaved" hidden>Unsaved changes</span>
                 </div>
             </div>
             <label class="checkbox" title="Mark this plasmid as Golden Gate / MoClo compatible">
@@ -109,6 +115,11 @@
         </div>
 
         <div class="seq-stats" id="seqStats"></div>
+        <p class="hint" style="padding:0 .25rem .4rem">
+            Click in the sequence to place the cursor, then type A/C/G/T to insert,
+            or use Backspace and Delete. Arrow keys, Home, End and shift-select work as in a text editor.
+            Ctrl+Z undoes.
+        </p>
         <div id="sequencePane"></div>
         <div id="mapPane" class="map-wrap card" hidden></div>
     </div>
