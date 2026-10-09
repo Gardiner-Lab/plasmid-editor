@@ -54,6 +54,18 @@ re-implemented independently; see [Attribution](#attribution).
 - Chromatogram viewer with base calls and Phred quality
 - Coverage summary, and re-alignment of every read after the reference is edited
 
+### Sequencing verification
+- Every read stays attached to the plasmid it was aligned to, with its **clone number**,
+  so you can see whether a plasmid was sequenced before and what was found
+- Judge each alignment **sufficient** or **not sufficient**; the judgement, who made it and
+  any note are kept with the read and survive re-alignment
+- A sufficient alignment marks the plasmid **✓ confirmed and sequenced**, prompting for the
+  **glycerol stock number** it will be kept as
+- The sequence library shows the green check, the read count and how many alignments passed,
+  linking straight to the alignments for that plasmid
+- For a plasmid linked to MoClo, confirmation is written into the MoClo record's own
+  `sequenced` field
+
 ### Shared with the MoClo Library Tool
 - Browse the MoClo tool's **parts, backbones and assembled plasmids** and open them here
 - Tick **“Golden Gate ready”** on a plasmid to check whether a single Type IIS enzyme

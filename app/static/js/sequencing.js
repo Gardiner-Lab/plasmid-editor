@@ -35,6 +35,7 @@ const Sequencing = {
       this.reads = [];
       document.getElementById('refInfo').textContent = '';
       this.renderReads();
+      this.renderVerification();
       return;
     }
     try {
@@ -44,6 +45,7 @@ const Sequencing = {
       document.getElementById('refInfo').textContent =
         `${fmt(sequence.sequence.length)} bp, ${sequence.circular ? 'circular' : 'linear'}, ${sequence.features.length} features`;
       this.renderReads();
+      this.renderVerification();
     } catch (err) {
       toast(err.message, 'error');
     }
@@ -56,6 +58,8 @@ const Sequencing = {
     status.replaceChildren(el('span', { class: 'spin' }));
     const form = new FormData();
     for (const f of files) form.append('file', f);
+    const clone = document.getElementById('cloneNumber').value.trim();
+    if (clone) form.append('clone_number', clone);
     try {
       const { reads, errors } = await API.post(`/api/sequences/${this.reference.id}/reads`, form);
       for (const e of errors || []) toast(`${e.filename}: ${e.error}`, 'error', 7000);
@@ -96,10 +100,17 @@ const Sequencing = {
         class: `item ${this.activeRead?.id === r.id ? 'active' : ''}`,
         onclick: (ev) => { if (!ev.target.closest('button')) this.showRead(r); },
       },
-        el('span', { class: 'item-name' }, r.name,
+        el('span', { class: 'item-name' },
+          r.clone_number ? el('span', { class: 'badge', text: `clone ${r.clone_number}` }) : null,
+          ` ${r.name}`,
           el('span', { class: 'item-meta' },
             bad ? ' · not mapped'
-              : ` · ${fmt(a.ref_start + 1)}–${fmt(a.ref_end)} ${a.strand === -1 ? '←' : '→'} ${a.identity}%`)),
+              : ` · ${fmt(a.ref_start + 1)}–${fmt(a.ref_end)} ${a.strand === -1 ? '←' : '→'} ${a.identity}%`),
+          r.verdict ? el('span', {
+            class: r.verdict === 'sufficient' ? 'verdict-ok' : 'verdict-bad',
+            text: r.verdict === 'sufficient' ? ' ✓ sufficient' : ' ✗ not sufficient',
+            style: 'font-size:.75rem',
+          }) : null),
         el('span', { class: 'item-meta nowrap' },
           bad ? el('span', { class: 'badge', text: 'unmapped' })
             : diffs ? el('span', { class: 'badge', style: 'background:#fef2f2;color:#991b1b;border-color:#fecaca',
@@ -181,6 +192,7 @@ const Sequencing = {
               `${d.type === 'mismatch' ? `${d.ref}→${d.read}` : d.type} @ ${fmt(d.position + 1)}`).join(', ')
             + (a.differences.length > 40 ? ' …' : ''))
           : el('div', { class: 'hint' }, 'No differences from the reference.')));
+      nodes.push(this.verdictBar(read));
       nodes.push(this.alignmentView(a));
     }
     box.replaceChildren(...nodes);
@@ -199,6 +211,136 @@ const Sequencing = {
       card.hidden = true;
       this.trace = null;
     }
+  },
+
+  /** Judge this alignment, and record the clone it came from. */
+  verdictBar(read) {
+    const clone = el('input', {
+      type: 'text', value: read.clone_number || '', placeholder: 'clone',
+      style: 'width:6rem', title: 'Which colony this read came from',
+    });
+    const judge = async (verdict) => {
+      try {
+        const res = await API.post(`/api/sequences/reads/${read.id}/verdict`, {
+          verdict, clone_number: clone.value,
+        });
+        await this.selectReference(this.reference.id);
+        const updated = this.reads.find((r) => r.id === read.id);
+        if (updated) await this.showRead(updated);
+        if (res.needs_confirmation) this.askGlycerolStock(clone.value || read.clone_number);
+        else toast(verdict === 'sufficient' ? 'Marked sufficient' : 'Marked not sufficient',
+                   'success', 2500);
+      } catch (err) {
+        toast(err.message, 'error');
+      }
+    };
+    return el('div', { class: 'btn-group', style: 'margin:.5rem 0 .75rem;align-items:center' },
+      el('span', { class: 'hint' }, 'Clone'),
+      clone,
+      el('button', { class: 'btn btn-sm', onclick: () => judge('sufficient') },
+        '✓ Alignment is sufficient'),
+      el('button', { class: 'btn btn-sm btn-secondary', onclick: () => judge('insufficient') },
+        '✗ Not sufficient'),
+      read.verdict
+        ? el('button', {
+            class: 'tool-btn', title: 'Clear this judgement',
+            onclick: async () => {
+              await API.post(`/api/sequences/reads/${read.id}/verdict`, { verdict: null });
+              await this.selectReference(this.reference.id);
+            },
+          }, 'clear')
+        : null,
+      read.verdict_by
+        ? el('span', { class: 'hint' }, `${read.verdict} by ${read.verdict_by}`)
+        : null);
+  },
+
+  /** Confirming a plasmid records which glycerol stock it is kept as. */
+  askGlycerolStock(clone) {
+    const seq = this.reference;
+    modal({
+      title: 'Confirm this plasmid as sequenced',
+      build: (body) => {
+        body.append(
+          el('p', {}, 'The alignment is good, so ',
+            el('b', { text: seq.name }),
+            ' can be marked as confirmed and sequenced.'),
+          el('div', { class: 'field' },
+            el('label', { for: 'glyStock' }, 'Glycerol stock number'),
+            el('input', { type: 'text', id: 'glyStock', placeholder: 'e.g. GS-2026-041' }),
+            el('span', { class: 'hint' }, 'Recorded with the plasmid so the stock can be found later.')),
+          el('div', { class: 'field' },
+            el('label', { for: 'glyClone' }, 'Confirmed clone'),
+            el('input', { type: 'text', id: 'glyClone', value: clone || '' })));
+        setTimeout(() => body.querySelector('#glyStock')?.focus(), 0);
+      },
+      buttons: [
+        { label: 'Not yet', kind: 'secondary' },
+        {
+          label: 'Confirm plasmid',
+          onClick: async ({ body }) => {
+            const stock = body.querySelector('#glyStock').value.trim();
+            if (!stock) { toast('A glycerol stock number is required', 'error'); return false; }
+            const res = await API.post(`/api/sequences/${seq.id}/confirm`, {
+              glycerol_stock: stock,
+              clone_number: body.querySelector('#glyClone').value.trim(),
+            });
+            toast(res.synced_to_moclo
+              ? 'Confirmed, and recorded as sequenced in MoClo'
+              : 'Plasmid confirmed as sequenced', 'success', 5000);
+            await this.selectReference(seq.id);
+            return true;
+          },
+        },
+      ],
+    });
+  },
+
+  renderVerification() {
+    const seq = this.reference;
+    const badge = document.getElementById('confirmBadge');
+    const summary = document.getElementById('verificationSummary');
+    if (!seq) {
+      badge.replaceChildren();
+      summary.textContent = 'Choose a reference sequence.';
+      return;
+    }
+    const ok = this.reads.filter((r) => r.verdict === 'sufficient').length;
+    const bad = this.reads.filter((r) => r.verdict === 'insufficient').length;
+    const diffs = this.reads.filter((r) => (r.alignment?.differences || []).length).length;
+
+    badge.replaceChildren(seq.confirmed
+      ? el('span', { class: 'badge badge-confirmed' }, '✓ Confirmed and sequenced')
+      : el('span', { class: 'badge' }, 'Not yet confirmed'));
+
+    const parts = [];
+    if (seq.confirmed) {
+      parts.push(el('div', {},
+        el('b', {}, 'Glycerol stock: '), seq.glycerol_stock || '—',
+        seq.confirmed_clone ? ` · clone ${seq.confirmed_clone}` : '',
+        seq.confirmed_by ? ` · confirmed by ${seq.confirmed_by}` : '',
+        seq.confirmed_at ? ` on ${String(seq.confirmed_at).slice(0, 16)}` : ''));
+      parts.push(el('div', { class: 'btn-group', style: 'margin-top:.4rem' },
+        el('button', {
+          class: 'btn btn-sm btn-secondary',
+          onclick: async () => {
+            if (!await confirmDialog('Withdraw confirmation',
+              `Mark ${seq.name} as no longer confirmed? The reads and their judgements stay.`,
+              'Withdraw')) return;
+            await API.del(`/api/sequences/${seq.id}/confirm`);
+            await this.selectReference(seq.id);
+            toast('Confirmation withdrawn', 'success');
+          },
+        }, 'Withdraw confirmation')));
+    } else {
+      parts.push(el('div', {}, this.reads.length
+        ? 'Judge an alignment sufficient to confirm this plasmid.'
+        : 'No reads yet.'));
+    }
+    parts.push(el('div', { class: 'hint', style: 'margin-top:.35rem' },
+      `${this.reads.length} read(s) · ${ok} sufficient · ${bad} not sufficient · `
+      + `${diffs} with differences`));
+    summary.replaceChildren(...parts);
   },
 
   /** Reference over read, in blocks, with mismatches marked. */

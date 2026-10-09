@@ -52,8 +52,23 @@ const Library = {
       el('td', { class: 'num', text: fmt(s.length) }),
       el('td', {}, el('span', { class: `badge ${s.circular ? 'badge-circular' : ''}`,
         text: s.circular ? 'circular' : 'linear' })),
-      el('td', { class: 'num', text: s.read_count ? String(s.read_count) : '—' }),
+      el('td', {}, s.read_count
+        ? el('a', {
+            href: url(`/sequencing?sequence=${s.id}`),
+            title: 'View the sequencing alignments for this plasmid',
+          },
+            `${s.read_count} read${s.read_count === 1 ? '' : 's'}`,
+            s.reads_bad ? el('span', { class: 'verdict-bad', text: ` ✗${s.reads_bad}` }) : null,
+            s.reads_ok ? el('span', { class: 'verdict-ok', text: ` ✓${s.reads_ok}` }) : null)
+        : el('span', { class: 'muted', text: '—' })),
       el('td', {},
+        s.confirmed
+          ? el('span', {
+              class: 'badge badge-confirmed',
+              title: `Confirmed and sequenced${s.glycerol_stock ? ` · glycerol stock ${s.glycerol_stock}` : ''}`
+                + `${s.confirmed_clone ? ` · clone ${s.confirmed_clone}` : ''}`,
+            }, '✓ sequenced')
+          : null,
         s.golden_gate ? el('span', { class: 'badge badge-gg', text: 'Golden Gate' }) : null,
         s.moclo_part_id ? el('span', { class: 'badge badge-moclo', text: 'in MoClo' }) : null,
         !s.shared ? el('span', { class: 'badge', text: 'private' }) : null),

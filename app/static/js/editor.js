@@ -138,6 +138,17 @@ const Editor = {
     const moclo = document.getElementById('badgeMoclo');
     moclo.hidden = !(doc?.moclo_part_id || doc?.moclo_link);
     moclo.textContent = doc?.moclo_link ? 'Linked to MoClo' : 'In MoClo library';
+    const confirmed = document.getElementById('badgeConfirmed');
+    if (confirmed) {
+      confirmed.hidden = !doc?.confirmed;
+      if (doc?.confirmed) {
+        confirmed.title = [
+          doc.glycerol_stock ? `Glycerol stock ${doc.glycerol_stock}` : null,
+          doc.confirmed_clone ? `clone ${doc.confirmed_clone}` : null,
+          doc.confirmed_by ? `confirmed by ${doc.confirmed_by}` : null,
+        ].filter(Boolean).join(' · ');
+      }
+    }
     const unsaved = document.getElementById('badgeUnsaved');
     if (unsaved) unsaved.hidden = !this.dirty;
     this.updateUndoButtons();

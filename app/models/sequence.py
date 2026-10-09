@@ -27,6 +27,11 @@ class StoredSequence:
             'moclo_link': row['moclo_link'] if 'moclo_link' in row.keys() else None,
             'moclo_synced_hash': row['moclo_synced_hash'] if 'moclo_synced_hash' in row.keys() else None,
             'moclo_synced_at': row['moclo_synced_at'] if 'moclo_synced_at' in row.keys() else None,
+            'confirmed_at': row['confirmed_at'] if 'confirmed_at' in row.keys() else None,
+            'confirmed_by': row['confirmed_by'] if 'confirmed_by' in row.keys() else None,
+            'confirmed_clone': row['confirmed_clone'] if 'confirmed_clone' in row.keys() else None,
+            'glycerol_stock': row['glycerol_stock'] if 'glycerol_stock' in row.keys() else None,
+            'confirmed': bool(row['confirmed_at'] if 'confirmed_at' in row.keys() else None),
             'owner_id': row['owner_id'], 'shared': bool(row['shared']),
             'origin': row['origin'],
             'created_at': row['created_at'], 'updated_at': row['updated_at'],
@@ -68,8 +73,15 @@ class StoredSequence:
                      mine_only: bool = False) -> List[Dict[str, Any]]:
         sql = ('SELECT id, name, length(sequence) AS length, circular, description, golden_gate, '
                'golden_gate_enzyme, moclo_part_id, moclo_link, owner_id, shared, origin, '
-               'created_at, updated_at, '
-               '(SELECT COUNT(*) FROM reads WHERE reads.sequence_id = sequences.id) AS read_count '
+               'created_at, updated_at, confirmed_at, confirmed_by, confirmed_clone, '
+               'glycerol_stock, '
+               '(SELECT COUNT(*) FROM reads WHERE reads.sequence_id = sequences.id) AS read_count, '
+               "(SELECT COUNT(*) FROM reads WHERE reads.sequence_id = sequences.id "
+               " AND reads.verdict = 'sufficient') AS reads_ok, "
+               "(SELECT COUNT(*) FROM reads WHERE reads.sequence_id = sequences.id "
+               " AND reads.verdict = 'insufficient') AS reads_bad, "
+               '(SELECT MAX(created_at) FROM reads WHERE reads.sequence_id = sequences.id) '
+               '  AS last_sequenced_at '
                'FROM sequences WHERE (shared = 1 OR owner_id = ?)')
         args: List[Any] = [user_id]
         if mine_only:
@@ -83,7 +95,8 @@ class StoredSequence:
         sql += ' ORDER BY updated_at DESC, name'
         with get_connection() as conn:
             return [dict(r, circular=bool(r['circular']), golden_gate=bool(r['golden_gate']),
-                         shared=bool(r['shared'])) for r in conn.execute(sql, args)]
+                         shared=bool(r['shared']), confirmed=bool(r['confirmed_at']))
+                    for r in conn.execute(sql, args)]
 
     @staticmethod
     def update(sequence_id: str, doc: Optional[Dict[str, Any]] = None,
@@ -131,6 +144,33 @@ class StoredSequence:
             return StoredSequence._to_document(row)
 
     @staticmethod
+    def confirm(sequence_id: str, username: str, glycerol_stock: str,
+                clone_number: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """Mark a plasmid as sequence-confirmed, recording the glycerol stock."""
+        if not (glycerol_stock or '').strip():
+            raise ValueError('A glycerol stock number is required to confirm a plasmid')
+        with get_connection() as conn:
+            cur = conn.execute(
+                'UPDATE sequences SET confirmed_at = CURRENT_TIMESTAMP, confirmed_by = ?, '
+                'confirmed_clone = ?, glycerol_stock = ? WHERE id = ?',
+                (username, (clone_number or '').strip() or None,
+                 glycerol_stock.strip(), sequence_id))
+            if cur.rowcount == 0:
+                return None
+        return StoredSequence.get(sequence_id)
+
+    @staticmethod
+    def unconfirm(sequence_id: str) -> Optional[Dict[str, Any]]:
+        """Withdraw confirmation, e.g. after a later read shows a problem."""
+        with get_connection() as conn:
+            cur = conn.execute(
+                'UPDATE sequences SET confirmed_at = NULL, confirmed_by = NULL, '
+                'confirmed_clone = NULL, glycerol_stock = NULL WHERE id = ?', (sequence_id,))
+            if cur.rowcount == 0:
+                return None
+        return StoredSequence.get(sequence_id)
+
+    @staticmethod
     def delete(sequence_id: str) -> bool:
         with get_connection() as conn:
             return conn.execute('DELETE FROM sequences WHERE id = ?', (sequence_id,)).rowcount > 0
@@ -142,16 +182,44 @@ class Read:
     @staticmethod
     def create(sequence_id: str, name: str, bases: str, quality: Optional[List[int]] = None,
                trace: Optional[Dict[str, Any]] = None, alignment: Optional[Dict[str, Any]] = None,
-               uploaded_by: Optional[str] = None) -> Dict[str, Any]:
+               uploaded_by: Optional[str] = None, clone_number: Optional[str] = None,
+               verdict: Optional[str] = None, verdict_note: Optional[str] = None,
+               verdict_by: Optional[str] = None) -> Dict[str, Any]:
         rid = str(uuid.uuid4())
         with get_connection() as conn:
-            conn.execute('INSERT INTO reads (id, sequence_id, name, bases, quality, trace, alignment, '
-                         'uploaded_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-                         (rid, sequence_id, name, bases.upper(),
-                          json.dumps(quality) if quality else None,
-                          json.dumps(trace) if trace else None,
-                          json.dumps(alignment) if alignment else None, uploaded_by))
-        return {'id': rid, 'name': name, 'length': len(bases)}
+            conn.execute(
+                'INSERT INTO reads (id, sequence_id, name, bases, quality, trace, alignment, '
+                'uploaded_by, clone_number, verdict, verdict_note, verdict_by, verdict_at) '
+                'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '
+                'CASE WHEN ? IS NULL THEN NULL ELSE CURRENT_TIMESTAMP END)',
+                (rid, sequence_id, name, bases.upper(),
+                 json.dumps(quality) if quality else None,
+                 json.dumps(trace) if trace else None,
+                 json.dumps(alignment) if alignment else None, uploaded_by,
+                 (clone_number or '').strip() or None, verdict, verdict_note,
+                 verdict_by, verdict))
+        return {'id': rid, 'name': name, 'length': len(bases), 'clone_number': clone_number}
+
+    @staticmethod
+    def set_verdict(read_id: str, verdict: Optional[str], username: str,
+                    note: Optional[str] = None,
+                    clone_number: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """Record whether the user considers this alignment good enough."""
+        if verdict not in (None, 'sufficient', 'insufficient'):
+            raise ValueError("verdict must be 'sufficient', 'insufficient' or null")
+        sets = ['verdict = ?', 'verdict_note = ?', 'verdict_by = ?',
+                'verdict_at = CASE WHEN ? IS NULL THEN NULL ELSE CURRENT_TIMESTAMP END']
+        args: List[Any] = [verdict, (note or '').strip() or None,
+                           username if verdict else None, verdict]
+        if clone_number is not None:
+            sets.append('clone_number = ?')
+            args.append(clone_number.strip() or None)
+        args.append(read_id)
+        with get_connection() as conn:
+            cur = conn.execute(f'UPDATE reads SET {", ".join(sets)} WHERE id = ?', args)
+            if cur.rowcount == 0:
+                return None
+        return Read.get(read_id, include_trace=False)
 
     @staticmethod
     def _row(row, include_trace: bool = False) -> Dict[str, Any]:
@@ -160,10 +228,16 @@ class Read:
                 return json.loads(row[key]) if row[key] else None
             except (TypeError, ValueError):
                 return None
+        keys = row.keys()
         out = {'id': row['id'], 'sequence_id': row['sequence_id'], 'name': row['name'],
                'bases': row['bases'], 'length': len(row['bases']), 'quality': load('quality'),
                'alignment': load('alignment'), 'created_at': row['created_at'],
-               'uploaded_by': row['uploaded_by']}
+               'uploaded_by': row['uploaded_by'],
+               'clone_number': row['clone_number'] if 'clone_number' in keys else None,
+               'verdict': row['verdict'] if 'verdict' in keys else None,
+               'verdict_note': row['verdict_note'] if 'verdict_note' in keys else None,
+               'verdict_by': row['verdict_by'] if 'verdict_by' in keys else None,
+               'verdict_at': row['verdict_at'] if 'verdict_at' in keys else None}
         if include_trace:
             out['trace'] = load('trace')
         else:

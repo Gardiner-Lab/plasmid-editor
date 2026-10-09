@@ -338,6 +338,7 @@ def upload_reads(user, sequence_id):
     files = request.files.getlist('file')
     if not files:
         return jsonify({'error': 'No file uploaded'}), 400
+    clone_number = (request.form.get('clone_number') or '').strip() or None
     added, errors = [], []
     for f in files:
         data = f.read(MAX_UPLOAD_BYTES + 1)
@@ -356,7 +357,8 @@ def upload_reads(user, sequence_id):
             continue
         for read_name, bases, quality, trace in reads:
             alignment = align.map_read(doc['sequence'], bases, doc['circular'], quality, read_name)
-            stored = Read.create(sequence_id, read_name, bases, quality, trace, alignment, user.username)
+            stored = Read.create(sequence_id, read_name, bases, quality, trace, alignment,
+                                 user.username, clone_number=clone_number)
             added.append(dict(stored, alignment=alignment))
     if not added and errors:
         return jsonify({'error': errors[0]['error'], 'errors': errors}), 400
@@ -377,11 +379,114 @@ def realign_reads(user, sequence_id):
                                    full['quality'], full['name'])
         Read.delete(r['id'])
         Read.create(sequence_id, full['name'], full['bases'], full['quality'],
-                    full.get('trace'), alignment, full['uploaded_by'])
-        results.append({'name': full['name'], 'alignment': alignment})
+                    full.get('trace'), alignment, full['uploaded_by'],
+                    clone_number=full.get('clone_number'), verdict=full.get('verdict'),
+                    verdict_note=full.get('verdict_note'), verdict_by=full.get('verdict_by'))
+        results.append({'name': full['name'], 'clone_number': full.get('clone_number'),
+                        'alignment': alignment})
     return jsonify({'reads': results,
                     'coverage': align.coverage(len(doc['sequence']),
                                                [r['alignment'] for r in results])}), 200
+
+
+@sequences_bp.route('/reads/<read_id>/verdict', methods=['POST'])
+@require_auth
+def set_read_verdict(user, read_id):
+    """
+    Record whether an alignment is good enough.
+
+    Judging one sufficient is what confirms the plasmid, so the response says
+    whether a glycerol stock number is still needed to complete that.
+    """
+    read = Read.get(read_id, include_trace=False)
+    if read is None:
+        return jsonify({'error': 'Read not found'}), 404
+    doc, err = _owned_or_404(read['sequence_id'], user, for_write=True)
+    if err:
+        return err
+    data = request.get_json(silent=True) or {}
+    try:
+        updated = Read.set_verdict(read_id, data.get('verdict'), user.username,
+                                   data.get('note'), data.get('clone_number'))
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 400
+    return jsonify({
+        'read': updated,
+        # The caller asks for a glycerol stock and then calls /confirm.
+        'needs_confirmation': (updated['verdict'] == 'sufficient' and not doc['confirmed']),
+        'sequence': StoredSequence.get(read['sequence_id']),
+    }), 200
+
+
+@sequences_bp.route('/<sequence_id>/confirm', methods=['POST'])
+@require_auth
+def confirm_sequence(user, sequence_id):
+    """
+    Mark a plasmid as confirmed and sequenced, with the glycerol stock it is
+    kept as. For a sequence linked to MoClo, the status is written into the
+    MoClo record's own "sequenced" field as well.
+    """
+    doc, err = _owned_or_404(sequence_id, user, for_write=True)
+    if err:
+        return err
+    data = request.get_json(silent=True) or {}
+    try:
+        updated = StoredSequence.confirm(sequence_id, user.username,
+                                         data.get('glycerol_stock', ''),
+                                         data.get('clone_number'))
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 400
+    if updated is None:
+        return jsonify({'error': 'Sequence not found'}), 404
+
+    synced = None
+    if updated.get('moclo_link'):
+        try:
+            synced = moclo_bridge.record_verification(updated['moclo_link'], updated)
+        except moclo_bridge.ContributionError as exc:
+            return jsonify({'sequence': updated, 'moclo_note': str(exc)}), 200
+    return jsonify({'sequence': updated, 'synced_to_moclo': synced}), 200
+
+
+@sequences_bp.route('/<sequence_id>/confirm', methods=['DELETE'])
+@require_auth
+def unconfirm_sequence(user, sequence_id):
+    _, err = _owned_or_404(sequence_id, user, for_write=True)
+    if err:
+        return err
+    updated = StoredSequence.unconfirm(sequence_id)
+    if updated is None:
+        return jsonify({'error': 'Sequence not found'}), 404
+    return jsonify({'sequence': updated}), 200
+
+
+@sequences_bp.route('/<sequence_id>/sequencing', methods=['GET'])
+@require_auth
+def sequencing_history(user, sequence_id):
+    """
+    Everything known about how this plasmid has been sequenced: every read,
+    its clone, its verdict and its discrepancies.
+    """
+    doc, err = _owned_or_404(sequence_id, user)
+    if err:
+        return err
+    reads = Read.list_for(sequence_id)
+    for r in reads:
+        diffs = (r.get('alignment') or {}).get('differences') or []
+        r['difference_count'] = len(diffs)
+    return jsonify({
+        'sequence': {k: doc[k] for k in ('id', 'name', 'confirmed', 'confirmed_at', 'confirmed_by',
+                                         'confirmed_clone', 'glycerol_stock')},
+        'reads': reads,
+        'clones': sorted({r['clone_number'] for r in reads if r.get('clone_number')}),
+        'summary': {
+            'reads': len(reads),
+            'mapped': sum(1 for r in reads if (r.get('alignment') or {}).get('mapped')),
+            'sufficient': sum(1 for r in reads if r.get('verdict') == 'sufficient'),
+            'insufficient': sum(1 for r in reads if r.get('verdict') == 'insufficient'),
+            'with_differences': sum(1 for r in reads if r['difference_count']),
+        },
+    }), 200
 
 
 @sequences_bp.route('/reads/<read_id>', methods=['GET'])

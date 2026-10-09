@@ -118,6 +118,21 @@ _ADDED_COLUMNS = {
         ('moclo_link', 'TEXT'),
         ('moclo_synced_hash', 'TEXT'),
         ('moclo_synced_at', 'TIMESTAMP'),
+        # Sequencing verification: set when a user judges an alignment good
+        # enough, which marks the plasmid as confirmed and sequenced.
+        ('confirmed_at', 'TIMESTAMP'),
+        ('confirmed_by', 'TEXT'),
+        ('confirmed_clone', 'TEXT'),
+        ('glycerol_stock', 'TEXT'),
+    ],
+    'reads': [
+        # Which colony/clone this read came from, e.g. "3" or "A7".
+        ('clone_number', 'TEXT'),
+        # The user's judgement of the alignment: sufficient | insufficient.
+        ('verdict', 'TEXT'),
+        ('verdict_note', 'TEXT'),
+        ('verdict_by', 'TEXT'),
+        ('verdict_at', 'TIMESTAMP'),
     ],
 }
 

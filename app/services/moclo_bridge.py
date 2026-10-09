@@ -462,6 +462,59 @@ def push_to_moclo(link: str, doc: Dict[str, Any], expected_hash: Optional[str],
             'name': doc['name'], 'length': len(sequence)}
 
 
+def record_verification(link: str, doc: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """
+    Write a confirmed sequencing result into the MoClo record's own
+    "sequenced" field, which is what the MoClo tool shows for that column.
+
+    This touches only that one field (plus a comment), never the sequence, so
+    it is independent of the edit sync and needs no conflict check.
+    """
+    parsed = parse_link(link)
+    if not parsed:
+        return None
+    kind, record_id = parsed
+    table, _, _ = _LINK_TABLES[kind]
+    path = _db_for(kind)
+    if not os.path.exists(path):
+        raise ContributionError('the shared MoClo database is not mounted on this server')
+
+    when = (doc.get('confirmed_at') or '')[:10]
+    clone = doc.get('confirmed_clone')
+    stock = doc.get('glycerol_stock')
+    summary = 'Sequence confirmed'
+    if when:
+        summary += f' {when}'
+    if clone:
+        summary += f', clone {clone}'
+    if stock:
+        summary += f', glycerol stock {stock}'
+
+    conn = _connect(path, read_only=False)
+    try:
+        if not _table_exists(conn, table):
+            raise ContributionError(f'the MoClo {table} table does not exist yet')
+        cols = set(_columns(conn, table))
+        update: Dict[str, Any] = {}
+        if 'sequenced' in cols:
+            update['sequenced'] = summary
+        if 'comments' in cols:
+            update['comments'] = summary + (f' (confirmed by {doc.get("confirmed_by")}'
+                                            ' in the Plasmid Editor).'
+                                            if doc.get('confirmed_by') else '.')
+        if not update:
+            return None
+        assignments = ', '.join(f'{c} = ?' for c in update)
+        cur = conn.execute(f'UPDATE {table} SET {assignments} WHERE id = ?',
+                           [*update.values(), record_id])
+        if cur.rowcount == 0:
+            raise ContributionError(f'the linked MoClo {kind} no longer exists')
+        conn.commit()
+    finally:
+        conn.close()
+    return {'kind': kind, 'id': record_id, 'sequenced': summary}
+
+
 def pull_from_moclo(link: str) -> Dict[str, Any]:
     """The MoClo record as an editor document, for discarding local changes."""
     parsed = parse_link(link)
