@@ -44,6 +44,8 @@ re-implemented independently; see [Attribution](#attribution).
 - **Gibson / overlap assembly**, flipping fragments automatically and reporting junction Tm
 - **Restriction + ligation** of a vector and insert, giving both insert orientations
 - **Site-specific recombination**: Gateway BP/LR, Cre-lox and FLP-FRT style double crossovers
+- Golden Gate assembly is planned in the MoClo Library Tool, which has the parts library and
+  overhang compatibility checking; the Cloning page links straight there
 
 ### Sequencing
 - Attach `.ab1` chromatograms or FASTA reads to a saved sequence
@@ -75,7 +77,7 @@ The editor shares the MoClo tool's data volume so both see the same parts databa
 
 ```bash
 SECRET_KEY=$(openssl rand -hex 32) \
-  MOCLO_URL=https://moclo.example.org \
+  MOCLO_BASE_URL=https://moclo.example.org \
   docker compose -f docker-compose.prod.yml up -d
 ```
 
@@ -142,7 +144,7 @@ node tests/js/helpers.test.js   # frontend sequence helpers
 | `EDITOR_DATABASE_PATH` | `/data/plasmid_editor.db` | The editor's own database. |
 | `PARTS_DATABASE_PATH` | `/data/parts.db` | MoClo parts database (shared). Absent ⇒ contribution disabled. |
 | `MOCLO_DATABASE_PATH` | `/data/moclo.db` | MoClo main database (shared, read only here). |
-| `MOCLO_URL` | — | Link to the MoClo tool in the navigation bar. |
+| `MOCLO_BASE_URL` | — | Where the MoClo tool is, for links out to it (`/` when it is at the root of the same host). Unset hides those links. |
 | `ALLOW_REGISTRATION` | `true` | Set `false` to close self-registration. |
 | `DEFAULT_LAB_SOURCE` | — | Pre-filled lab name for new accounts. |
 | `ADMIN_USERNAME` / `ADMIN_PASSWORD` | `admin` / — | Creates the first admin on an empty database. |

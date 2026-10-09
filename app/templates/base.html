@@ -24,8 +24,8 @@
                 <a href="{{ url_for('sequencing_page') }}" class="navbar-link {{ 'active' if page == 'sequencing_page' }}">Sequencing</a>
                 <a href="{{ url_for('features_page') }}" class="navbar-link {{ 'active' if page == 'features_page' }}">Features</a>
                 <span class="navbar-divider"></span>
-                {% if moclo_url %}
-                    <a href="{{ moclo_url }}" class="navbar-link" target="_blank" rel="noopener">MoClo tool ↗</a>
+                {% if moclo.enabled %}
+                    <a href="{{ moclo.library }}" class="navbar-link">MoClo tool ↗</a>
                 {% endif %}
                 <span class="navbar-user">👤 {{ session.get('username') }}</span>
                 <a href="{{ url_for('logout_page') }}" class="navbar-link">Log out</a>

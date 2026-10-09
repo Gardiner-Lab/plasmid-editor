@@ -32,7 +32,7 @@ services:
       - PARTS_DATABASE_PATH=/moclo/parts.db
       - MOCLO_DATABASE_PATH=/moclo/moclo.db
       # Shown in the navbar so people can jump to the other tool.
-      - MOCLO_URL=${MOCLO_URL:-}
+      - MOCLO_BASE_URL=${MOCLO_BASE_URL:-}
       - ALLOW_REGISTRATION=${ALLOW_REGISTRATION:-true}
       - DEFAULT_LAB_SOURCE=${DEFAULT_LAB_SOURCE:-}
       # Optional: create the first admin on an empty database.

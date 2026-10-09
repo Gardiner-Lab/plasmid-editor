@@ -69,8 +69,23 @@ def create_app() -> Flask:
 
     @app.context_processor
     def inject_globals():
-        return {'app_version': APP_VERSION,
-                'moclo_url': os.environ.get('MOCLO_URL', '')}
+        # MOCLO_BASE_URL points at the MoClo Library Tool: "/" when it sits at
+        # the root of the same host (the suite), or a full URL when it is
+        # elsewhere. Unset means there is no MoClo tool to link to, and the
+        # links are hidden rather than pointing nowhere.
+        raw = (os.environ.get('MOCLO_BASE_URL')
+               or os.environ.get('MOCLO_URL', '')).strip()
+        base = raw.rstrip('/')
+        return {
+            'app_version': APP_VERSION,
+            'moclo': {
+                'enabled': bool(raw),
+                'base': base,
+                'library': f'{base}/parts',
+                'assembly': f'{base}/assembly',
+                'protocol': f'{base}/protocol',
+            },
+        }
 
     from app.api import auth_bp, library_bp, moclo_bp, sequences_bp, tools_bp
     app.register_blueprint(auth_bp, url_prefix='/api/auth')

@@ -20,7 +20,7 @@ services:
       # features locally; the app runs fine without them.
       - PARTS_DATABASE_PATH=/data/parts.db
       - MOCLO_DATABASE_PATH=/data/moclo.db
-      - MOCLO_URL=http://localhost:5000
+      - MOCLO_BASE_URL=http://localhost:5000
       - ADMIN_USERNAME=admin
       - ADMIN_PASSWORD=devpassword
     restart: unless-stopped

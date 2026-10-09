@@ -15,7 +15,7 @@ services:
       - FLASK_ENV=production
       - SECRET_KEY=${SECRET_KEY:?set SECRET_KEY to a random value, e.g. openssl rand -hex 32}
       - EDITOR_DATABASE_PATH=/data/plasmid_editor.db
-      - MOCLO_URL=${MOCLO_URL:-}
+      - MOCLO_BASE_URL=${MOCLO_BASE_URL:-}
     restart: unless-stopped
 
 volumes:

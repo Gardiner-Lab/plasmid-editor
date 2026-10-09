@@ -4,11 +4,30 @@
 {% block content %}
 <div class="card card-compact">
     <div class="btn-group">
-        <button class="tool-btn on" data-method="goldengate">Golden Gate</button>
-        <button class="tool-btn" data-method="gibson">Gibson / overlap</button>
+        <button class="tool-btn on" data-method="gibson">Gibson / overlap</button>
         <button class="tool-btn" data-method="ligate">Restriction + ligation</button>
         <button class="tool-btn" data-method="recombine">Recombination (Gateway, Cre-lox)</button>
+        <span class="tool-sep"></span>
+        {% if moclo.enabled %}
+            {# Golden Gate assembly is planned in the MoClo tool, which has the
+               parts library and overhang compatibility checking. #}
+            <a class="tool-btn" href="{{ moclo.assembly }}"
+               title="Golden Gate assembly is planned in the MoClo Library Tool">
+                Golden Gate ↗
+            </a>
+        {% else %}
+            <button class="tool-btn" disabled
+                    title="Golden Gate assembly lives in the MoClo Library Tool. Set MOCLO_BASE_URL to link to it.">
+                Golden Gate ↗
+            </button>
+        {% endif %}
     </div>
+    {% if not moclo.enabled %}
+        <p class="hint" style="margin-top:.4rem">
+            Golden Gate assembly is done in the MoClo Library Tool, which is not linked from
+            this server. Set <code>MOCLO_BASE_URL</code> to enable the link.
+        </p>
+    {% endif %}
 </div>
 
 <div class="grid-2">

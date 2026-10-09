@@ -1,14 +1,13 @@
 /* Cloning simulation page: Golden Gate, Gibson, restriction-ligation, recombination. */
 
 const HELP = {
-  goldengate: 'Pick the donor parts and the acceptor backbone. Fragments that keep a site for the enzyme are discarded, the rest are joined through their 4 bp overhangs.',
   gibson: 'Pick fragments in the order they should be joined. Each neighbouring pair must share terminal homology; a fragment is flipped automatically if only its reverse complement overlaps.',
   ligate: 'Pick exactly two sequences: the vector first, then the insert. Choose the enzymes for each and which fragment to use.',
   recombine: 'Pick the donor first, then the acceptor. A double crossover through two shared core sequences (attL×attR, attB×attP, loxP, FRT) swaps the donor segment into the acceptor.',
 };
 
 const Cloning = {
-  method: 'goldengate',
+  method: 'gibson',
   sources: [],
   picked: [],
 
@@ -106,13 +105,7 @@ const Cloning = {
 
   renderOptions() {
     const box = document.getElementById('options');
-    if (this.method === 'goldengate') {
-      box.replaceChildren(
-        el('div', { class: 'field' },
-          el('label', { for: 'ggEnzyme' }, 'Enzyme'),
-          el('select', { id: 'ggEnzyme' }, ['BsaI', 'BsmBI', 'Esp3I', 'BbsI', 'BpiI', 'SapI', 'AarI', 'PaqCI']
-            .map((e) => el('option', { value: e, text: e })))));
-    } else if (this.method === 'gibson') {
+    if (this.method === 'gibson') {
       box.replaceChildren(
         el('div', { class: 'field-row' },
           el('div', { class: 'field' },
@@ -161,19 +154,13 @@ const Cloning = {
     if (this.picked.length < 2) { toast('Choose at least two parts', 'error'); return; }
     out.replaceChildren(el('span', { class: 'spin' }));
     try {
-      if (this.method === 'goldengate') {
-        const res = await API.post('/api/tools/golden-gate', {
-          documents: this.picked.map((p) => this.payload(p)),
-          enzyme: document.getElementById('ggEnzyme').value,
-        });
-        this.showProducts(res.products, res.log);
-      } else if (this.method === 'gibson') {
+      if (this.method === 'gibson') {
         const res = await API.post('/api/tools/gibson', {
           documents: this.picked.map((p) => this.payload(p)),
           min_overlap: Number(document.getElementById('gbOverlap').value) || 15,
           circular: document.getElementById('gbCircular').checked,
         });
-        this.showProducts([res.product], null, res.junctions);
+        this.showProducts([res.product], res.junctions);
       } else if (this.method === 'ligate') {
         const parse = (id) => document.getElementById(id).value.split(/[,\s]+/).filter(Boolean);
         const res = await API.post('/api/tools/ligate', {
@@ -192,7 +179,7 @@ const Cloning = {
           min_core: Number(document.getElementById('recMin').value) || 13,
           max_core: Number(document.getElementById('recMax').value) || 60,
         });
-        this.showProducts(res.products.map((r) => r.document), null, null,
+        this.showProducts(res.products.map((r) => r.document), null,
           res.products.map((r) => `cores ${r.core_1.slice(0, 12)}… / ${r.core_2.slice(0, 12)}…`));
       }
     } catch (err) {
@@ -200,7 +187,7 @@ const Cloning = {
     }
   },
 
-  showProducts(products, log, junctions, notes) {
+  showProducts(products, junctions, notes) {
     const out = document.getElementById('result');
     const nodes = [];
     if (junctions) {
@@ -217,14 +204,6 @@ const Cloning = {
     }
     if (!products || !products.length || !products[0]) {
       nodes.push(el('div', { class: 'alert alert-warning' }, 'No product was formed.'));
-      if (log) {
-        nodes.push(el('table', {},
-          el('thead', {}, el('tr', {}, el('th', {}, 'Part'), el('th', {}, 'Status'), el('th', {}, 'Fragments kept'))),
-          el('tbody', {}, log.map((l) => el('tr', {},
-            el('td', { text: l.part }), el('td', { text: l.status }),
-            el('td', { class: 'mono', style: 'font-size:.75rem',
-              text: l.kept.map((k) => `${k.left}·${fmt(k.length)}·${k.right}`).join('  ') || '—' }))))));
-      }
       out.replaceChildren(...nodes);
       return;
     }

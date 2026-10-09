@@ -452,3 +452,50 @@ def test_non_standard_fusion_sites_still_contribute(user_client, moclo_parts_db,
     assert r.status_code == 201, r.get_json()
     out = r.get_json()['contributed']
     assert (out['overhang_5prime'], out['overhang_3prime']) == ('ACTA', 'TTAC')
+
+
+def _app_with(monkeypatch, tmp_dbs, **env):
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
+    monkeypatch.setenv('EDITOR_SKIP_SEED', '1')
+    from app.main import create_app
+    application = create_app()
+    application.config.update(TESTING=True, SECRET_KEY='t')
+    return application
+
+
+def _logged_in(application):
+    c = application.test_client()
+    r = c.post('/api/auth/register', json={'username': 'linkuser', 'password': 'password123'})
+    assert r.status_code == 201, r.get_json()
+    return c
+
+
+def test_cloning_sends_golden_gate_to_the_moclo_tool(monkeypatch, tmp_dbs):
+    """Golden Gate assembly is planned in MoClo, so the editor links out."""
+    c = _logged_in(_app_with(monkeypatch, tmp_dbs, MOCLO_BASE_URL='/'))
+    html = c.get('/cloning').get_data(as_text=True)
+
+    assert 'href="/assembly"' in html, 'links to the MoClo assembly page'
+    assert 'data-method="goldengate"' not in html, 'no in-editor Golden Gate mode'
+    # The other three methods stay here.
+    for method in ('gibson', 'ligate', 'recombine'):
+        assert f'data-method="{method}"' in html
+    assert 'MoClo tool' in c.get('/editor').get_data(as_text=True)
+
+
+def test_moclo_links_use_an_absolute_base(monkeypatch, tmp_dbs):
+    c = _logged_in(_app_with(monkeypatch, tmp_dbs, MOCLO_BASE_URL='https://moclo.example.org/'))
+    html = c.get('/cloning').get_data(as_text=True)
+    assert 'href="https://moclo.example.org/assembly"' in html
+    assert 'href="https://moclo.example.org/parts"' in html
+
+
+def test_moclo_links_hidden_when_not_configured(monkeypatch, tmp_dbs):
+    monkeypatch.delenv('MOCLO_BASE_URL', raising=False)
+    monkeypatch.delenv('MOCLO_URL', raising=False)
+    c = _logged_in(_app_with(monkeypatch, tmp_dbs))
+    html = c.get('/cloning').get_data(as_text=True)
+    assert 'href="/assembly"' not in html
+    assert 'Set <code>MOCLO_BASE_URL</code>' in html, 'explains why the link is missing'
+    assert 'MoClo tool ↗' not in c.get('/editor').get_data(as_text=True)
