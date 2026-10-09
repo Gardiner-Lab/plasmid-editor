@@ -52,7 +52,9 @@ re-implemented independently; see [Attribution](#attribution).
 - Alignment to both strands, including reads that cross the origin, with quality trimming
 - Mismatches, insertions and deletions listed in reference coordinates
 - Chromatogram viewer with base calls and Phred quality
-- Coverage summary, and re-alignment of every read after the reference is edited
+- Coverage of the selected read, shown one read at a time rather than merged, so you can
+  see how far each read actually reached; a read crossing the origin is drawn as two pieces
+- Re-alignment of every read after the reference is edited
 
 ### Sequencing verification
 - The reference plasmid is **searched, not scrolled**: results rank by relevance to what you

@@ -73,8 +73,13 @@ const Sequencing = {
     }
     try {
       const { sequence } = await API.get(`/api/sequences/${id}`);
+      const changed = this.reference?.id !== sequence.id;
       this.reference = sequence;
       this.reads = sequence.reads || [];
+      // Re-point at the refreshed copy of the same read, or drop the selection
+      // when a different plasmid is chosen.
+      this.activeRead = changed ? null
+        : this.reads.find((r) => r.id === this.activeRead?.id) || null;
       document.getElementById('refInfo').textContent =
         `${fmt(sequence.sequence.length)} bp, ${sequence.circular ? 'circular' : 'linear'}, ${sequence.features.length} features`;
       this.renderReads();
@@ -157,37 +162,53 @@ const Sequencing = {
     this.renderCoverage();
   },
 
+  /**
+   * Coverage of the selected read only. Merging every read into one bar hides
+   * which read reached where, which is the thing you need when deciding
+   * whether a clone was read well enough.
+   */
   renderCoverage() {
     const bar = document.getElementById('coverage');
     const text = document.getElementById('coverageText');
-    if (!this.reference || !this.reads.length) {
+    const title = document.getElementById('coverageTitle');
+    if (title) title.textContent = 'Coverage';
+    if (!this.reference) {
       bar.replaceChildren();
-      text.textContent = this.reference ? 'No reads to show coverage for.' : '';
+      text.textContent = '';
+      return;
+    }
+    const read = this.activeRead;
+    if (!read) {
+      bar.replaceChildren();
+      text.textContent = this.reads.length
+        ? 'Select a read to see what it covers.'
+        : 'No reads to show coverage for.';
+      return;
+    }
+    const a = read.alignment;
+    if (!a?.mapped) {
+      bar.replaceChildren();
+      text.textContent = `${read.name} did not align, so it covers nothing.`;
       return;
     }
     const n = this.reference.sequence.length;
-    const spans = [];
-    for (const r of this.reads) {
-      const a = r.alignment;
-      if (!a?.mapped) continue;
-      if (a.ref_end > a.ref_start) spans.push([a.ref_start, a.ref_end]);
-      else spans.push([a.ref_start, n], [0, a.ref_end]);
-    }
-    spans.sort((x, y) => x[0] - y[0]);
-    const merged = [];
-    for (const [s, e] of spans) {
-      if (merged.length && s <= merged[merged.length - 1][1]) {
-        merged[merged.length - 1][1] = Math.max(merged[merged.length - 1][1], e);
-      } else merged.push([s, e]);
-    }
-    bar.replaceChildren(...merged.map(([s, e]) => el('div', {
+    // A read that runs through the origin is drawn as its two pieces.
+    const spans = a.ref_end > a.ref_start
+      ? [[a.ref_start, a.ref_end]]
+      : [[a.ref_start, n], [0, a.ref_end]];
+    bar.replaceChildren(...spans.map(([from, to]) => el('div', {
       class: 'coverage-seg',
-      style: `left:${(s / n) * 100}%;width:${((e - s) / n) * 100}%`,
-      title: `${fmt(s + 1)}–${fmt(e)}`,
+      style: `left:${(from / n) * 100}%;width:${((to - from) / n) * 100}%`,
+      title: `${fmt(from + 1)}–${fmt(to)}`,
     })));
-    const covered = merged.reduce((sum, [s, e]) => sum + (e - s), 0);
-    const mapped = this.reads.filter((r) => r.alignment?.mapped).length;
-    text.textContent = `${mapped} of ${this.reads.length} read(s) mapped — ${((covered / n) * 100).toFixed(1)}% of the sequence covered.`;
+    const covered = spans.reduce((sum, [from, to]) => sum + (to - from), 0);
+    if (title) {
+      title.textContent = `Coverage — ${read.clone_number ? `clone ${read.clone_number}, ` : ''}${read.name}`;
+    }
+    text.textContent = `${fmt(a.ref_start + 1)}–${fmt(a.ref_end)} on the `
+      + `${a.strand === -1 ? 'reverse' : 'forward'} strand — ${fmt(covered)} bp, `
+      + `${((covered / n) * 100).toFixed(1)}% of the plasmid`
+      + (a.ref_end > a.ref_start ? '' : ', across the origin');
   },
 
   async remove(read) {
@@ -209,6 +230,7 @@ const Sequencing = {
   async showRead(read) {
     this.activeRead = read;
     this.renderReads();
+    this.renderCoverage();
     const box = document.getElementById('alignment');
     const a = read.alignment;
     if (!a) { box.replaceChildren(el('div', { class: 'empty' }, 'No alignment stored for this read.')); return; }
@@ -272,10 +294,16 @@ const Sequencing = {
     return el('div', { class: 'btn-group', style: 'margin:.5rem 0 .75rem;align-items:center' },
       el('span', { class: 'hint' }, 'Clone'),
       clone,
-      el('button', { class: 'btn btn-sm', onclick: () => judge('sufficient') },
-        '✓ Alignment is sufficient'),
-      el('button', { class: 'btn btn-sm btn-secondary', onclick: () => judge('insufficient') },
-        '✗ Not sufficient'),
+      el('button', {
+        class: `btn btn-sm ${read.verdict === 'sufficient' ? '' : 'btn-secondary'}`,
+        'aria-pressed': read.verdict === 'sufficient' ? 'true' : 'false',
+        onclick: () => judge('sufficient'),
+      }, '✓ Alignment is sufficient'),
+      el('button', {
+        class: `btn btn-sm ${read.verdict === 'insufficient' ? '' : 'btn-secondary'}`,
+        'aria-pressed': read.verdict === 'insufficient' ? 'true' : 'false',
+        onclick: () => judge('insufficient'),
+      }, '✗ Not sufficient'),
       read.verdict
         ? el('button', {
             class: 'tool-btn', title: 'Clear this judgement',
