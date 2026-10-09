@@ -5,6 +5,8 @@ const assert = require('assert');
 const src = fs.readFileSync('app/static/js/api.js', 'utf8');
 // api.js is a classic script; evaluate it and pull out the helpers.
 const ctx = {};
+// api.js reads the mount point from <body data-base>; stub just that.
+globalThis.document = { body: { dataset: {} } };
 new Function('globalThis', `${src}\nglobalThis.__x = { DNA, translateSeq, featureColor, FEATURE_COLORS, CODONS, applyEdit };`)(ctx);
 const { DNA, translateSeq, featureColor, applyEdit } = ctx.__x;
 

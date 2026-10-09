@@ -78,6 +78,7 @@ const Editor = {
     this.refreshSites();
     this.updateBadges();
     this.renderGoldenGate();
+    this.refreshMocloLink();
     document.getElementById('ggPanel').hidden = !doc?.golden_gate;
   },
 
@@ -115,10 +116,18 @@ const Editor = {
     if (!doc) return;
     this.view.setDocument(doc, { keepSelection: true });
     this.renderFeatures();
-    this.refreshSites();
+    // Re-scanning for restriction sites costs ~120 ms on a 150 kb sequence with
+    // the default enzymes, and seconds with the full REBASE set, so it waits
+    // until typing pauses rather than running on every keystroke.
+    this.scheduleSiteRefresh();
     this.renderDocList();
     this.updateBadges();
     if (!document.getElementById('mapPane').hidden) this.map.render(doc, this.sites, this.view.selection);
+  },
+
+  scheduleSiteRefresh(delay = 350) {
+    clearTimeout(this._sitesTimer);
+    this._sitesTimer = setTimeout(() => this.refreshSites(), delay);
   },
 
   updateBadges() {
@@ -126,7 +135,9 @@ const Editor = {
     document.getElementById('badgeTopology').textContent = doc?.circular ? 'circular' : 'linear';
     document.getElementById('badgeTopology').className = `badge ${doc?.circular ? 'badge-circular' : ''}`;
     document.getElementById('badgeGG').hidden = !doc?.golden_gate;
-    document.getElementById('badgeMoclo').hidden = !doc?.moclo_part_id;
+    const moclo = document.getElementById('badgeMoclo');
+    moclo.hidden = !(doc?.moclo_part_id || doc?.moclo_link);
+    moclo.textContent = doc?.moclo_link ? 'Linked to MoClo' : 'In MoClo library';
     const unsaved = document.getElementById('badgeUnsaved');
     if (unsaved) unsaved.hidden = !this.dirty;
     this.updateUndoButtons();
@@ -255,22 +266,150 @@ const Editor = {
     document.getElementById('fileInput').value = '';
   },
 
-  async save() {
+  async save({ force = false } = {}) {
     const doc = this.doc;
     if (!doc || !doc.sequence) { toast('Nothing to save', 'error'); return; }
     const payload = {
-      document: { name: doc.name, sequence: doc.sequence, circular: doc.circular,
-                  description: doc.description || '', features: doc.features },
+      document: this.payloadDoc(),
       golden_gate: !!doc.golden_gate,
+      ...(force ? { force: true } : {}),
     };
     try {
       const saved = doc.id
         ? await API.put(`/api/sequences/${doc.id}`, payload)
         : await API.post('/api/sequences', payload);
       doc.id = saved.sequence.id;
+      doc.moclo_link = saved.sequence.moclo_link;
       this.dirty = false;
-      toast('Saved to the lab library', 'success');
+      if (saved.synced_to_moclo) {
+        toast(`Saved, and the MoClo ${saved.synced_to_moclo.kind} updated to match`, 'success', 5000);
+      } else {
+        toast('Saved to the lab library', 'success');
+      }
       this.updateBadges();
+      this.refreshMocloLink();
+    } catch (err) {
+      // A 409 means the local save worked but MoClo was not updated.
+      if (err.payload?.conflict) {
+        this.dirty = false;
+        this.updateBadges();
+        this.resolveConflict(err.payload);
+        return;
+      }
+      if (err.payload?.sync_failed) {
+        this.dirty = false;
+        this.updateBadges();
+        this.refreshMocloLink();
+        toast(`Saved here, but MoClo was not updated: ${err.message}`, 'error', 9000);
+        return;
+      }
+      toast(err.message, 'error');
+    }
+  },
+
+  /** Offer a way out when the same record was edited in both tools. */
+  resolveConflict(payload) {
+    const doc = this.doc;
+    modal({
+      title: 'Also changed in the MoClo tool',
+      build: (body) => {
+        body.append(
+          el('div', { class: 'alert alert-warning' }, payload.error),
+          el('p', { class: 'hint' },
+            'Your edit is saved here. The MoClo record was left as it is, so nothing has been lost ',
+            'on either side. Choose which version should win.'),
+          el('table', {},
+            el('tbody', {},
+              el('tr', {}, el('th', {}, 'This editor'),
+                el('td', {}, `${doc.name} — ${fmt(doc.sequence.length)} bp`)),
+              el('tr', {}, el('th', {}, 'MoClo'),
+                el('td', {}, `${payload.moclo.name} — ${fmt(payload.moclo.length)} bp`)))));
+      },
+      buttons: [
+        { label: 'Leave both for now', kind: 'secondary' },
+        {
+          label: 'Take the MoClo version',
+          kind: 'secondary',
+          onClick: async () => {
+            const r = await API.post(`/api/sequences/${doc.id}/moclo/pull`, {});
+            Object.assign(doc, r.sequence);
+            this.dirty = false;
+            this.setActive(this.index);
+            toast('Replaced with the MoClo version', 'success');
+          },
+        },
+        {
+          label: 'Overwrite MoClo',
+          onClick: async () => {
+            await this.save({ force: true });
+          },
+        },
+      ],
+    });
+  },
+
+  /** Show whether the open sequence is linked to MoClo, and whether it differs. */
+  async refreshMocloLink() {
+    const doc = this.doc;
+    const box = document.getElementById('mocloLink');
+    if (!box) return;
+    if (!doc?.id || !doc.moclo_link) { box.replaceChildren(); box.hidden = true; return; }
+    try {
+      const s = await API.get(`/api/sequences/${doc.id}/moclo`);
+      if (!s.linked) { box.replaceChildren(); box.hidden = true; return; }
+      box.hidden = false;
+      const label = `MoClo ${s.kind}`;
+      if (!s.exists) {
+        box.replaceChildren(el('div', { class: 'alert alert-error' },
+          `Linked to a ${label} that no longer exists there. Saving will not update MoClo.`,
+          el('div', { class: 'btn-group', style: 'margin-top:.4rem' },
+            el('button', { class: 'btn btn-sm btn-secondary', onclick: () => this.unlinkMoclo() }, 'Unlink'))));
+        return;
+      }
+      const kind = s.moclo_changed ? 'alert-warning' : 'alert-info';
+      box.replaceChildren(el('div', { class: `alert ${kind}` },
+        el('div', {},
+          el('b', {}, `Linked to ${label} “${s.name}”. `),
+          s.moclo_changed
+            ? 'It has also changed in MoClo since this sequence last synced.'
+            : 'Saving here updates it there too.'),
+        el('div', { class: 'btn-group', style: 'margin-top:.4rem' },
+          el('button', { class: 'btn btn-sm btn-secondary', onclick: () => this.pullMoclo() },
+            'Take the MoClo version'),
+          el('button', { class: 'btn btn-sm btn-secondary', onclick: () => this.unlinkMoclo() },
+            'Unlink'))));
+    } catch {
+      box.hidden = true;
+    }
+  },
+
+  async pullMoclo() {
+    const doc = this.doc;
+    if (!await confirmDialog('Take the MoClo version',
+      'Replace this sequence with the version held in the MoClo tool? Unsaved changes here are lost.',
+      'Replace')) return;
+    try {
+      const r = await API.post(`/api/sequences/${doc.id}/moclo/pull`, {});
+      Object.assign(doc, r.sequence);
+      this.dirty = false;
+      this.setActive(this.index);
+      toast('Replaced with the MoClo version', 'success');
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+  },
+
+  async unlinkMoclo() {
+    const doc = this.doc;
+    if (!await confirmDialog('Unlink from MoClo',
+      'Stop syncing this sequence with MoClo? The MoClo record stays exactly as it is, and future edits here will no longer reach it.',
+      'Unlink')) return;
+    try {
+      await API.post(`/api/sequences/${doc.id}/moclo/unlink`, {});
+      doc.moclo_link = null;
+      this.refreshMocloLink();
+      this.updateBadges();
+      toast('Unlinked', 'success');
     } catch (err) {
       toast(err.message, 'error');
     }

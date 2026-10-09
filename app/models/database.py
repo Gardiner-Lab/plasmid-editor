@@ -64,6 +64,13 @@ CREATE TABLE IF NOT EXISTS sequences (
     golden_gate INTEGER NOT NULL DEFAULT 0,
     golden_gate_enzyme TEXT,
     moclo_part_id TEXT,
+    -- Link to a record in the MoClo tool, as "<kind>:<id>" (part, backbone or
+    -- plasmid). A linked sequence is written back to MoClo when it is saved.
+    moclo_link TEXT,
+    -- Content hash of the MoClo record as it was at the last successful sync,
+    -- used to detect changes made in MoClo since then.
+    moclo_synced_hash TEXT,
+    moclo_synced_at TIMESTAMP,
     owner_id TEXT NOT NULL,
     shared INTEGER NOT NULL DEFAULT 1,
     origin TEXT,
@@ -104,8 +111,25 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_library_name_seq ON feature_library(name, 
 """
 
 
+# Columns added after the first release. Applied to existing databases on
+# start-up so an upgrade needs no manual migration step.
+_ADDED_COLUMNS = {
+    'sequences': [
+        ('moclo_link', 'TEXT'),
+        ('moclo_synced_hash', 'TEXT'),
+        ('moclo_synced_at', 'TIMESTAMP'),
+    ],
+}
+
+
 def initialize_database(path: Optional[str] = None) -> None:
     if path:
         set_db_path(path)
     with get_connection() as conn:
         conn.executescript(SCHEMA)
+        for table, columns in _ADDED_COLUMNS.items():
+            existing = {r['name'] for r in conn.execute(f'PRAGMA table_info({table})')}
+            for name, decl in columns:
+                if name not in existing:
+                    conn.execute(f'ALTER TABLE {table} ADD COLUMN {name} {decl}')
+        conn.execute('CREATE INDEX IF NOT EXISTS idx_sequences_moclo ON sequences(moclo_link)')

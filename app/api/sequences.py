@@ -90,7 +90,15 @@ def get_sequence(user, sequence_id):
 @sequences_bp.route('/<sequence_id>', methods=['PUT', 'PATCH'])
 @require_auth
 def update_sequence(user, sequence_id):
-    _, err = _owned_or_404(sequence_id, user, for_write=True)
+    """
+    Save a sequence. When it is linked to a MoClo record, the change is written
+    back to MoClo in the same step so the two stay consistent.
+
+    If the MoClo record was also changed since this sequence last synced, the
+    save is refused with 409 and the caller chooses what to do; `force: true`
+    then overwrites MoClo with the editor's version.
+    """
+    existing, err = _owned_or_404(sequence_id, user, for_write=True)
     if err:
         return err
     data = request.get_json(silent=True) or {}
@@ -103,6 +111,69 @@ def update_sequence(user, sequence_id):
             shared=data.get('shared'))
     except ValueError as exc:
         return jsonify({'error': str(exc)}), 400
+
+    link = updated.get('moclo_link')
+    if not link or data.get('sync') is False:
+        return jsonify({'sequence': updated}), 200
+
+    try:
+        result = moclo_bridge.push_to_moclo(
+            link, updated, updated.get('moclo_synced_hash'),
+            editor_user=user.username, force=bool(data.get('force')))
+    except moclo_bridge.SyncConflict as conflict:
+        # The local save stands; only the push to MoClo is held back.
+        return jsonify({
+            'error': str(conflict),
+            'conflict': True,
+            'sequence': updated,
+            'moclo': {k: conflict.moclo[k] for k in ('kind', 'id', 'name', 'length', 'hash')},
+        }), 409
+    except moclo_bridge.ContributionError as exc:
+        return jsonify({'error': str(exc), 'sequence': updated, 'sync_failed': True}), 409
+
+    updated = StoredSequence.update(sequence_id, moclo_synced_hash=result['hash'])
+    return jsonify({'sequence': updated, 'synced_to_moclo': result}), 200
+
+
+@sequences_bp.route('/<sequence_id>/moclo', methods=['GET'])
+@require_auth
+def moclo_link_status(user, sequence_id):
+    """Whether this sequence is linked to MoClo, and whether the two differ."""
+    doc, err = _owned_or_404(sequence_id, user)
+    if err:
+        return err
+    return jsonify(moclo_bridge.link_status(
+        doc.get('moclo_link'), doc.get('moclo_synced_hash'), doc)), 200
+
+
+@sequences_bp.route('/<sequence_id>/moclo/pull', methods=['POST'])
+@require_auth
+def moclo_pull(user, sequence_id):
+    """Replace this sequence with the MoClo version, discarding local changes."""
+    doc, err = _owned_or_404(sequence_id, user, for_write=True)
+    if err:
+        return err
+    if not doc.get('moclo_link'):
+        return jsonify({'error': 'This sequence is not linked to a MoClo record'}), 400
+    try:
+        pulled = moclo_bridge.pull_from_moclo(doc['moclo_link'])
+    except moclo_bridge.ContributionError as exc:
+        return jsonify({'error': str(exc)}), 400
+    updated = StoredSequence.update(sequence_id, doc=pulled['document'],
+                                    moclo_synced_hash=pulled['hash'])
+    return jsonify({'sequence': updated}), 200
+
+
+@sequences_bp.route('/<sequence_id>/moclo/unlink', methods=['POST'])
+@require_auth
+def moclo_unlink(user, sequence_id):
+    """Stop syncing: the sequence stays here, the MoClo record is left as it is."""
+    doc, err = _owned_or_404(sequence_id, user, for_write=True)
+    if err:
+        return err
+    if not doc.get('moclo_link'):
+        return jsonify({'error': 'This sequence is not linked to a MoClo record'}), 400
+    updated = StoredSequence.update(sequence_id, moclo_link='', moclo_synced_hash='')
     return jsonify({'sequence': updated}), 200
 
 
@@ -235,8 +306,12 @@ def contribute_to_moclo(user, sequence_id):
             description=data.get('description'), metadata=data.get('metadata'))
     except moclo_bridge.ContributionError as exc:
         return jsonify({'error': str(exc)}), 400
+    # Link the sequence to the part it became, so later edits flow through.
+    record = moclo_bridge.read_record('part', result['part_id'])
     StoredSequence.update(sequence_id, moclo_part_id=result['part_id'],
-                          golden_gate_enzyme=result['enzyme'])
+                          golden_gate_enzyme=result['enzyme'],
+                          moclo_link=f"part:{result['part_id']}",
+                          moclo_synced_hash=record['hash'] if record else None)
     return jsonify({'contributed': result}), 201
 
 

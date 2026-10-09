@@ -16,16 +16,25 @@ It never alters the schema or updates rows the MoClo tool owns, so the editor
 can be deployed and updated independently.
 """
 
+import hashlib
 import json
 import os
 import sqlite3
 import uuid
-from typing import Any, Dict, List, Optional
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional, Tuple
 
 from dnakit import goldengate
 from dnakit.model import make_document, make_feature
 
 PART_TYPES = goldengate.PART_TYPES
+
+# Which MoClo table each link kind maps to, and where its sequence lives.
+_LINK_TABLES = {
+    'part': ('parts', 'sequence', 'parts'),
+    'backbone': ('backbones', 'sequence', 'moclo'),
+    'plasmid': ('final_plasmids', 'assembled_sequence', 'moclo'),
+}
 
 
 def parts_db_path() -> str:
@@ -269,3 +278,200 @@ def contribute_part(doc: Dict[str, Any], contributor: str, lab_source: str,
             'overhang_5prime': insert['overhang_5prime'], 'overhang_3prime': insert['overhang_3prime'],
             'length': len(sequence), 'features': len(features),
             'standard_moclo': best.get('standard_moclo', False)}
+
+
+# ---------------------------------------------------------------------------
+# Keeping an edited sequence and its MoClo record in step
+# ---------------------------------------------------------------------------
+
+class SyncConflict(Exception):
+    """The MoClo record changed since the editor last synced with it."""
+
+    def __init__(self, message: str, moclo: Dict[str, Any]):
+        super().__init__(message)
+        self.moclo = moclo
+
+
+def parse_link(link: Optional[str]) -> Optional[Tuple[str, str]]:
+    """'part:abc123' -> ('part', 'abc123'); None when unlinked or malformed."""
+    if not link or ':' not in link:
+        return None
+    kind, _, record_id = link.partition(':')
+    return (kind, record_id) if kind in _LINK_TABLES and record_id else None
+
+
+def _db_for(kind: str) -> str:
+    return parts_db_path() if _LINK_TABLES[kind][2] == 'parts' else moclo_db_path()
+
+
+def content_hash(name: str, sequence: str, features: Any) -> str:
+    """
+    Fingerprint of the fields the editor owns, so a change made in MoClo can be
+    told apart from one made here. Feature order is normalised, so reordering
+    alone is not reported as a change.
+    """
+    if isinstance(features, str):
+        try:
+            features = json.loads(features) if features else []
+        except ValueError:
+            features = []
+    normalised = sorted(
+        (f.get('label') or f.get('name') or '', f.get('type') or '',
+         int(f.get('start', 0)), int(f.get('end', 0)), int(f.get('strand', 1) or 1))
+        for f in (features or []) if isinstance(f, dict))
+    payload = json.dumps([name or '', (sequence or '').upper(), normalised], separators=(',', ':'))
+    return hashlib.sha256(payload.encode()).hexdigest()
+
+
+def read_record(kind: str, record_id: str) -> Optional[Dict[str, Any]]:
+    """The raw MoClo row plus its content hash, or None when it is gone."""
+    if kind not in _LINK_TABLES:
+        return None
+    table, seq_col, _ = _LINK_TABLES[kind]
+    conn = _connect(_db_for(kind))
+    if conn is None:
+        return None
+    try:
+        if not _table_exists(conn, table):
+            return None
+        row = conn.execute(f'SELECT * FROM {table} WHERE id = ?', (record_id,)).fetchone()
+        if row is None:
+            return None
+        keys = row.keys()
+        features = row['features'] if 'features' in keys else None
+        return {
+            'kind': kind, 'id': record_id, 'name': row['name'],
+            'sequence': row[seq_col], 'features': features,
+            'length': len(row[seq_col] or ''),
+            'hash': content_hash(row['name'], row[seq_col], features),
+            'row': {k: row[k] for k in keys},
+        }
+    finally:
+        conn.close()
+
+
+def link_status(link: Optional[str], synced_hash: Optional[str],
+                doc: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """
+    Describe a link for the interface: whether the MoClo record still exists,
+    whether it changed since the last sync, and whether the editor copy differs.
+    """
+    parsed = parse_link(link)
+    if not parsed:
+        return {'linked': False}
+    kind, record_id = parsed
+    record = read_record(kind, record_id)
+    if record is None:
+        return {'linked': True, 'kind': kind, 'id': record_id, 'exists': False,
+                'moclo_changed': False, 'local_changed': False}
+    local_hash = content_hash(doc['name'], doc['sequence'], doc.get('features')) if doc else None
+    return {
+        'linked': True, 'kind': kind, 'id': record_id, 'exists': True,
+        'name': record['name'], 'length': record['length'],
+        'moclo_changed': bool(synced_hash) and record['hash'] != synced_hash,
+        'local_changed': bool(local_hash) and local_hash != record['hash'],
+        'hash': record['hash'],
+    }
+
+
+def _moclo_features(doc: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Editor features in the shape MoClo stores."""
+    return [{'type': f.get('type') or 'misc_feature', 'label': f.get('name') or 'feature',
+             'start': int(f['start']), 'end': int(f['end']), 'strand': int(f.get('strand', 1) or 1)}
+            for f in (doc.get('features') or [])
+            if isinstance(f, dict) and f.get('end', 0) > f.get('start', -1)]
+
+
+def push_to_moclo(link: str, doc: Dict[str, Any], expected_hash: Optional[str],
+                  editor_user: str = '', force: bool = False) -> Dict[str, Any]:
+    """
+    Write an edited sequence back to the MoClo record it is linked to.
+
+    Raises SyncConflict when the MoClo record changed since `expected_hash` was
+    recorded, unless `force` is set. Returns the new sync state.
+    """
+    parsed = parse_link(link)
+    if not parsed:
+        raise ContributionError('this sequence is not linked to a MoClo record')
+    kind, record_id = parsed
+    table, seq_col, _ = _LINK_TABLES[kind]
+
+    path = _db_for(kind)
+    if not os.path.exists(path):
+        raise ContributionError('the shared MoClo database is not mounted on this server')
+
+    current = read_record(kind, record_id)
+    if current is None:
+        raise ContributionError(
+            f'the linked MoClo {kind} no longer exists; it may have been deleted there')
+    if expected_hash and current['hash'] != expected_hash and not force:
+        raise SyncConflict(
+            f'"{current["name"]}" was also changed in the MoClo tool since this sequence '
+            'was last synced', current)
+
+    sequence = (doc['sequence'] or '').upper()
+    if kind == 'part':
+        if any(b not in 'ATCG' for b in sequence):
+            raise ContributionError('a MoClo part must be unambiguous A/T/C/G')
+        if len(sequence) < 8:
+            raise ContributionError('a MoClo part must be at least 8 bp')
+
+    features = _moclo_features(doc)
+    conn = _connect(path, read_only=False)
+    try:
+        cols = set(_columns(conn, table))
+        update: Dict[str, Any] = {'name': doc['name'], seq_col: sequence}
+        if 'features' in cols:
+            update['features'] = json.dumps(features)
+        if 'description' in cols and doc.get('description') is not None:
+            update['description'] = doc.get('description') or None
+
+        note = (f'Edited in the Plasmid Editor'
+                f'{" by " + editor_user if editor_user else ""} on '
+                f'{datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")}.')
+        if 'comments' in cols:
+            update['comments'] = note
+        elif 'metadata' in cols:
+            # final_plasmids keeps a JSON metadata blob rather than comments.
+            try:
+                meta = json.loads(current['row'].get('metadata') or '{}')
+            except (TypeError, ValueError):
+                meta = {}
+            meta['edited_externally'] = note
+            update['metadata'] = json.dumps(meta)
+
+        # A part is stored as its insert with both fusion sites, so its
+        # overhangs are simply its first and last four bases.
+        if kind == 'part':
+            if 'overhang_5prime' in cols:
+                update['overhang_5prime'] = sequence[:4]
+            if 'overhang_3prime' in cols:
+                update['overhang_3prime'] = sequence[-4:]
+        elif 'size' in cols:
+            update['size'] = len(sequence)
+
+        assignments = ', '.join(f'{c} = ?' for c in update)
+        conn.execute(f'UPDATE {table} SET {assignments} WHERE id = ?',
+                     [*update.values(), record_id])
+        conn.commit()
+    finally:
+        conn.close()
+
+    return {'kind': kind, 'id': record_id,
+            'hash': content_hash(doc['name'], sequence, features),
+            'name': doc['name'], 'length': len(sequence)}
+
+
+def pull_from_moclo(link: str) -> Dict[str, Any]:
+    """The MoClo record as an editor document, for discarding local changes."""
+    parsed = parse_link(link)
+    if not parsed:
+        raise ContributionError('this sequence is not linked to a MoClo record')
+    kind, record_id = parsed
+    record = read_record(kind, record_id)
+    if record is None:
+        raise ContributionError(f'the linked MoClo {kind} no longer exists')
+    doc = open_part(record_id) if kind == 'part' else open_plasmid(kind, record_id)
+    if doc is None:
+        raise ContributionError('could not read the MoClo record')
+    return {'document': doc, 'hash': record['hash']}

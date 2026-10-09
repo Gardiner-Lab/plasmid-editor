@@ -47,7 +47,7 @@ const Library = {
         checked: this.selected.has(s.id),
         onchange: (e) => { e.target.checked ? this.selected.add(s.id) : this.selected.delete(s.id); },
       })),
-      el('td', {}, el('a', { href: `/editor?open=${s.id}`, text: s.name }),
+      el('td', {}, el('a', { href: url(`/editor?open=${s.id}`), text: s.name }),
         s.description ? el('div', { class: 'item-meta', text: s.description }) : null),
       el('td', { class: 'num', text: fmt(s.length) }),
       el('td', {}, el('span', { class: `badge ${s.circular ? 'badge-circular' : ''}`,
@@ -162,7 +162,7 @@ const Library = {
       const res = await API.post('/api/moclo/import', { kind: item.kind, id: item.id });
       toast(`“${item.name}” imported`, 'success');
       this.load();
-      window.open(`/editor?open=${res.sequence.id}`, '_self');
+      window.open(url(`/editor?open=${res.sequence.id}`), '_self');
     } catch (err) {
       toast(err.message, 'error');
     }

@@ -1,7 +1,16 @@
 /* Shared helpers: API calls, toasts, modals, small DOM utilities. */
 
+/*
+ * The app may be mounted under a prefix (e.g. /editor behind the suite proxy).
+ * `BASE` comes from the server via <body data-base>, and url() turns an
+ * app-absolute path into one that works wherever the app is mounted.
+ */
+const BASE = (document.body?.dataset.base || '').replace(/\/$/, '');
+const url = (path) => (path.startsWith('/') ? BASE + path : path);
+
 const API = {
   async request(method, path, body, opts = {}) {
+    path = url(path);
     const init = { method, credentials: 'same-origin', headers: {} };
     if (body instanceof FormData) {
       init.body = body;
@@ -11,7 +20,7 @@ const API = {
     }
     const res = await fetch(path, init);
     if (res.status === 401 && !opts.allowAnonymous) {
-      window.location.href = '/login';
+      window.location.href = url('/login');
       throw new Error('Not signed in');
     }
     const type = res.headers.get('content-type') || '';
@@ -20,7 +29,12 @@ const API = {
       return res;
     }
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
+    if (!res.ok) {
+      const err = new Error(data.error || `Request failed (${res.status})`);
+      err.status = res.status;
+      err.payload = data;        // callers inspect this, e.g. for sync conflicts
+      throw err;
+    }
     return data;
   },
   get(p, o) { return API.request('GET', p, undefined, o); },
@@ -120,7 +134,7 @@ function confirmDialog(title, message, confirmLabel = 'Delete') {
 
 /** Trigger a download from an API path (handles the Content-Disposition name). */
 async function downloadFrom(path, fallbackName, body) {
-  const res = await fetch(path, {
+  const res = await fetch(url(path), {
     method: body ? 'POST' : 'GET',
     credentials: 'same-origin',
     headers: body ? { 'Content-Type': 'application/json' } : {},

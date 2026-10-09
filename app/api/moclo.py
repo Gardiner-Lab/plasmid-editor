@@ -66,10 +66,14 @@ def import_into_editor(user):
         return jsonify({'error': 'kind must be part, plasmid or backbone'}), 400
     if doc is None:
         return jsonify({'error': 'Not found in the MoClo databases'}), 404
+    # Linked, not merely copied: later edits here are written back to MoClo.
+    record = moclo_bridge.read_record(kind, item_id)
     try:
         saved = StoredSequence.create(doc, user.id,
                                       golden_gate=bool(doc.get('golden_gate')),
-                                      origin=f'moclo:{kind}:{item_id}')
+                                      origin=f'moclo:{kind}:{item_id}',
+                                      moclo_link=f'{kind}:{item_id}',
+                                      moclo_synced_hash=record['hash'] if record else None)
     except ValueError as exc:
         return jsonify({'error': str(exc)}), 400
     return jsonify({'sequence': saved}), 201

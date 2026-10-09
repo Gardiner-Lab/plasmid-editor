@@ -29,7 +29,7 @@ document.getElementById('authForm').addEventListener('submit', async (e) => {
   alertBox.replaceChildren();
   try {
     await API.post(`/api/auth/${mode}`, payload, { allowAnonymous: true });
-    window.location.href = '/editor';
+    window.location.href = url('/editor');
   } catch (err) {
     alertBox.replaceChildren(el('div', { class: 'alert alert-error', text: err.message }));
     btn.disabled = false;

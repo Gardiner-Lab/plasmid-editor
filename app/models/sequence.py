@@ -24,6 +24,9 @@ class StoredSequence:
             'golden_gate': bool(row['golden_gate']),
             'golden_gate_enzyme': row['golden_gate_enzyme'],
             'moclo_part_id': row['moclo_part_id'],
+            'moclo_link': row['moclo_link'] if 'moclo_link' in row.keys() else None,
+            'moclo_synced_hash': row['moclo_synced_hash'] if 'moclo_synced_hash' in row.keys() else None,
+            'moclo_synced_at': row['moclo_synced_at'] if 'moclo_synced_at' in row.keys() else None,
             'owner_id': row['owner_id'], 'shared': bool(row['shared']),
             'origin': row['origin'],
             'created_at': row['created_at'], 'updated_at': row['updated_at'],
@@ -32,7 +35,8 @@ class StoredSequence:
     @staticmethod
     def create(doc: Dict[str, Any], owner_id: str, golden_gate: bool = False,
                golden_gate_enzyme: Optional[str] = None, origin: Optional[str] = None,
-               shared: bool = True) -> Dict[str, Any]:
+               shared: bool = True, moclo_link: Optional[str] = None,
+               moclo_synced_hash: Optional[str] = None) -> Dict[str, Any]:
         doc = normalize_document(doc)
         if not doc['sequence']:
             raise ValueError('Sequence is empty')
@@ -42,11 +46,14 @@ class StoredSequence:
         with get_connection() as conn:
             conn.execute(
                 'INSERT INTO sequences (id, name, sequence, circular, description, features, '
-                'golden_gate, golden_gate_enzyme, owner_id, shared, origin) '
-                'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                'golden_gate, golden_gate_enzyme, owner_id, shared, origin, moclo_link, '
+                'moclo_synced_hash, moclo_synced_at) '
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
+                "CASE WHEN ? IS NULL THEN NULL ELSE CURRENT_TIMESTAMP END)",
                 (sid, doc['name'], doc['sequence'], 1 if doc['circular'] else 0, doc['description'],
                  json.dumps(doc['features']), 1 if golden_gate else 0, golden_gate_enzyme,
-                 owner_id, 1 if shared else 0, origin))
+                 owner_id, 1 if shared else 0, origin, moclo_link, moclo_synced_hash,
+                 moclo_synced_hash))
             row = conn.execute('SELECT * FROM sequences WHERE id = ?', (sid,)).fetchone()
             return StoredSequence._to_document(row)
 
@@ -60,7 +67,8 @@ class StoredSequence:
     def list_visible(user_id: str, search: str = '', golden_gate_only: bool = False,
                      mine_only: bool = False) -> List[Dict[str, Any]]:
         sql = ('SELECT id, name, length(sequence) AS length, circular, description, golden_gate, '
-               'golden_gate_enzyme, moclo_part_id, owner_id, shared, origin, created_at, updated_at, '
+               'golden_gate_enzyme, moclo_part_id, moclo_link, owner_id, shared, origin, '
+               'created_at, updated_at, '
                '(SELECT COUNT(*) FROM reads WHERE reads.sequence_id = sequences.id) AS read_count '
                'FROM sequences WHERE (shared = 1 OR owner_id = ?)')
         args: List[Any] = [user_id]
@@ -80,7 +88,9 @@ class StoredSequence:
     @staticmethod
     def update(sequence_id: str, doc: Optional[Dict[str, Any]] = None,
                golden_gate: Optional[bool] = None, golden_gate_enzyme: Optional[str] = None,
-               shared: Optional[bool] = None, moclo_part_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+               shared: Optional[bool] = None, moclo_part_id: Optional[str] = None,
+               moclo_link: Optional[str] = None,
+               moclo_synced_hash: Optional[str] = None) -> Optional[Dict[str, Any]]:
         sets, args = [], []
         if doc is not None:
             doc = normalize_document(doc)
@@ -103,6 +113,12 @@ class StoredSequence:
         if moclo_part_id is not None:
             sets.append('moclo_part_id = ?')
             args.append(moclo_part_id or None)
+        if moclo_link is not None:
+            sets.append('moclo_link = ?')
+            args.append(moclo_link or None)
+        if moclo_synced_hash is not None:
+            sets += ['moclo_synced_hash = ?', 'moclo_synced_at = CURRENT_TIMESTAMP']
+            args.append(moclo_synced_hash or None)
         if not sets:
             return StoredSequence.get(sequence_id)
         sets.append('updated_at = CURRENT_TIMESTAMP')

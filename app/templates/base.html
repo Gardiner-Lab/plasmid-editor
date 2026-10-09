@@ -7,7 +7,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v={{ app_version }}">
     {% block extra_css %}{% endblock %}
 </head>
-<body data-username="{{ session.get('username', '') }}" data-is-admin="{{ 'true' if session.get('is_admin') else 'false' }}">
+<body data-base="{{ request.script_root }}" data-username="{{ session.get('username', '') }}" data-is-admin="{{ 'true' if session.get('is_admin') else 'false' }}">
 <nav class="navbar">
     <div class="container container-wide">
         <div class="navbar-brand">
@@ -18,20 +18,20 @@
         <div class="navbar-menu">
             {% if session.get('user_id') %}
                 {% set page = request.endpoint %}
-                <a href="/editor" class="navbar-link {{ 'active' if page == 'editor_page' }}">Editor</a>
-                <a href="/library" class="navbar-link {{ 'active' if page == 'library_page' }}">My sequences</a>
-                <a href="/cloning" class="navbar-link {{ 'active' if page == 'cloning_page' }}">Cloning</a>
-                <a href="/sequencing" class="navbar-link {{ 'active' if page == 'sequencing_page' }}">Sequencing</a>
-                <a href="/features" class="navbar-link {{ 'active' if page == 'features_page' }}">Features</a>
+                <a href="{{ url_for('editor_page') }}" class="navbar-link {{ 'active' if page == 'editor_page' }}">Editor</a>
+                <a href="{{ url_for('library_page') }}" class="navbar-link {{ 'active' if page == 'library_page' }}">My sequences</a>
+                <a href="{{ url_for('cloning_page') }}" class="navbar-link {{ 'active' if page == 'cloning_page' }}">Cloning</a>
+                <a href="{{ url_for('sequencing_page') }}" class="navbar-link {{ 'active' if page == 'sequencing_page' }}">Sequencing</a>
+                <a href="{{ url_for('features_page') }}" class="navbar-link {{ 'active' if page == 'features_page' }}">Features</a>
                 <span class="navbar-divider"></span>
                 {% if moclo_url %}
                     <a href="{{ moclo_url }}" class="navbar-link" target="_blank" rel="noopener">MoClo tool ↗</a>
                 {% endif %}
                 <span class="navbar-user">👤 {{ session.get('username') }}</span>
-                <a href="/logout" class="navbar-link">Log out</a>
+                <a href="{{ url_for('logout_page') }}" class="navbar-link">Log out</a>
             {% else %}
-                <a href="/login" class="navbar-link">Log in</a>
-                <a href="/about" class="navbar-link">About</a>
+                <a href="{{ url_for('login_page') }}" class="navbar-link">Log in</a>
+                <a href="{{ url_for('about_page') }}" class="navbar-link">About</a>
             {% endif %}
         </div>
     </div>
@@ -46,7 +46,7 @@
 <footer class="footer">
     <div class="container container-wide">
         Plasmid Editor v{{ app_version }} &middot; Gardiner Lab &middot;
-        functionality modelled on <a href="/about">ApE (A Plasmid Editor)</a> &middot;
+        functionality modelled on <a href="{{ url_for('about_page') }}">ApE (A Plasmid Editor)</a> &middot;
         companion to the MoClo Library Tool
     </div>
 </footer>

@@ -245,7 +245,7 @@ const Cloning = {
               try {
                 const saved = await API.post('/api/sequences', { document: p });
                 toast('Saved — opening in the editor', 'success');
-                window.location.href = `/editor?open=${saved.sequence.id}`;
+                window.location.href = url(`/editor?open=${saved.sequence.id}`);
               } catch (err) {
                 toast(err.message, 'error');
                 ev.currentTarget.disabled = false;
