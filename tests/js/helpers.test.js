@@ -7,8 +7,8 @@ const src = fs.readFileSync('app/static/js/api.js', 'utf8');
 const ctx = {};
 // api.js reads the mount point from <body data-base>; stub just that.
 globalThis.document = { body: { dataset: {} } };
-new Function('globalThis', `${src}\nglobalThis.__x = { DNA, translateSeq, featureColor, FEATURE_COLORS, CODONS, applyEdit };`)(ctx);
-const { DNA, translateSeq, featureColor, applyEdit } = ctx.__x;
+new Function('globalThis', `${src}\nglobalThis.__x = { DNA, translateSeq, featureColor, FEATURE_COLORS, CODONS, applyEdit, matchScore, rankByRelevance };`)(ctx);
+const { DNA, translateSeq, featureColor, applyEdit, matchScore, rankByRelevance } = ctx.__x;
 
 assert.strictEqual(DNA.revComp('AACGTRY'), 'RYACGTT', 'IUPAC reverse complement');
 assert.strictEqual(DNA.revComp('acgt'), 'acgt', 'case preserved');
@@ -97,5 +97,47 @@ r = applyEdit({ sequence: 'AAAACCCCGGGG',
                 features: [{ id: 'j', name: 'joined', start: 0, end: 12, strand: 1,
                              segments: [[0, 4], [8, 12]] }] }, 0, 0, 'TT');
 assert.deepStrictEqual(byId(r, 'j').segments, [[2, 6], [10, 14]], 'segments shift too');
+
+// --- searching a long plasmid list -------------------------------------
+// Bands: exact > starts-with > start-of-word > anywhere > scattered tokens.
+assert.ok(matchScore('pGFP', 'pGFP') > matchScore('pGFP-tag', 'pGFP'), 'exact beats prefix');
+assert.ok(matchScore('pGFP-tag', 'pGFP') > matchScore('pGFP', 'GFP'), 'prefix beats after-the-p');
+assert.ok(matchScore('pGFP', 'GFP') > matchScore('p35S-GFP', 'GFP'),
+  'a plasmid named for the query beats one where it is only an element');
+assert.ok(matchScore('p35S-GFP', 'GFP') > matchScore('myGFPthing', 'GFP'), 'word start beats substring');
+assert.strictEqual(matchScore('pUC19', 'GFP'), 0, 'no match scores zero');
+assert.ok(matchScore('PGFP', 'pgfp') > 0, 'case insensitive');
+assert.ok(matchScore('p35S GFP terminator', 'gfp terminator') > 0, 'multi-word');
+assert.ok(matchScore('anything', '') > 0, 'an empty query matches everything');
+
+const plasmids = [
+  { name: 'pGFP-old',  created_at: '2024-01-01', description: '' },
+  { name: 'pGFP',      created_at: '2025-05-05', description: '' },
+  { name: 'p35S-GFP',  created_at: '2026-01-01', description: '' },
+  { name: 'pUC19',     created_at: '2026-09-09', description: 'carries a GFP cassette' },
+  { name: 'pNoMatch',  created_at: '2026-10-10', description: '' },
+];
+const names = (q) => rankByRelevance(plasmids, q, { fields: ['name', 'description'] }).map((p) => p.name);
+
+// Relevance first: exact, then prefix, then word-start, then the description hit.
+assert.deepStrictEqual(names('GFP'), ['pGFP', 'pGFP-old', 'p35S-GFP', 'pUC19'], 'ranked by relevance');
+assert.ok(!names('GFP').includes('pNoMatch'), 'non-matches are dropped');
+
+// Within one relevance band, newer first: pGFP and pGFP-old both match just
+// after the leading "p", so the 2025 one outranks the 2024 one.
+assert.deepStrictEqual(names('pGFP'), ['pGFP', 'pGFP-old'], 'exact first, then newer');
+assert.deepStrictEqual(names('GFP').slice(0, 2), ['pGFP', 'pGFP-old'], 'same band, newer first');
+
+// With no query, purely newest-first by creation date.
+assert.deepStrictEqual(names(''),
+  ['pNoMatch', 'pUC19', 'p35S-GFP', 'pGFP', 'pGFP-old'], 'no query sorts by date created');
+
+// A name match always outranks a description match.
+assert.ok(names('GFP').indexOf('p35S-GFP') < names('GFP').indexOf('pUC19'),
+  'name beats description');
+
+// Ties on both score and date fall back to the name, so order is stable.
+const sameDay = [{ name: 'bX', created_at: '2026-01-01' }, { name: 'aX', created_at: '2026-01-01' }];
+assert.deepStrictEqual(rankByRelevance(sameDay, 'x').map((p) => p.name), ['aX', 'bX'], 'stable tie-break');
 
 console.log('all frontend helper assertions passed');

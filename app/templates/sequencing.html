@@ -7,7 +7,7 @@
         <div class="card">
             <div class="card-title" style="margin-bottom:.5rem">1. Reference sequence</div>
             <div class="field">
-                <select id="refSelect"><option value="">Loading…</option></select>
+                <div id="refCombo"></div>
             </div>
             <div id="refInfo" class="hint"></div>
         </div>
@@ -81,5 +81,6 @@
 {% endblock %}
 
 {% block extra_js %}
+<script src="{{ url_for('static', filename='js/combobox.js') }}?v={{ app_version }}"></script>
 <script src="{{ url_for('static', filename='js/sequencing.js') }}?v={{ app_version }}"></script>
 {% endblock %}

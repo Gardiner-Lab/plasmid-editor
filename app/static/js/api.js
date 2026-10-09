@@ -217,6 +217,57 @@ function applyEdit(doc, start, end, text) {
   return { sequence: seq.slice(0, start) + text + seq.slice(end), features };
 }
 
+/**
+ * How well `text` matches `query`, higher being better and 0 meaning no match.
+ *
+ * The bands are coarse on purpose: an exact name beats a name that starts with
+ * the query, which beats a match at the start of a word (so "gfp" finds
+ * "p35S-GFP"), which beats a match anywhere, which beats the words of the query
+ * appearing separately. Within a band the caller breaks ties, by date.
+ */
+function matchScore(text, query) {
+  if (!query) return 1;
+  const t = String(text ?? '').toLowerCase();
+  const q = query.toLowerCase().trim();
+  if (!t) return 0;
+  const at = t.indexOf(q);
+  if (t === q) return 100;
+  if (at === 0) return 80;
+  // Plasmid names conventionally begin with "p", so a match straight after it
+  // is effectively at the start: searching "GFP" should find "pGFP" before
+  // "p35S-GFP", where GFP is only one element among several.
+  if (at === 1 && t.startsWith('p')) return 70;
+  // Start of any word, including after the separators plasmid names use.
+  if (new RegExp(`[\\s_\\-.:/()\\[\\]]${q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`).test(t)) return 60;
+  if (at > 0) return 40;
+  const tokens = q.split(/\s+/).filter(Boolean);
+  if (tokens.length > 1 && tokens.every((tok) => t.includes(tok))) return 20;
+  return 0;
+}
+
+/**
+ * Rank items by relevance to `query`, then by date (newest first), then name.
+ * `fields` names the properties to search, most important first; a later field
+ * scores lower so a name match always beats a description match.
+ */
+function rankByRelevance(items, query, { fields = ['name'], dateField = 'created_at' } = {}) {
+  const scored = items.map((item) => {
+    let score = 0;
+    fields.forEach((field, i) => {
+      const s = matchScore(item[field], query);
+      if (s) score = Math.max(score, s - i * 10);
+    });
+    return { item, score };
+  });
+  const matching = query ? scored.filter((s) => s.score > 0) : scored;
+  matching.sort((a, b) => (
+    b.score - a.score
+    || String(b.item[dateField] ?? '').localeCompare(String(a.item[dateField] ?? ''))
+    || String(a.item.name ?? '').localeCompare(String(b.item.name ?? ''))
+  ));
+  return matching.map((s) => s.item);
+}
+
 const CODONS = {
   TTT: 'F', TTC: 'F', TTA: 'L', TTG: 'L', CTT: 'L', CTC: 'L', CTA: 'L', CTG: 'L',
   ATT: 'I', ATC: 'I', ATA: 'I', ATG: 'M', GTT: 'V', GTC: 'V', GTA: 'V', GTG: 'V',

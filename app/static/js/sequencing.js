@@ -8,24 +8,57 @@ const Sequencing = {
   traceScale: 2,
 
   async init() {
-    document.getElementById('refSelect').addEventListener('change', (e) => this.selectReference(e.target.value));
     document.getElementById('readInput').addEventListener('change', (e) => this.upload(e.target.files));
     document.getElementById('btnRealign').addEventListener('click', () => this.realign());
     document.getElementById('traceZoomIn').addEventListener('click', () => { this.traceScale *= 1.5; this.drawTrace(); });
     document.getElementById('traceZoomOut').addEventListener('click', () => { this.traceScale /= 1.5; this.drawTrace(); });
 
+    // A lab can hold hundreds of plasmids, so the reference is searched rather
+    // than scrolled: best matches first, then the most recently created.
+    this.combo = new Combobox(document.getElementById('refCombo'), {
+      placeholder: 'Search plasmids by name or description…',
+      fields: ['name', 'description'],
+      dateField: 'created_at',
+      emptyText: 'No plasmid matches. Save one in the editor first.',
+      label: (s) => s.name,
+      render: (s, query) => el('div', {},
+        el('div', { class: 'combo-name' }, highlight(s.name, query),
+          s.confirmed ? el('span', { class: 'confirmed-tick', title: 'Confirmed and sequenced' }, ' ✓') : null),
+        el('div', { class: 'combo-meta' },
+          el('span', {}, `${fmt(s.length)} bp`),
+          el('span', {}, s.circular ? 'circular' : 'linear'),
+          s.read_count ? el('span', {}, `${s.read_count} read${s.read_count === 1 ? '' : 's'}`) : null,
+          s.reads_bad ? el('span', { class: 'verdict-bad', text: `${s.reads_bad} not sufficient` }) : null,
+          s.created_at ? el('span', {}, `added ${String(s.created_at).slice(0, 10)}`) : null,
+          s.description ? el('span', {}, '· ', highlight(s.description.slice(0, 60), query)) : null)),
+      onSelect: (s) => this.selectReference(s.id),
+    });
+
     try {
       const { sequences } = await API.get('/api/sequences');
       this.sequences = sequences;
-      const sel = document.getElementById('refSelect');
-      sel.replaceChildren(
-        el('option', { value: '', text: sequences.length ? 'Choose a sequence…' : 'No saved sequences yet' }),
-        ...sequences.map((s) => el('option', { value: s.id,
-          text: `${s.name} (${fmt(s.length)} bp${s.read_count ? `, ${s.read_count} read(s)` : ''})` })));
+      this.combo.setItems(sequences);
       const preset = new URLSearchParams(location.search).get('sequence');
-      if (preset) { sel.value = preset; this.selectReference(preset); }
+      const chosen = preset && sequences.find((s) => s.id === preset);
+      if (chosen) {
+        this.combo.setSelected(chosen);
+        this.selectReference(preset);
+      }
     } catch (err) {
       toast(err.message, 'error');
+    }
+  },
+
+  /** Keep the picker's metadata (read counts, green check) current. */
+  async refreshList() {
+    try {
+      const { sequences } = await API.get('/api/sequences');
+      this.sequences = sequences;
+      this.combo.setItems(sequences);
+      const current = sequences.find((s) => s.id === this.reference?.id);
+      if (current) this.combo.setSelected(current);
+    } catch {
+      /* the picker keeps the list it already has */
     }
   },
 
@@ -66,6 +99,7 @@ const Sequencing = {
       status.replaceChildren(el('div', { class: 'alert alert-success' },
         `Added ${reads.length} read${reads.length === 1 ? '' : 's'}.`));
       await this.selectReference(this.reference.id);
+      this.refreshList();
       if (reads.length) this.showRead(this.reads.find((r) => r.name === reads[0].name) || this.reads[0]);
     } catch (err) {
       status.replaceChildren(el('div', { class: 'alert alert-error', text: err.message }));
@@ -79,6 +113,7 @@ const Sequencing = {
       await API.post(`/api/sequences/${this.reference.id}/reads/realign`, {});
       toast('Reads re-aligned', 'success');
       await this.selectReference(this.reference.id);
+      this.refreshList();
     } catch (err) {
       toast(err.message, 'error');
     }
@@ -289,6 +324,7 @@ const Sequencing = {
               ? 'Confirmed, and recorded as sequenced in MoClo'
               : 'Plasmid confirmed as sequenced', 'success', 5000);
             await this.selectReference(seq.id);
+            this.refreshList();
             return true;
           },
         },

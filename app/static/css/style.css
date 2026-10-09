@@ -210,6 +210,24 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .verdict-bad { color: var(--error-color); font-weight: 600; }
 .confirmed-tick { color: var(--success-color); font-size: 1rem; }
 
+/* Searchable picker for long lists -------------------------------------- */
+.combo { position: relative; }
+.combo-input { width: 100%; }
+.combo-count { font-size: .75rem; color: var(--text-secondary); min-height: 1rem; padding: .15rem .15rem 0; }
+.combo-list {
+    position: absolute; left: 0; right: 0; top: 100%; z-index: 150;
+    background: var(--card-bg); border: 1px solid var(--border-color);
+    border-radius: .375rem; box-shadow: var(--shadow-lg);
+    max-height: 19rem; overflow-y: auto; margin-top: .15rem;
+}
+.combo-item { padding: .4rem .6rem; cursor: pointer; border-bottom: 1px solid var(--border-color); }
+.combo-item:last-child { border-bottom: none; }
+.combo-item.active { background: #eff6ff; }
+.combo-item mark { background: #fde68a; color: inherit; border-radius: 2px; padding: 0 1px; }
+.combo-name { font-size: .9rem; font-weight: 500; }
+.combo-meta { font-size: .75rem; color: var(--text-secondary); display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; }
+.combo-empty { padding: .9rem; text-align: center; color: var(--text-secondary); font-size: .875rem; }
+
 .seq-stats { display: flex; gap: 1.25rem; flex-wrap: wrap; font-size: .8125rem; color: var(--text-secondary); padding: .35rem .25rem .6rem; }
 .seq-stats b { color: var(--text-color); font-variant-numeric: tabular-nums; }
 

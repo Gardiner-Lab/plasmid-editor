@@ -55,6 +55,8 @@ re-implemented independently; see [Attribution](#attribution).
 - Coverage summary, and re-alignment of every read after the reference is edited
 
 ### Sequencing verification
+- The reference plasmid is **searched, not scrolled**: results rank by relevance to what you
+  type and then by date added, newest first, which stays usable at hundreds of plasmids
 - Every read stays attached to the plasmid it was aligned to, with its **clone number**,
   so you can see whether a plasmid was sequenced before and what was found
 - Judge each alignment **sufficient** or **not sufficient**; the judgement, who made it and
