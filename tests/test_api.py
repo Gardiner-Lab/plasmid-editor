@@ -370,3 +370,31 @@ def test_save_as_creates_a_separate_entry(user_client, rand_dna):
     names = {s['name'] for s in user_client.get('/api/sequences').get_json()['sequences']}
     assert names == {'original', 'original copy'}
     assert user_client.get(f'/api/sequences/{original_id}').get_json()['sequence']['name'] == 'original'
+
+
+def test_mounting_under_a_url_prefix(monkeypatch, tmp_dbs):
+    """Behind the suite proxy the editor is served at /editor."""
+    monkeypatch.setenv('URL_PREFIX', '/editor')
+    monkeypatch.setenv('EDITOR_SKIP_SEED', '1')
+    from app.main import create_app
+    app = create_app()
+    app.config.update(TESTING=True, SECRET_KEY='t')
+    c = app.test_client()
+
+    assert c.post('/editor/api/auth/register',
+                  json={'username': 'pre', 'password': 'password123'}).status_code == 201
+    html = c.get('/editor/editor').get_data(as_text=True)
+    assert 'data-base="/editor"' in html
+    assert '/editor/static/js/api.js' in html
+    assert 'href="/editor/library"' in html
+
+    # Registration logs the user in, so the mounted root goes to the editor.
+    assert c.get('/editor/').headers.get('Location', '').endswith('/editor/editor')
+
+    # Its session cookie is named and scoped so it cannot clash with the MoClo
+    # tool's cookie on the same hostname.
+    cookie = c.get('/editor/editor').headers.get('Set-Cookie', '') or ''
+    jar = {c_.key: c_ for c_ in c._cookies.values()} if hasattr(c, '_cookies') else {}
+    assert 'plasmid_editor_session' in (cookie or ''.join(jar)) or 'plasmid_editor_session' in str(jar)
+    assert app.config['SESSION_COOKIE_PATH'] == '/editor'
+    assert app.config['SESSION_COOKIE_NAME'] == 'plasmid_editor_session'

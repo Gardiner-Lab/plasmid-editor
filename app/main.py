@@ -16,6 +16,27 @@ APP_VERSION = '0.1.0'
 _DEFAULT_SECRET = 'dev-secret-key-change-in-production'
 
 
+class PrefixMiddleware:
+    """
+    Mount the application under a URL prefix (URL_PREFIX, e.g. /editor).
+
+    The suite's reverse proxy passes the full path through, so the prefix is
+    moved from PATH_INFO into SCRIPT_NAME here. Flask's url_for then generates
+    prefixed links, and the app still works unprefixed when URL_PREFIX is unset.
+    """
+
+    def __init__(self, wsgi_app, prefix: str):
+        self.wsgi_app = wsgi_app
+        self.prefix = '/' + prefix.strip('/')
+
+    def __call__(self, environ, start_response):
+        path = environ.get('PATH_INFO', '')
+        if path == self.prefix or path.startswith(self.prefix + '/'):
+            environ['SCRIPT_NAME'] = environ.get('SCRIPT_NAME', '') + self.prefix
+            environ['PATH_INFO'] = path[len(self.prefix):] or '/'
+        return self.wsgi_app(environ, start_response)
+
+
 def create_app() -> Flask:
     app = Flask(__name__)
 
@@ -23,6 +44,14 @@ def create_app() -> Flask:
     app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=14)
     app.config['SESSION_COOKIE_HTTPONLY'] = True
     app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+    # Behind the suite proxy this app shares a hostname with the MoClo tool,
+    # which also uses Flask's default cookie name at path "/". Giving this app
+    # its own name and scoping the cookie to its prefix keeps the two logins
+    # from overwriting each other.
+    app.config['SESSION_COOKIE_NAME'] = os.environ.get('SESSION_COOKIE_NAME', 'plasmid_editor_session')
+    _prefix = os.environ.get('URL_PREFIX', '').strip('/')
+    if _prefix:
+        app.config['SESSION_COOKIE_PATH'] = f'/{_prefix}'
     app.config['MAX_CONTENT_LENGTH'] = 64 * 1024 * 1024
     if os.environ.get('FLASK_ENV') == 'production':
         if app.config['SECRET_KEY'] == _DEFAULT_SECRET:
@@ -98,6 +127,10 @@ def create_app() -> Flask:
     def health():
         from app.services import moclo_bridge
         return {'status': 'healthy', 'version': APP_VERSION, 'moclo': moclo_bridge.available()}
+
+    prefix = os.environ.get('URL_PREFIX', '').strip('/')
+    if prefix:
+        app.wsgi_app = PrefixMiddleware(app.wsgi_app, prefix)
 
     return app
 
