@@ -22,6 +22,7 @@ def login(username: str, password: str) -> Optional[User]:
     session['user_id'] = user.id
     session['username'] = user.username
     session['is_admin'] = user.is_admin
+    session['role'] = user.role
     session.permanent = True
     return user
 
@@ -37,6 +38,11 @@ def current_user() -> Optional[User]:
     user = User.get_by_id(user_id)
     if user is None:
         session.clear()
+        return None
+    # A role changed since signing in shows in the navigation at once.
+    if session.get('role') != user.role:
+        session['role'] = user.role
+        session['is_admin'] = user.is_admin
     return user
 
 
@@ -59,5 +65,18 @@ def require_admin(f: Callable) -> Callable:
             return jsonify({'error': 'Authentication required'}), 401
         if not user.is_admin:
             return jsonify({'error': 'Administrator access required'}), 403
+        return f(user, *args, **kwargs)
+    return wrapper
+
+
+def require_lab_admin(f: Callable) -> Callable:
+    """Administrators and lab leads; what a lab lead may then do is checked inside."""
+    @wraps(f)
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
+        user = current_user()
+        if user is None:
+            return jsonify({'error': 'Authentication required'}), 401
+        if not user.can_administer:
+            return jsonify({'error': 'Administrator or lab lead access required'}), 403
         return f(user, *args, **kwargs)
     return wrapper

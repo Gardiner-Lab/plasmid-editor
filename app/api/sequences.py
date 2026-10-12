@@ -20,9 +20,9 @@ def _owned_or_404(sequence_id, user, for_write=False):
     doc = StoredSequence.get(sequence_id)
     if doc is None:
         return None, (jsonify({'error': 'Sequence not found'}), 404)
-    if for_write and doc['owner_id'] != user.id and not user.is_admin:
+    if for_write and doc['owner_id'] != user.id and not user.oversees(doc['owner_id']):
         return None, (jsonify({'error': 'Only the owner can change this sequence'}), 403)
-    if not doc['shared'] and doc['owner_id'] != user.id and not user.is_admin:
+    if not doc['shared'] and doc['owner_id'] != user.id and not user.oversees(doc['owner_id']):
         return None, (jsonify({'error': 'This sequence is private'}), 403)
     return doc, None
 
@@ -44,7 +44,8 @@ def _sequencing_viewable_or_404(sequence_id, user):
 
 
 def _can_change(doc, user) -> bool:
-    return doc['owner_id'] == user.id or user.is_admin
+    # The owner, an administrator, or the lead of the owner's lab.
+    return doc['owner_id'] == user.id or user.oversees(doc['owner_id'])
 
 
 def _can_add_reads(doc, user) -> bool:

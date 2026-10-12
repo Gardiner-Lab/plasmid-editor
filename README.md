@@ -38,6 +38,8 @@ re-implemented independently; see [Attribution](#attribution).
 - Auto-annotation from a feature library (ApE library files import and export unchanged)
 - Oligo properties (nearest-neighbour Tm, GC), primer binding sites, **PCR simulation** with
   5′ tails, and primer design for a selected region
+- **BLAST** at NCBI: the selection, or the whole sequence when nothing is selected, opens in
+  NCBI's nucleotide BLAST form in a new tab
 
 ### Cloning simulation
 - **Golden Gate** one-pot assembly with a per-part log explaining any part that is not used
@@ -127,9 +129,25 @@ was set up are copied across automatically, and accounts in an existing MoClo in
 become users here when the editor starts. See
 [docs/SHARED_DATABASE.md](docs/SHARED_DATABASE.md#shared-accounts).
 
-Running standalone, self-registration is open by default, and the **first account created
-becomes the admin**. Alternatively set `ADMIN_USERNAME` and `ADMIN_PASSWORD` to create it
-automatically on an empty database, then set `ALLOW_REGISTRATION=false` to close registration.
+The **first account created becomes the admin**; alternatively set `ADMIN_USERNAME` and
+`ADMIN_PASSWORD` to create it automatically on an empty database.
+
+**Each lab has its own registration code.** Everyone after the first account registers by
+choosing their lab and giving that lab's code. A lab without a code takes nobody new. In the lab
+suite this is the only sign-up page: the MoClo tool's Register page leads here, so the codes guard
+every tool. `ALLOW_REGISTRATION=false` closes registration whatever the codes.
+
+There are three roles, set on the **Admin** page (`/admin`):
+
+| Role | Can |
+| --- | --- |
+| Administrator | Everything: add, rename and remove labs; set, change and clear each lab's code; give people roles and move them between labs; open and change anyone's plasmids. |
+| Lab lead | Act as an administrator for their own lab: open and change its members' plasmids, including private ones, and confirm their sequencing. See their lab's members and its code, to hand out. **Cannot** change codes, labs or roles. |
+| Member | Their own work, and whatever others share. |
+
+Administrator status is shared with the MoClo tool, so an administrator here is one there too.
+Lab lead is this editor's own role; in the MoClo tool a lab lead is an ordinary account. The
+backup console stays with administrators.
 
 ### Automatic updates
 
@@ -172,7 +190,10 @@ node tests/js/helpers.test.js   # frontend sequence helpers
 | `PARTS_DATABASE_PATH` | `/data/parts.db` | MoClo parts database (shared). Absent ⇒ contribution disabled. |
 | `MOCLO_DATABASE_PATH` | `/data/moclo.db` | MoClo main database (shared, read only here). |
 | `MOCLO_BASE_URL` | — | Where the MoClo tool is, for links out to it (`/` when it is at the root of the same host). Unset hides those links. |
+| `SUITE_HOME_URL` | — | The lab suite's launch page (`/` in the suite), linked as "← Lab tools" in the navigation bar. Unset hides the link. |
 | `ALLOW_REGISTRATION` | `true` | Set `false` to close self-registration. |
+| `REGISTRATION_CODE` | — | The first registration code, for the `DEFAULT_LAB_SOURCE` lab. Change it afterwards on the Admin page, which takes precedence. |
+| `REQUIRE_REGISTRATION_CODE` | `true` | Set `false` to let anyone register without a code. |
 | `DEFAULT_LAB_SOURCE` | — | Pre-filled lab name for new accounts. |
 | `ADMIN_USERNAME` / `ADMIN_PASSWORD` | `admin` / — | Creates the first admin on an empty database. |
 | `PORT` | `5001` | Port inside the container. |

@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Admin &middot; Plasmid Editor{% endblock %}
+
+{% block content %}
+<div id="adminNotice"></div>
+
+<div class="card" id="labsCard">
+    <div class="card-header">
+        <div class="card-title" id="labsTitle">Labs and registration codes</div>
+    </div>
+    <p class="hint" id="labsHint"></p>
+    <div class="table-scroll" style="max-height:none">
+        <table>
+            <thead><tr><th>Lab</th><th class="num">Members</th><th>Registration code</th><th></th></tr></thead>
+            <tbody id="labRows"></tbody>
+        </table>
+    </div>
+    <div id="addLab" hidden style="margin-top:1rem">
+        <div class="field-row" style="align-items:flex-end">
+            <div class="field" style="flex:2">
+                <label for="newLabName">Add a lab</label>
+                <input type="text" id="newLabName" maxlength="100" placeholder="e.g. Smith Lab">
+            </div>
+            <div class="field" style="flex:0 0 auto">
+                <button class="btn" id="btnAddLab" type="button">Add lab</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-title" style="margin-bottom:.5rem" id="usersTitle">Accounts</div>
+    <p class="hint" id="usersHint"></p>
+    <div class="table-scroll" style="max-height:none">
+        <table>
+            <thead><tr><th>Username</th><th>Lab</th><th>Role</th><th>Joined</th></tr></thead>
+            <tbody id="userRows"></tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/admin.js') }}?v={{ app_version }}"></script>
+{% endblock %}

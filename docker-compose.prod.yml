@@ -34,6 +34,7 @@ services:
       # Shown in the navbar so people can jump to the other tool.
       - MOCLO_BASE_URL=${MOCLO_BASE_URL:-}
       - ALLOW_REGISTRATION=${ALLOW_REGISTRATION:-true}
+      - REGISTRATION_CODE=${REGISTRATION_CODE:-}
       - DEFAULT_LAB_SOURCE=${DEFAULT_LAB_SOURCE:-}
       # Optional: create the first admin on an empty database.
       - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}

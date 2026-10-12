@@ -27,10 +27,20 @@
                 <label for="password">Password</label>
                 <input type="password" id="password" name="password" required autocomplete="current-password">
             </div>
-            <div class="field" id="labField" hidden>
-                <label for="lab_source">Lab</label>
-                <input type="text" id="lab_source" name="lab_source" placeholder="Gardiner Lab">
-                <span class="hint">Recorded as the lab source on parts you contribute to the MoClo library.</span>
+            <div id="registerFields" hidden>
+                <div class="field">
+                    <label for="lab_choice" id="labLabel">Lab</label>
+                    <select id="lab_choice" hidden></select>
+                    <input type="text" id="lab_source" name="lab_source" placeholder="Gardiner Lab"
+                           maxlength="100" autocomplete="organization">
+                    <span class="hint">The lab you work in. Recorded as the lab source on parts you contribute to the MoClo library.</span>
+                </div>
+                <div class="field" id="codeField">
+                    <label for="registration_code">Registration code</label>
+                    <input type="text" id="registration_code" name="registration_code"
+                           autocomplete="off" spellcheck="false" autocapitalize="off">
+                    <span class="hint">Each lab has its own code. Ask your lab lead or an administrator for it.</span>
+                </div>
             </div>
             <button class="btn" type="submit" style="width:100%" id="submitBtn">Log in</button>
         </form>

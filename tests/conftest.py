@@ -17,6 +17,9 @@ def tmp_dbs(monkeypatch):
     monkeypatch.setenv('EDITOR_DATABASE_PATH', editor)
     monkeypatch.setenv('PARTS_DATABASE_PATH', parts)
     monkeypatch.setenv('MOCLO_DATABASE_PATH', moclo)
+    # Most tests register several people; the code itself is tested on its own.
+    monkeypatch.setenv('REQUIRE_REGISTRATION_CODE', 'false')
+    monkeypatch.setenv('DEFAULT_LAB_SOURCE', 'Test Lab')
     from app.models import database
     database.set_db_path(editor)
     database.initialize_database(editor)

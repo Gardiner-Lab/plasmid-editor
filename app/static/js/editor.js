@@ -517,6 +517,36 @@ const Editor = {
     });
   },
 
+  /**
+   * Open NCBI BLAST in a new tab with the selection, or the whole sequence when
+   * nothing is selected, filled in as the query. The search form is posted
+   * rather than linked so that long sequences fit; BLAST itself is started
+   * from NCBI's page, where the database can be chosen.
+   */
+  blast() {
+    if (!this.doc || !this.doc.sequence) { toast('No sequence to BLAST', 'error'); return; }
+    const selected = this.view.selectedSequence();
+    const sel = this.view.selection;
+    const query = selected || this.doc.sequence;
+    const name = this.doc.name || 'Untitled';
+    const title = selected ? `${name} ${sel.start + 1}-${sel.end}` : name;
+
+    const form = el('form', { method: 'POST', action: 'https://blast.ncbi.nlm.nih.gov/Blast.cgi',
+                              target: '_blank', hidden: true });
+    const fields = { PAGE_TYPE: 'BlastSearch', PROGRAM: 'blastn', BLAST_PROGRAMS: 'megaBlast',
+                     LINK_LOC: 'blasthome', JOB_TITLE: title, QUERY: `>${title}\n${query}` };
+    for (const [k, v] of Object.entries(fields)) {
+      const input = el('input', { type: 'hidden', name: k });
+      input.value = v;
+      form.appendChild(input);
+    }
+    document.body.appendChild(form);
+    form.submit();
+    form.remove();
+    toast(`Sent ${selected ? 'the selection' : 'the whole sequence'} (${fmt(query.length)} bp) to NCBI BLAST`,
+          'success', 3000);
+  },
+
   async copy(text) {
     if (!text) { toast('Nothing selected', 'error'); return; }
     try {
@@ -1013,6 +1043,7 @@ const Editor = {
     document.getElementById('btnSilent').addEventListener('click', () => Tools.silentSites());
     document.getElementById('btnPrimer').addEventListener('click', () => Tools.designPrimers());
     document.getElementById('btnPcr').addEventListener('click', () => Tools.pcr());
+    document.getElementById('btnBlast').addEventListener('click', () => this.blast());
   },
 
   async runFind() {

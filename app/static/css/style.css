@@ -48,6 +48,7 @@ a:hover { text-decoration: underline; }
     position: sticky; top: 0; z-index: 200;
 }
 .navbar .container { display: flex; justify-content: space-between; align-items: center; gap: 1.5rem; }
+.navbar-brand { display: flex; align-items: center; gap: .3rem; }
 .navbar-logo { color: var(--primary-color); font-weight: 700; font-size: 1.15rem; display: flex; align-items: center; gap: .4rem; }
 .navbar-logo:hover { text-decoration: none; color: var(--primary-hover); }
 .navbar-menu { display: flex; align-items: center; gap: .35rem; flex-wrap: wrap; }
@@ -58,6 +59,11 @@ a:hover { text-decoration: underline; }
 .navbar-link:hover { background: var(--bg-color); color: var(--primary-color); text-decoration: none; }
 .navbar-link.active { background: #eff6ff; color: var(--primary-color); font-weight: 600; }
 .navbar-divider { width: 1px; height: 1.4rem; background: var(--border-color); margin: 0 .3rem; }
+.navbar-home {
+    color: var(--text-secondary); padding: .3rem .6rem; border-radius: .375rem;
+    font-size: .875rem; white-space: nowrap;
+}
+.navbar-home:hover { background: var(--bg-color); color: var(--primary-color); text-decoration: none; }
 .navbar-user { color: var(--text-secondary); font-size: .875rem; }
 
 .main-content { flex: 1; padding: 1.25rem 0 2.5rem; }

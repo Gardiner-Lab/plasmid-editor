@@ -11,7 +11,7 @@ from datetime import timedelta
 
 from flask import Flask, redirect, render_template, session, url_for
 
-APP_VERSION = '0.1.0'
+APP_VERSION = '0.2.0'
 
 _DEFAULT_SECRET = 'dev-secret-key-change-in-production'
 
@@ -76,6 +76,8 @@ def create_app() -> Flask:
     # directory, and accounts already in that directory (an existing MoClo
     # instance) become users here, so every account works in every tool.
     sync_accounts()
+    from app.services.registration import prepare_labs
+    prepare_labs()
 
     @app.context_processor
     def inject_globals():
@@ -86,8 +88,12 @@ def create_app() -> Flask:
         raw = (os.environ.get('MOCLO_BASE_URL')
                or os.environ.get('MOCLO_URL', '')).strip()
         base = raw.rstrip('/')
+        # SUITE_HOME_URL is the lab suite's launch page ("/" behind the suite's
+        # proxy). Unset, as when the editor runs on its own, hides the link.
+        suite_home = os.environ.get('SUITE_HOME_URL', '').strip()
         return {
             'app_version': APP_VERSION,
+            'suite_home': suite_home,
             'moclo': {
                 'enabled': bool(raw),
                 'base': base,
@@ -97,8 +103,9 @@ def create_app() -> Flask:
             },
         }
 
-    from app.api import auth_bp, library_bp, moclo_bp, sequences_bp, tools_bp
+    from app.api import admin_bp, auth_bp, library_bp, moclo_bp, sequences_bp, tools_bp
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
+    app.register_blueprint(admin_bp, url_prefix='/api/admin')
     app.register_blueprint(sequences_bp, url_prefix='/api/sequences')
     app.register_blueprint(tools_bp, url_prefix='/api/tools')
     app.register_blueprint(moclo_bp, url_prefix='/api/moclo')
@@ -143,6 +150,16 @@ def create_app() -> Flask:
     @app.route('/features')
     def features_page():
         return _page('features.html')
+
+    @app.route('/admin')
+    def admin_page():
+        from app.services.auth import current_user
+        user = current_user()
+        if user is None:
+            return redirect(url_for('login_page'))
+        if not user.can_administer:
+            return redirect(url_for('editor_page'))
+        return render_template('admin.html')
 
     @app.route('/about')
     def about_page():

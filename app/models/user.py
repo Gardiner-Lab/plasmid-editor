@@ -1,5 +1,6 @@
 """Users and password handling."""
 
+import logging
 import os
 import re
 import sqlite3
@@ -10,23 +11,62 @@ import bcrypt
 
 from app.models.database import get_connection
 
+logger = logging.getLogger(__name__)
+
 USERNAME_RE = re.compile(r'^[A-Za-z0-9._-]{3,32}$')
 MIN_PASSWORD_LENGTH = 8
 
 
+# Roles, from most to least privileged:
+#   admin     everything, including the labs, their registration codes and roles
+#   lab_lead  an administrator for their own lab's members and plasmids, and can
+#             see (not change) their lab's registration code
+#   member    their own work, and whatever others share
+ROLES = ('admin', 'lab_lead', 'member')
+
+
 class User:
     def __init__(self, id: str, username: str, password_hash: str, lab_source: Optional[str],
-                 is_admin: bool = False, created_at: Optional[str] = None):
+                 is_admin: bool = False, created_at: Optional[str] = None,
+                 lab_role: Optional[str] = None):
         self.id = id
         self.username = username
         self.password_hash = password_hash
         self.lab_source = lab_source
         self.is_admin = is_admin
         self.created_at = created_at
+        self.lab_role = lab_role
+
+    @property
+    def role(self) -> str:
+        if self.is_admin:
+            return 'admin'
+        return 'lab_lead' if self.lab_role == 'lab_lead' else 'member'
+
+    @property
+    def is_lab_lead(self) -> bool:
+        return self.role == 'lab_lead'
+
+    @property
+    def can_administer(self) -> bool:
+        """Admins and lab leads: who may open the Admin page."""
+        return self.role in ('admin', 'lab_lead')
+
+    def same_lab(self, other: Optional['User']) -> bool:
+        return bool(other is not None and self.lab_source and other.lab_source
+                    and self.lab_source.casefold() == other.lab_source.casefold())
+
+    def oversees(self, owner_id: str) -> bool:
+        """May act for this owner: an admin for anyone, a lab lead for their lab."""
+        if self.is_admin:
+            return True
+        if not self.is_lab_lead:
+            return False
+        return self.same_lab(User.get_by_id(owner_id))
 
     def to_dict(self) -> Dict[str, Any]:
         return {'id': self.id, 'username': self.username, 'lab_source': self.lab_source,
-                'is_admin': self.is_admin, 'created_at': self.created_at}
+                'is_admin': self.is_admin, 'role': self.role, 'created_at': self.created_at}
 
     def check_password(self, password: str) -> bool:
         try:
@@ -36,8 +76,10 @@ class User:
 
     @staticmethod
     def _row(row) -> 'User':
+        keys = row.keys()
         return User(row['id'], row['username'], row['password_hash'], row['lab_source'],
-                    bool(row['is_admin']), row['created_at'])
+                    bool(row['is_admin']), row['created_at'],
+                    row['role'] if 'role' in keys else None)
 
     @staticmethod
     def hash_password(password: str) -> str:
@@ -82,6 +124,28 @@ class User:
     def count() -> int:
         with get_connection() as conn:
             return conn.execute('SELECT COUNT(*) AS n FROM users').fetchone()['n']
+
+    def set_role(self, role: str) -> None:
+        """
+        admin, lab_lead or member. Administrator status lives in the shared
+        directory, so it changes in every tool; lab lead is this editor's own.
+        """
+        if role not in ROLES:
+            raise ValueError(f'Unknown role {role!r}')
+        make_admin = role == 'admin'
+        if self.is_admin and not make_admin:
+            with get_connection() as conn:
+                admins = conn.execute('SELECT COUNT(*) FROM users WHERE is_admin').fetchone()[0]
+            if admins <= 1:
+                raise ValueError('This is the only administrator; make someone else one first')
+        if make_admin != self.is_admin:
+            set_directory_admin(self.username, make_admin)
+        with get_connection() as conn:
+            conn.execute('UPDATE users SET is_admin = ?, role = ? WHERE id = ?',
+                         (1 if make_admin else 0, 'lab_lead' if role == 'lab_lead' else None,
+                          self.id))
+        self.is_admin = make_admin
+        self.lab_role = 'lab_lead' if role == 'lab_lead' else None
 
     def set_lab_source(self, lab_source: str) -> None:
         with get_connection() as conn:
@@ -168,6 +232,23 @@ def _insert_into_directory(conn: sqlite3.Connection, user_id: str, username: str
                  f'VALUES ({", ".join("?" for _ in columns)})',
                  [values[c] for c in columns])
     return True
+
+
+def set_directory_admin(username: str, is_admin: bool) -> None:
+    """Change administrator status in the shared directory, where it is authoritative."""
+    conn = _directory(write=True)
+    if conn is None:
+        return
+    try:
+        columns = {r['name'] for r in conn.execute('PRAGMA table_info(users)')}
+        if 'is_admin' in columns:
+            with conn:
+                conn.execute('UPDATE users SET is_admin = ? WHERE username = ?',
+                             (1 if is_admin else 0, username))
+    except sqlite3.Error as exc:
+        raise ValueError('The shared account directory could not be updated; try again') from exc
+    finally:
+        conn.close()
 
 
 def _mirror(account: dict) -> 'User':
@@ -278,8 +359,48 @@ def import_directory_accounts() -> int:
     return added
 
 
+# The MoClo tool creates "admin" with this published password whenever there is
+# no account of that name. With accounts shared, it would open every tool here,
+# the backup console included.
+MOCLO_DEFAULT_ADMIN = ('admin', 'admin123')
+
+
+def retire_default_admin_password() -> Optional[str]:
+    """
+    Replace MoClo's default admin password with ADMIN_PASSWORD, if it is still
+    in use. Returns 'replaced', 'exposed' (still default, nothing to replace it
+    with), or None when the default is not in use.
+    """
+    username, default = MOCLO_DEFAULT_ADMIN
+    conn = _directory(write=True)
+    if conn is None:
+        return None
+    try:
+        row = conn.execute('SELECT password_hash FROM users WHERE username = ?',
+                           (username,)).fetchone()
+        if row is None or not bcrypt.checkpw(default.encode(), row['password_hash'].encode()):
+            return None
+        new = os.environ.get('ADMIN_PASSWORD', '')
+        if not new or new == default or os.environ.get('ADMIN_USERNAME', 'admin') != username:
+            logger.warning("The shared account 'admin' still has MoClo's published default "
+                           "password 'admin123', which signs in to every tool. Change it, or "
+                           "set ADMIN_PASSWORD and restart to have it replaced.")
+            return 'exposed'
+        conn.execute('UPDATE users SET password_hash = ? WHERE username = ?',
+                     (User.hash_password(new), username))
+        conn.commit()
+        logger.warning("Replaced MoClo's default password for 'admin' with ADMIN_PASSWORD.")
+        return 'replaced'
+    except (sqlite3.Error, ValueError) as exc:
+        logger.warning('Could not check the default admin password: %s', exc)
+        return None
+    finally:
+        conn.close()
+
+
 def sync_accounts() -> None:
     """Make the editor's accounts and the shared directory hold the same people."""
+    retire_default_admin_password()
     share_local_accounts()
     import_directory_accounts()
 

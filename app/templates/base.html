@@ -11,6 +11,10 @@
 <nav class="navbar">
     <div class="container container-wide">
         <div class="navbar-brand">
+            {% if suite_home %}
+                <a href="{{ suite_home }}" class="navbar-home" title="Back to the lab tools launch page">← Lab tools</a>
+                <span class="navbar-divider"></span>
+            {% endif %}
             <a href="{{ url_for('editor_page') if session.get('user_id') else url_for('login_page') }}" class="navbar-logo">
                 🧬 Plasmid Editor
             </a>
@@ -23,6 +27,9 @@
                 <a href="{{ url_for('cloning_page') }}" class="navbar-link {{ 'active' if page == 'cloning_page' }}">Cloning</a>
                 <a href="{{ url_for('sequencing_page') }}" class="navbar-link {{ 'active' if page == 'sequencing_page' }}">Sequencing</a>
                 <a href="{{ url_for('features_page') }}" class="navbar-link {{ 'active' if page == 'features_page' }}">Features</a>
+                {% if session.get('role') in ('admin', 'lab_lead') %}
+                    <a href="{{ url_for('admin_page') }}" class="navbar-link {{ 'active' if page == 'admin_page' }}">Admin</a>
+                {% endif %}
                 <span class="navbar-divider"></span>
                 {% if moclo.enabled %}
                     <a href="{{ moclo.library }}" class="navbar-link">MoClo tool ↗</a>

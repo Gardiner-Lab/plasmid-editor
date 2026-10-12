@@ -1,15 +1,40 @@
 /* Login and registration form. */
 
 let mode = 'login';
+let codeRequired = true;
 
 function setMode(next) {
   mode = next;
   document.querySelectorAll('.auth-tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === next));
-  document.getElementById('labField').hidden = next !== 'register';
+  const registering = next === 'register';
+  document.getElementById('registerFields').hidden = !registering;
+  document.getElementById('codeField').hidden = !codeRequired;
+  // With codes in use, the lab is chosen from the labs an administrator set up;
+  // the first account of a new installation names its own.
+  document.getElementById('lab_choice').hidden = !codeRequired;
+  document.getElementById('lab_source').hidden = codeRequired;
+  document.getElementById('labLabel').htmlFor = codeRequired ? 'lab_choice' : 'lab_source';
+  document.getElementById('lab_choice').required = registering && codeRequired;
+  document.getElementById('lab_source').required = registering && !codeRequired;
+  document.getElementById('registration_code').required = registering && codeRequired;
   document.getElementById('submitBtn').textContent = next === 'register' ? 'Create account' : 'Log in';
   document.getElementById('password').setAttribute('autocomplete',
     next === 'register' ? 'new-password' : 'current-password');
   document.getElementById('alert').replaceChildren();
+}
+
+async function loadLabs(preferred) {
+  const select = document.getElementById('lab_choice');
+  try {
+    const { labs } = await API.get('/api/auth/labs', { allowAnonymous: true });
+    const open = labs.filter((l) => l.open);
+    select.replaceChildren(
+      el('option', { value: '' }, open.length ? 'Choose your lab…' : 'No lab is taking new members'),
+      ...open.map((l) => el('option', { value: l.name }, l.name)));
+    if (open.some((l) => l.name === preferred)) select.value = preferred;
+  } catch {
+    select.replaceChildren(el('option', { value: '' }, 'Could not load the labs'));
+  }
 }
 
 document.querySelectorAll('.auth-tab').forEach((tab) => {
@@ -24,7 +49,11 @@ document.getElementById('authForm').addEventListener('submit', async (e) => {
     username: document.getElementById('username').value,
     password: document.getElementById('password').value,
   };
-  if (mode === 'register') payload.lab_source = document.getElementById('lab_source').value;
+  if (mode === 'register') {
+    payload.lab_source = codeRequired ? document.getElementById('lab_choice').value
+                                      : document.getElementById('lab_source').value;
+    payload.registration_code = document.getElementById('registration_code').value;
+  }
   btn.disabled = true;
   alertBox.replaceChildren();
   try {
@@ -37,6 +66,17 @@ document.getElementById('authForm').addEventListener('submit', async (e) => {
 });
 
 API.get('/api/auth/session', { allowAnonymous: true }).then((s) => {
+  // The first account of an empty installation needs no code.
+  codeRequired = s.registration_code_required !== false;
+  if (s.default_lab && !document.getElementById('lab_source').value) {
+    document.getElementById('lab_source').value = s.default_lab;
+  }
+  if (codeRequired) loadLabs(s.default_lab);
+  if (s.registration_open && new URLSearchParams(window.location.search).has('register')) {
+    setMode('register');
+  } else {
+    setMode(mode);
+  }
   if (!s.registration_open) {
     const tab = document.getElementById('registerTab');
     tab.disabled = true;

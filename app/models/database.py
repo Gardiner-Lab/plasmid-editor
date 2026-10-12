@@ -52,6 +52,25 @@ CREATE TABLE IF NOT EXISTS users (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- The labs using these tools. Each has its own registration code, which new
+-- members give to join that lab; only an administrator sets or changes it.
+CREATE TABLE IF NOT EXISTS labs (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    registration_code TEXT,
+    code_updated_by TEXT,
+    code_updated_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Lab-wide settings an administrator changes from the Admin page.
+CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT,
+    updated_by TEXT,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS sequences (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
@@ -114,6 +133,11 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_library_name_seq ON feature_library(name, 
 # Columns added after the first release. Applied to existing databases on
 # start-up so an upgrade needs no manual migration step.
 _ADDED_COLUMNS = {
+    'users': [
+        # 'lab_lead' for a lab lead; NULL for everyone else. Administrators are
+        # marked by is_admin, which follows the shared account directory.
+        ('role', 'TEXT'),
+    ],
     'sequences': [
         ('moclo_link', 'TEXT'),
         ('moclo_synced_hash', 'TEXT'),

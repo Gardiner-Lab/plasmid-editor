@@ -260,3 +260,42 @@ def test_local_accounts_still_work_without_a_directory(client, tmp_dbs):
 def test_an_unknown_username_is_refused(client, shared_accounts):
     assert client.post('/api/auth/login',
                        json={'username': 'nobody', 'password': 'whatever'}).status_code == 401
+
+
+def _directory_password_ok(path, username, password):
+    conn = sqlite3.connect(path)
+    stored = conn.execute('SELECT password_hash FROM users WHERE username = ?', (username,)).fetchone()[0]
+    conn.close()
+    return bcrypt.checkpw(password.encode(), stored.encode())
+
+
+def test_moclos_default_admin_password_is_replaced_at_startup(tmp_dbs, monkeypatch):
+    """MoClo's published admin/admin123 must not open every tool."""
+    _moclo_users_db(tmp_dbs['moclo'], [('moclo-admin', 'admin', 'admin123', 1)])
+    monkeypatch.setenv('ADMIN_PASSWORD', 'a-real-password')
+    from app.main import create_app
+    app = create_app()
+    app.config.update(TESTING=True, SECRET_KEY='t')
+    client = app.test_client()
+
+    assert not _directory_password_ok(tmp_dbs['moclo'], 'admin', 'admin123')
+    assert client.post('/api/auth/login', json={'username': 'admin', 'password': 'admin123'}
+                       ).status_code == 401
+    assert client.post('/api/auth/login', json={'username': 'admin', 'password': 'a-real-password'}
+                       ).status_code == 200
+
+
+def test_a_changed_admin_password_is_left_alone(tmp_dbs, monkeypatch):
+    _moclo_users_db(tmp_dbs['moclo'], [('moclo-admin', 'admin', 'the-labs-own', 1)])
+    monkeypatch.setenv('ADMIN_PASSWORD', 'a-real-password')
+    from app.models.user import retire_default_admin_password
+    assert retire_default_admin_password() is None
+    assert _directory_password_ok(tmp_dbs['moclo'], 'admin', 'the-labs-own')
+
+
+def test_the_default_is_only_reported_without_a_replacement(tmp_dbs, monkeypatch):
+    _moclo_users_db(tmp_dbs['moclo'], [('moclo-admin', 'admin', 'admin123', 1)])
+    monkeypatch.delenv('ADMIN_PASSWORD', raising=False)
+    from app.models.user import retire_default_admin_password
+    assert retire_default_admin_password() == 'exposed'
+    assert _directory_password_ok(tmp_dbs['moclo'], 'admin', 'admin123')

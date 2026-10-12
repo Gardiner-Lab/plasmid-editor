@@ -499,3 +499,23 @@ def test_moclo_links_hidden_when_not_configured(monkeypatch, tmp_dbs):
     assert 'href="/assembly"' not in html
     assert 'Set <code>MOCLO_BASE_URL</code>' in html, 'explains why the link is missing'
     assert 'MoClo tool ↗' not in c.get('/editor').get_data(as_text=True)
+
+
+def test_suite_launch_page_link(monkeypatch, tmp_dbs):
+    """Behind the suite, every page links back to the launch page."""
+    c = _logged_in(_app_with(monkeypatch, tmp_dbs, SUITE_HOME_URL='/'))
+    for page in ('/editor', '/cloning', '/sequencing'):
+        assert 'class="navbar-home"' in c.get(page).get_data(as_text=True), page
+    c.get('/logout')
+    assert 'Lab tools' in c.get('/login').get_data(as_text=True), 'signed out too'
+
+
+def test_suite_launch_page_link_hidden_when_standalone(monkeypatch, tmp_dbs):
+    monkeypatch.delenv('SUITE_HOME_URL', raising=False)
+    c = _logged_in(_app_with(monkeypatch, tmp_dbs))
+    assert 'navbar-home' not in c.get('/editor').get_data(as_text=True)
+
+
+def test_editor_has_a_blast_button(monkeypatch, tmp_dbs):
+    c = _logged_in(_app_with(monkeypatch, tmp_dbs))
+    assert 'id="btnBlast"' in c.get('/editor').get_data(as_text=True)

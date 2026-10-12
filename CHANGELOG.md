@@ -6,7 +6,21 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-12
+
 ### Added
+- **Labs, each with its own registration code.** Joining means choosing your lab and giving
+  that lab's code; a lab without a code takes nobody new (the first account of an empty
+  installation excepted). Codes are unique, so one only ever opens its own lab.
+  `REGISTRATION_CODE` sets the first code, and `REQUIRE_REGISTRATION_CODE=false` turns codes off.
+- **An Admin page and a lab lead role.** Administrators add, rename and remove labs, set and
+  change each lab's code, and give people roles. A lab lead acts as an administrator for their
+  own lab's members and plasmids and can see their lab's code, but cannot change codes, labs
+  or roles.
+- A **BLAST** button in the Analysis panel opens NCBI nucleotide BLAST in a new tab with
+  the highlighted sequence as the query, or the whole sequence when nothing is highlighted.
+- A "← Lab tools" link in the navigation bar back to the suite's launch page, shown
+  when `SUITE_HOME_URL` is set (the suite sets it to `/`).
 - **Sequencing alignments are open to everyone signed in**, private plasmids included,
   so anyone in the lab can check a construct's reads, alignments and traces on the
   Sequencing page. Uploading reads, judging alignments and confirming stay with the
@@ -29,6 +43,12 @@ and the project uses [semantic versioning](https://semver.org/).
   download the open sequence as GenBank, FASTA or JSON. Downloads work for
   sequences that were never saved, via a new `POST /api/sequences/convert`.
 - An "Unsaved changes" badge in the editor header.
+
+### Security
+- The MoClo tool creates an `admin` account with the published password `admin123`.
+  With accounts shared, that would open every tool. At start-up the editor now
+  replaces that password with `ADMIN_PASSWORD` when it is still the default, and
+  logs a warning when there is no `ADMIN_PASSWORD` to replace it with.
 
 ### Fixed
 - A plasmid could be marked "Sequenced" without any read judged sufficient. Confirming

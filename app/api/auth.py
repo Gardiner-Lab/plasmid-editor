@@ -6,6 +6,7 @@ from flask import Blueprint, jsonify, request
 
 from app.models.user import register as register_account, shared_directory_available
 from app.services import auth as auth_service
+from app.services import registration
 
 auth_bp = Blueprint('auth', __name__)
 
@@ -19,11 +20,16 @@ def register():
     if not _registration_open():
         return jsonify({'error': 'Registration is closed on this server'}), 403
     data = request.get_json(silent=True) or {}
+    # The lab chosen, and that lab's own registration code.
+    lab, refused, status = registration.check(
+        str(data.get('lab_source') or registration.default_lab_name()),
+        str(data.get('registration_code') or ''))
+    if refused:
+        return jsonify({'error': refused}), status
     # With a shared account directory, the account is created there and works
     # in every lab tool.
     try:
-        user = register_account(data.get('username', ''), data.get('password', ''),
-                                data.get('lab_source', '') or os.environ.get('DEFAULT_LAB_SOURCE', ''))
+        user = register_account(data.get('username', ''), data.get('password', ''), lab)
     except ValueError as exc:
         return jsonify({'error': str(exc)}), 400
     auth_service.login(data.get('username', ''), data.get('password', ''))
@@ -52,7 +58,18 @@ def session_status():
     return jsonify({'authenticated': user is not None,
                     'user': user.to_dict() if user else None,
                     'shared_accounts': shared,
-                    'registration_open': _registration_open()}), 200
+                    'registration_open': _registration_open(),
+                    'registration_code_required': registration.code_required()
+                    and registration.anyone_registered(),
+                    'default_lab': registration.default_lab_name()}), 200
+
+
+@auth_bp.route('/labs', methods=['GET'])
+def labs():
+    """The labs someone can join, for the registration form; never their codes."""
+    from app.models.lab import Lab
+    return jsonify({'labs': [{'name': lab.name, 'open': bool(lab.registration_code)}
+                             for lab in Lab.all()]}), 200
 
 
 @auth_bp.route('/profile', methods=['PATCH'])
