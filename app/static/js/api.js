@@ -148,12 +148,14 @@ async function downloadFrom(path, fallbackName, body) {
   const blob = await res.blob();
   const disp = res.headers.get('content-disposition') || '';
   const match = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(disp);
-  const url = URL.createObjectURL(blob);
-  const a = el('a', { href: url, download: match ? decodeURIComponent(match[1]) : fallbackName });
+  // Not called "url": that would shadow url() above for the whole function, and
+  // its use in the fetch would then throw "Cannot access 'url' before initialization".
+  const objectUrl = URL.createObjectURL(blob);
+  const a = el('a', { href: objectUrl, download: match ? decodeURIComponent(match[1]) : fallbackName });
   document.body.appendChild(a);
   a.click();
   a.remove();
-  URL.revokeObjectURL(url);
+  URL.revokeObjectURL(objectUrl);
 }
 
 /* Sequence helpers shared by the pages ----------------------------------- */

@@ -6,6 +6,13 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-10-12
+
+### Fixed
+- Every download (from My sequences, and Save as) failed with "Cannot access 'url'
+  before initialization": the download helper's own variable shadowed the URL
+  helper it called. A frontend test now covers it.
+
 ## [0.2.0] - 2026-10-12
 
 ### Added

@@ -7,8 +7,8 @@ const src = fs.readFileSync('app/static/js/api.js', 'utf8');
 const ctx = {};
 // api.js reads the mount point from <body data-base>; stub just that.
 globalThis.document = { body: { dataset: {} } };
-new Function('globalThis', `${src}\nglobalThis.__x = { DNA, translateSeq, featureColor, FEATURE_COLORS, CODONS, applyEdit, matchScore, rankByRelevance };`)(ctx);
-const { DNA, translateSeq, featureColor, applyEdit, matchScore, rankByRelevance } = ctx.__x;
+new Function('globalThis', `${src}\nglobalThis.__x = { DNA, translateSeq, featureColor, FEATURE_COLORS, CODONS, applyEdit, matchScore, rankByRelevance, downloadFrom };`)(ctx);
+const { DNA, translateSeq, featureColor, applyEdit, matchScore, rankByRelevance, downloadFrom } = ctx.__x;
 
 assert.strictEqual(DNA.revComp('AACGTRY'), 'RYACGTT', 'IUPAC reverse complement');
 assert.strictEqual(DNA.revComp('acgt'), 'acgt', 'case preserved');
@@ -141,3 +141,25 @@ const sameDay = [{ name: 'bX', created_at: '2026-01-01' }, { name: 'aX', created
 assert.deepStrictEqual(rankByRelevance(sameDay, 'x').map((p) => p.name), ['aX', 'bX'], 'stable tie-break');
 
 console.log('all frontend helper assertions passed');
+
+// --- downloadFrom: every download (library, Save as) goes through it ---------
+// It once declared a local "url", which shadowed url() for the whole function
+// and made every download throw "Cannot access 'url' before initialization".
+(async () => {
+  const requested = [];
+  const saved = [];
+  globalThis.fetch = async (path) => {
+    requested.push(path);
+    return { ok: true, blob: async () => 'data',
+             headers: { get: () => 'attachment; filename="pX.gb"' } };
+  };
+  globalThis.URL = { createObjectURL: () => 'blob:1', revokeObjectURL: () => {} };
+  globalThis.document.createElement = () => ({ setAttribute(k, v) { this[k] = v; },
+                                               appendChild() {}, click() { saved.push(this.download); },
+                                               remove() {} });
+  globalThis.document.body.appendChild = () => {};
+  await downloadFrom('/api/sequences/1/export/genbank', 'fallback.gb');
+  assert.deepStrictEqual(requested, ['/api/sequences/1/export/genbank']);
+  assert.deepStrictEqual(saved, ['pX.gb'], 'saved under the filename the server gave');
+  console.log('download helper ok');
+})().catch((err) => { console.error(err); process.exit(1); });
