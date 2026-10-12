@@ -43,4 +43,11 @@ API.get('/api/auth/session', { allowAnonymous: true }).then((s) => {
     tab.title = 'Registration is closed on this server';
     tab.style.opacity = '.5';
   }
+  if (s.shared_accounts) {
+    // One account per person, across the suite.
+    const note = el('p', { class: 'hint', style: 'margin-bottom:1rem' },
+      'One lab account works in every tool: sign in with the same username and password as the ',
+      el('a', { href: '/parts' }, 'MoClo Library Tool'), ', and an account created here works there too.');
+    document.getElementById('alert').after(note);
+  }
 }).catch(() => {});

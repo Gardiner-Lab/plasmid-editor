@@ -2,9 +2,13 @@
  * SeqView - the scrolling sequence text map.
  *
  * Renders the sequence in wrapped blocks with, optionally, the complement
- * strand, a reading-frame translation, feature bars, restriction cut marks
- * and search highlights. Supports click and drag selection in sequence
- * coordinates, which the editor uses for every operation.
+ * strand, a reading-frame translation, feature bars, restriction cuts (drawn
+ * as a step across both strands, so the overhang shows) and search
+ * highlights. Supports click and drag selection in sequence coordinates,
+ * which the editor uses for every operation.
+ *
+ * Features and enzyme names answer one click (onFeatureClick, onSiteClick)
+ * and a double click (onFeatureDblClick, onSiteDblClick).
  */
 
 class SeqView {
@@ -28,6 +32,9 @@ class SeqView {
     this.highlights = [];        // [{start, end, class}]
     this.onSelect = null;
     this.onFeatureClick = null;
+    this.onFeatureDblClick = null;
+    this.onSiteClick = null;
+    this.onSiteDblClick = null;
     this.onCaret = null;
     this.onEdit = null;          // ({start, end, text}) => void, applied by the owner
     this._drag = null;
@@ -146,7 +153,21 @@ class SeqView {
     if (bar) {
       const f = this.doc.features.find((x) => x.id === bar.dataset.id);
       if (f) {
-        this.onFeatureClick?.(f);
+        e.preventDefault();
+        // The view re-renders between the two clicks, so a double click is
+        // read from the click count rather than a dblclick event.
+        if (e.detail >= 2) this.onFeatureDblClick?.(f);
+        else this.onFeatureClick?.(f);
+        return;
+      }
+    }
+    const label = e.target.closest('.site-label');
+    if (label) {
+      const site = this.sites[Number(label.dataset.site)];
+      if (site) {
+        e.preventDefault();
+        if (e.detail >= 2) this.onSiteDblClick?.(site);
+        else this.onSiteClick?.(site);
         return;
       }
     }
@@ -277,17 +298,6 @@ class SeqView {
     const features = this.opts.showFeatures ? this.doc.features : [];
     const { laneOf, laneCount } = this._laneAssign(features, n);
 
-    // Cut marks by position.
-    const cuts = new Map();
-    if (this.opts.showEnzymes) {
-      for (const s of this.sites) {
-        if (s.cut_top === null || s.cut_top === undefined) continue;
-        const list = cuts.get(s.cut_top) || [];
-        list.push(s.enzyme);
-        cuts.set(s.cut_top, list);
-      }
-    }
-
     const sel = this.selection;
     const selLen = this.selectionLength();
 
@@ -297,29 +307,9 @@ class SeqView {
       const block = el('div', { class: 'seqmap-block' });
       const rows = el('div', { class: 'seqmap-rows' });
 
-      // Enzyme row
       if (this.opts.showEnzymes) {
-        const labels = [];
-        for (let i = start; i < end; i++) {
-          const names = cuts.get(i);
-          if (names) labels.push({ col: i - start, text: names.join(',') });
-        }
-        if (labels.length) {
-          let line = ' '.repeat(len);
-          for (const l of labels) {
-            const t = l.text;
-            const at = Math.max(0, Math.min(len - 1, l.col));
-            line = line.slice(0, at) + t + line.slice(at + t.length);
-          }
-          const row = el('div', { class: 'seqmap-row enzyme', text: line.slice(0, Math.max(len, 1) + 20) });
-          for (const l of labels) {
-            row.appendChild(el('span', {
-              class: 'cut-mark',
-              style: `left:${l.col * this._charWidth()}px`,
-            }));
-          }
-          rows.appendChild(row);
-        }
+        const row = this._enzymeRow(start, end, n);
+        if (row) rows.appendChild(row);
       }
 
       // Bases with selection and highlight spans
@@ -338,9 +328,11 @@ class SeqView {
       }
       rows.appendChild(basesRow);
 
-      if (comp) {
-        rows.appendChild(el('div', { class: 'seqmap-row complement', text: comp.slice(start, end) }));
-      }
+      const compRow = comp
+        ? el('div', { class: 'seqmap-row complement', text: comp.slice(start, end) })
+        : null;
+      if (compRow) rows.appendChild(compRow);
+      if (this.opts.showEnzymes) this._drawCuts(basesRow, compRow, start, end, n, circular);
 
       if (this.opts.showTranslation) {
         rows.appendChild(this._translationRow(text, start, end, n));
@@ -379,6 +371,84 @@ class SeqView {
         '↻ circular'));
     }
     this.container.replaceChildren(frag);
+  }
+
+  /** Whether cut position c (the gap before base c) is drawn in this block. */
+  _cutInBlock(c, start, end, n) {
+    return c >= start && (c < end || (c === n && end === n));
+  }
+
+  /**
+   * Enzyme names over the block, each at its cut. Names that would collide
+   * step down onto another line rather than overwriting each other.
+   */
+  _enzymeRow(start, end, n) {
+    const labels = [];
+    this.sites.forEach((s, i) => {
+      const at = s.cut_top ?? s.start;
+      if (this._cutInBlock(at, start, end, n)) labels.push({ i, col: at - start, text: s.enzyme });
+    });
+    if (!labels.length) return null;
+    labels.sort((a, b) => a.col - b.col);
+    const cw = this._charWidth();
+    const lineEnds = [];
+    const row = el('div', { class: 'seqmap-row enzyme' });
+    for (const l of labels) {
+      let line = lineEnds.findIndex((used) => used <= l.col);
+      if (line === -1) { line = lineEnds.length; lineEnds.push(0); }
+      // Names are set smaller than the bases; measure them in base columns.
+      lineEnds[line] = l.col + Math.ceil(l.text.length * 0.87) + 1;
+      const s = this.sites[l.i];
+      row.appendChild(el('span', {
+        class: 'site-label',
+        style: `left:${l.col * cw}px;top:${line * 1.1}em`,
+        title: `${s.enzyme} site ${s.start + 1}..${s.end || n}. Click to highlight it, double-click for details.`,
+        'data-site': String(l.i),
+      }, l.text));
+    }
+    row.style.height = `${lineEnds.length * 1.1}em`;
+    return row;
+  }
+
+  /** The stretch between the two strands' cuts, split where it wraps the origin. */
+  _overhangSpans(ct, cb, n, circular) {
+    if (ct === cb) return [];
+    const lo = Math.min(ct, cb);
+    const hi = Math.max(ct, cb);
+    if (circular && hi - lo > n / 2) return [[hi, n], [0, lo]];
+    return [[lo, hi]];
+  }
+
+  /**
+   * Each cut as a step: down through the top strand at cut_top, along the
+   * overhang between the strands, and down through the bottom strand at
+   * cut_bottom. A blunt cut is a straight line through both.
+   */
+  _drawCuts(basesRow, compRow, start, end, n, circular) {
+    const cw = this._charWidth();
+    const lower = compRow || basesRow;
+    const lowerClass = compRow ? '' : ' no-comp';
+    for (const s of this.sites) {
+      const ct = s.cut_top;
+      const cb = s.cut_bottom;
+      if (ct === null || ct === undefined) continue;
+      if (this._cutInBlock(ct, start, end, n)) {
+        basesRow.appendChild(el('span', { class: 'cut-top', style: `left:${(ct - start) * cw}px` }));
+      }
+      if (cb === null || cb === undefined) continue;
+      if (this._cutInBlock(cb, start, end, n)) {
+        lower.appendChild(el('span', { class: `cut-bottom${lowerClass}`, style: `left:${(cb - start) * cw}px` }));
+      }
+      for (const [lo, hi] of this._overhangSpans(ct, cb, n, circular)) {
+        const a = Math.max(lo, start);
+        const b = Math.min(hi, end);
+        if (b <= a) continue;
+        lower.appendChild(el('span', {
+          class: `cut-overhang${lowerClass}`,
+          style: `left:${(a - start) * cw}px;width:${(b - a) * cw}px`,
+        }));
+      }
+    }
   }
 
   _inSelection(i, sel, selLen) {

@@ -2,6 +2,7 @@
 
 import os
 import re
+import sqlite3
 import uuid
 from typing import Any, Dict, List, Optional
 
@@ -86,6 +87,228 @@ class User:
         with get_connection() as conn:
             conn.execute('UPDATE users SET lab_source = ? WHERE id = ?', (lab_source.strip() or None, self.id))
         self.lab_source = lab_source.strip() or None
+
+
+# ---------------------------------------------------------------------------
+# Shared accounts
+# ---------------------------------------------------------------------------
+#
+# The MoClo Library Tool's user table is the suite's account directory: one
+# username and password works in every tool, and administrator status is set in
+# one place. An account registered here is created in that directory, and
+# accounts that only existed here are copied into it, so every account works
+# everywhere. A local row is kept as well so this app's own ownership
+# references still work.
+
+def shared_directory_path() -> str:
+    return os.environ.get('MOCLO_DATABASE_PATH', '/data/moclo.db')
+
+
+def _directory(write: bool = False) -> Optional[sqlite3.Connection]:
+    """Open the shared directory, or None when there is no readable users table."""
+    path = shared_directory_path()
+    if not os.path.exists(path):
+        return None
+    try:
+        if write:
+            conn = sqlite3.connect(path, timeout=10)
+            conn.execute('PRAGMA busy_timeout = 10000')
+        else:
+            conn = sqlite3.connect(f'file:{path}?mode=ro', uri=True, timeout=5)
+        conn.row_factory = sqlite3.Row
+        conn.execute('SELECT 1 FROM users LIMIT 1')
+        return conn
+    except sqlite3.Error:
+        return None
+
+
+def _shared_account(username: str) -> Optional[dict]:
+    """Look a username up in the shared directory, if there is one."""
+    if not username:
+        return None
+    conn = _directory()
+    if conn is None:
+        return None
+    try:
+        row = conn.execute('SELECT * FROM users WHERE username = ?', (username.strip(),)).fetchone()
+    except sqlite3.Error:
+        return None
+    finally:
+        conn.close()
+    if row is None:
+        return None
+    account = dict(row)
+    # Older MoClo releases have no is_admin column.
+    account['is_admin'] = bool(account.get('is_admin'))
+    return account
+
+
+def shared_directory_available() -> bool:
+    """True when the shared account directory can be read."""
+    conn = _directory()
+    if conn is None:
+        return False
+    conn.close()
+    return True
+
+
+def _insert_into_directory(conn: sqlite3.Connection, user_id: str, username: str,
+                           password_hash: str, is_admin: bool) -> bool:
+    """Add one account to the directory; False if the username is already there."""
+    if conn.execute('SELECT 1 FROM users WHERE username = ?', (username,)).fetchone():
+        return False
+    if conn.execute('SELECT 1 FROM users WHERE id = ?', (user_id,)).fetchone():
+        user_id = str(uuid.uuid4())
+    values = {'id': user_id, 'username': username, 'password_hash': password_hash,
+              'is_admin': 1 if is_admin else 0}
+    # Only write columns the directory has, so an older MoClo schema still works.
+    existing = {r['name'] for r in conn.execute('PRAGMA table_info(users)')}
+    columns = [c for c in values if c in existing]
+    conn.execute(f'INSERT INTO users ({", ".join(columns)}) '
+                 f'VALUES ({", ".join("?" for _ in columns)})',
+                 [values[c] for c in columns])
+    return True
+
+
+def _mirror(account: dict) -> 'User':
+    """
+    Keep a local row for a shared account, so sequences can still point at an
+    owner. Matching is by username: an existing local account keeps its own id,
+    and with it everything it already owns.
+    """
+    with get_connection() as conn:
+        row = conn.execute('SELECT * FROM users WHERE username = ?', (account['username'],)).fetchone()
+        if row is None:
+            uid = account['id']
+            if conn.execute('SELECT 1 FROM users WHERE id = ?', (uid,)).fetchone():
+                uid = str(uuid.uuid4())
+            conn.execute(
+                'INSERT INTO users (id, username, password_hash, lab_source, is_admin) '
+                'VALUES (?, ?, ?, ?, ?)',
+                (uid, account['username'], account['password_hash'], None,
+                 1 if account['is_admin'] else 0))
+        else:
+            # Track the directory, so a password or admin change there takes
+            # effect here too.
+            conn.execute('UPDATE users SET password_hash = ?, is_admin = ? WHERE id = ?',
+                         (account['password_hash'], 1 if account['is_admin'] else 0, row['id']))
+        row = conn.execute('SELECT * FROM users WHERE username = ?', (account['username'],)).fetchone()
+        return User._row(row)
+
+
+def register(username: str, password: str, lab_source: str = '') -> 'User':
+    """
+    Create an account. With a shared directory it is created there, so it works
+    in every tool; without one it is a local account, as before.
+    """
+    conn = _directory(write=True)
+    if conn is None:
+        return User.create(username, password, lab_source, is_admin=User.count() == 0)
+
+    try:
+        username = (username or '').strip()
+        if not USERNAME_RE.match(username):
+            raise ValueError('Username must be 3-32 characters: letters, digits, dot, dash or underscore')
+        if len(password or '') < MIN_PASSWORD_LENGTH:
+            raise ValueError(f'Password must be at least {MIN_PASSWORD_LENGTH} characters')
+        # A local name the directory does not know yet still belongs to someone.
+        if User.get_by_username(username) is not None:
+            raise ValueError('That username is already taken')
+        with conn:
+            first = conn.execute('SELECT COUNT(*) FROM users').fetchone()[0] == 0
+            if not _insert_into_directory(conn, str(uuid.uuid4()), username,
+                                          User.hash_password(password), first):
+                raise ValueError('That username is already taken')
+    except sqlite3.Error as exc:
+        raise ValueError('The shared account directory could not be updated; try again') from exc
+    finally:
+        conn.close()
+
+    user = _mirror(_shared_account(username))
+    if lab_source.strip():
+        user.set_lab_source(lab_source)
+    return user
+
+
+def share_local_accounts() -> int:
+    """
+    Copy accounts that exist only here into the shared directory, keeping their
+    id, password and administrator status. A username the directory already
+    has is left alone: the directory is authoritative for it. Returns how many
+    accounts were copied.
+    """
+    conn = _directory(write=True)
+    if conn is None:
+        return 0
+    copied = 0
+    try:
+        with conn:
+            for user in User.get_all():
+                if _insert_into_directory(conn, user.id, user.username, user.password_hash,
+                                          user.is_admin):
+                    copied += 1
+    except sqlite3.Error:
+        return 0
+    finally:
+        conn.close()
+    return copied
+
+
+def import_directory_accounts() -> int:
+    """
+    Give every account in the shared directory a local row, so people who
+    signed up in the MoClo tool are users here before they first sign in.
+    Returns how many accounts were new here.
+    """
+    conn = _directory()
+    if conn is None:
+        return 0
+    try:
+        accounts = [dict(r) for r in conn.execute('SELECT * FROM users')]
+    except sqlite3.Error:
+        return 0
+    finally:
+        conn.close()
+    added = 0
+    for account in accounts:
+        account['is_admin'] = bool(account.get('is_admin'))
+        if User.get_by_username(account['username']) is None:
+            added += 1
+        _mirror(account)
+    return added
+
+
+def sync_accounts() -> None:
+    """Make the editor's accounts and the shared directory hold the same people."""
+    share_local_accounts()
+    import_directory_accounts()
+
+
+def authenticate(username: str, password: str) -> Optional['User']:
+    """
+    Check a username and password against the shared directory first, then
+    against accounts that only exist here.
+
+    When a username exists in the shared directory, that directory is
+    authoritative: a stale local password cannot be used to sign in.
+    """
+    username = (username or '').strip()
+    account = _shared_account(username)
+    if account is not None:
+        try:
+            ok = bcrypt.checkpw((password or '').encode('utf-8'),
+                                account['password_hash'].encode('utf-8'))
+        except (ValueError, TypeError):
+            ok = False
+        return _mirror(account) if ok else None
+
+    user = User.get_by_username(username)
+    if user is not None and user.check_password(password or ''):
+        # The directory may have appeared since this account was made; share
+        # it now so it works in the other tools too.
+        share_local_accounts()
+        return user
+    return None
 
 
 def ensure_default_admin() -> Optional[str]:

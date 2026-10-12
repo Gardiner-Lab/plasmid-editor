@@ -482,7 +482,7 @@ def record_verification(link: str, doc: Dict[str, Any]) -> Optional[Dict[str, An
     when = (doc.get('confirmed_at') or '')[:10]
     clone = doc.get('confirmed_clone')
     stock = doc.get('glycerol_stock')
-    summary = 'Sequence confirmed'
+    summary = _VERIFICATION_PREFIX
     if when:
         summary += f' {when}'
     if clone:
@@ -513,6 +513,67 @@ def record_verification(link: str, doc: Dict[str, Any]) -> Optional[Dict[str, An
     finally:
         conn.close()
     return {'kind': kind, 'id': record_id, 'sequenced': summary}
+
+
+_VERIFICATION_PREFIX = 'Sequence confirmed'
+
+
+def clear_verification(link: str) -> Optional[Dict[str, Any]]:
+    """
+    Undo record_verification when a confirmation is withdrawn: clear the MoClo
+    record's "sequenced" field and the comment, but only where they still hold
+    the text the editor wrote, so anything entered in MoClo itself is kept.
+    """
+    parsed = parse_link(link)
+    if not parsed:
+        return None
+    kind, record_id = parsed
+    table, _, _ = _LINK_TABLES[kind]
+    path = _db_for(kind)
+    if not os.path.exists(path):
+        raise ContributionError('the shared MoClo database is not mounted on this server')
+
+    conn = _connect(path, read_only=False)
+    try:
+        if not _table_exists(conn, table):
+            raise ContributionError(f'the MoClo {table} table does not exist yet')
+        info = {r['name']: r for r in conn.execute(f'PRAGMA table_info({table})')}
+        fields = [c for c in ('sequenced', 'comments') if c in info]
+        if not fields:
+            return None
+        row = conn.execute(f'SELECT {", ".join(fields)} FROM {table} WHERE id = ?',
+                           (record_id,)).fetchone()
+        if row is None:
+            raise ContributionError(f'the linked MoClo {kind} no longer exists')
+        update: Dict[str, Any] = {}
+        for c in fields:
+            if (row[c] or '').startswith(_VERIFICATION_PREFIX):
+                update[c] = '' if info[c]['notnull'] else None
+        if update:
+            assignments = ', '.join(f'{c} = ?' for c in update)
+            conn.execute(f'UPDATE {table} SET {assignments} WHERE id = ?',
+                         [*update.values(), record_id])
+            conn.commit()
+    finally:
+        conn.close()
+    return {'kind': kind, 'id': record_id, 'cleared': sorted(update)}
+
+
+def clear_withdrawn(withdrawn: List[Dict[str, Any]]) -> Optional[str]:
+    """
+    Clear the MoClo status of plasmids whose confirmation was withdrawn. The
+    withdrawal itself stands either way; a problem reaching MoClo is returned
+    as a note for the user rather than raised.
+    """
+    note = None
+    for doc in withdrawn:
+        if not doc.get('moclo_link'):
+            continue
+        try:
+            clear_verification(doc['moclo_link'])
+        except ContributionError as exc:
+            note = f'MoClo still shows it as sequenced: {exc}'
+    return note
 
 
 def pull_from_moclo(link: str) -> Dict[str, Any]:

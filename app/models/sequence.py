@@ -10,6 +10,26 @@ from dnakit.model import normalize_document
 MAX_SEQUENCE_LENGTH = 2_000_000
 
 
+def withdraw_unsupported_confirmations(conn, sequence_id: Optional[str] = None) -> List[Dict[str, Any]]:
+    """
+    Clear confirmations that no read judged sufficient supports any more.
+    Returns the withdrawn plasmids' ids and MoClo links, so the caller can
+    clear the matching status in MoClo.
+    """
+    where = ("confirmed_at IS NOT NULL AND NOT EXISTS ("
+             "SELECT 1 FROM reads r WHERE r.sequence_id = sequences.id AND r.verdict = 'sufficient')")
+    args: List[Any] = []
+    if sequence_id is not None:
+        where += ' AND id = ?'
+        args.append(sequence_id)
+    withdrawn = [{'id': r['id'], 'moclo_link': r['moclo_link']}
+                 for r in conn.execute(f'SELECT id, moclo_link FROM sequences WHERE {where}', args)]
+    if withdrawn:
+        conn.execute(f'UPDATE sequences SET confirmed_at = NULL, confirmed_by = NULL WHERE {where}',
+                     args)
+    return withdrawn
+
+
 class StoredSequence:
     @staticmethod
     def _to_document(row) -> Dict[str, Any]:
@@ -70,7 +90,8 @@ class StoredSequence:
 
     @staticmethod
     def list_visible(user_id: str, search: str = '', golden_gate_only: bool = False,
-                     mine_only: bool = False) -> List[Dict[str, Any]]:
+                     mine_only: bool = False,
+                     with_sequenced: bool = False) -> List[Dict[str, Any]]:
         sql = ('SELECT id, name, length(sequence) AS length, circular, description, golden_gate, '
                'golden_gate_enzyme, moclo_part_id, moclo_link, owner_id, shared, origin, '
                'created_at, updated_at, confirmed_at, confirmed_by, confirmed_clone, '
@@ -82,7 +103,10 @@ class StoredSequence:
                " AND reads.verdict = 'insufficient') AS reads_bad, "
                '(SELECT MAX(created_at) FROM reads WHERE reads.sequence_id = sequences.id) '
                '  AS last_sequenced_at '
-               'FROM sequences WHERE (shared = 1 OR owner_id = ?)')
+               'FROM sequences WHERE (shared = 1 OR owner_id = ?'
+               + (' OR EXISTS (SELECT 1 FROM reads WHERE reads.sequence_id = sequences.id)'
+                  if with_sequenced else '')
+               + ')')
         args: List[Any] = [user_id]
         if mine_only:
             sql += ' AND owner_id = ?'
@@ -146,10 +170,21 @@ class StoredSequence:
     @staticmethod
     def confirm(sequence_id: str, username: str, glycerol_stock: str,
                 clone_number: Optional[str] = None) -> Optional[Dict[str, Any]]:
-        """Mark a plasmid as sequence-confirmed, recording the glycerol stock."""
+        """
+        Mark a plasmid as sequence-confirmed, recording the glycerol stock.
+
+        Only a plasmid with at least one read the user has judged sufficient
+        can be confirmed: the user's verdict is what the confirmation rests on.
+        """
         if not (glycerol_stock or '').strip():
             raise ValueError('A glycerol stock number is required to confirm a plasmid')
         with get_connection() as conn:
+            if not conn.execute(
+                    "SELECT 1 FROM reads WHERE sequence_id = ? AND verdict = 'sufficient' LIMIT 1",
+                    (sequence_id,)).fetchone():
+                if not conn.execute('SELECT 1 FROM sequences WHERE id = ?', (sequence_id,)).fetchone():
+                    return None
+                raise ValueError('Judge a sequencing read sufficient before confirming this plasmid')
             cur = conn.execute(
                 'UPDATE sequences SET confirmed_at = CURRENT_TIMESTAMP, confirmed_by = ?, '
                 'confirmed_clone = ?, glycerol_stock = ? WHERE id = ?',
@@ -158,6 +193,18 @@ class StoredSequence:
             if cur.rowcount == 0:
                 return None
         return StoredSequence.get(sequence_id)
+
+    @staticmethod
+    def withdraw_unsupported(sequence_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        """
+        Withdraw the confirmation of a plasmid that no longer has a read judged
+        sufficient (a verdict was changed or cleared, or the read deleted).
+        The glycerol stock and clone are kept, so confirming again later does
+        not mean typing them in again. Without an id, every plasmid is
+        checked. Returns the plasmids withdrawn, with their MoClo links.
+        """
+        with get_connection() as conn:
+            return withdraw_unsupported_confirmations(conn, sequence_id)
 
     @staticmethod
     def unconfirm(sequence_id: str) -> Optional[Dict[str, Any]]:

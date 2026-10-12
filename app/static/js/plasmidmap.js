@@ -2,7 +2,9 @@
  * Circular and linear plasmid maps as inline SVG.
  *
  * Features become arcs (or arrows, when linear) with leader-line labels;
- * restriction sites become tick marks. Clicking a feature calls onFeatureClick.
+ * restriction sites become tick marks. One click on a feature or an enzyme
+ * name calls onFeatureClick / onSiteClick; a double click calls
+ * onFeatureDblClick / onSiteDblClick.
  */
 
 const SVGNS = 'http://www.w3.org/2000/svg';
@@ -21,6 +23,9 @@ class PlasmidMap {
   constructor(container) {
     this.container = container;
     this.onFeatureClick = null;
+    this.onFeatureDblClick = null;
+    this.onSiteClick = null;
+    this.onSiteDblClick = null;
     this.doc = null;
     this.sites = [];
     this.selection = null;
@@ -68,9 +73,25 @@ class PlasmidMap {
 
   _attach(node, f) {
     node.classList.add('map-feature');
-    node.addEventListener('click', () => this.onFeatureClick?.(f));
+    // The map re-renders after the first click, so a double click is read
+    // from the click count rather than a dblclick event.
+    node.addEventListener('click', (e) => {
+      if (e.detail >= 2) this.onFeatureDblClick?.(f);
+      else this.onFeatureClick?.(f);
+    });
     node.appendChild(svgEl('title', {},
       `${f.name} (${f.type}) ${f.start + 1}..${f.end}${f.strand === -1 ? ' complement' : ''}`));
+    return node;
+  }
+
+  _attachSite(node, site) {
+    node.classList.add('map-site');
+    node.addEventListener('click', (e) => {
+      if (e.detail >= 2) this.onSiteDblClick?.(site);
+      else this.onSiteClick?.(site);
+    });
+    node.appendChild(svgEl('title', {},
+      `${site.enzyme} site ${site.start + 1}. Click to highlight it, double-click for details.`));
     return node;
   }
 
@@ -186,7 +207,7 @@ class PlasmidMap {
     // are pushed apart when neighbours would otherwise overlap.
     const siteByPos = new Map();
     for (const s of labelledSites) {
-      siteByPos.set(s.cut_top, (siteByPos.get(s.cut_top) || []).concat(s.enzyme));
+      siteByPos.set(s.cut_top, (siteByPos.get(s.cut_top) || []).concat(s));
     }
     const positions = [...siteByPos.keys()].sort((a, b) => a - b);
     const minGap = (n / 360) * 14;     // ~14 degrees between labels
@@ -203,10 +224,11 @@ class PlasmidMap {
       const labelR = r - (36 + tier * 16);
       const [lx, ly] = point(pos, labelR);
       const right = Math.cos(angle(pos)) >= 0;
-      svg.appendChild(svgEl('text', {
+      const here = siteByPos.get(pos);
+      svg.appendChild(this._attachSite(svgEl('text', {
         x: lx, y: ly, 'text-anchor': right ? 'start' : 'end', 'dominant-baseline': 'middle',
         'font-size': 9, fill: '#b45309',
-      }, `${siteByPos.get(pos).slice(0, 2).join(',')} ${pos + 1}`));
+      }, `${here.slice(0, 2).map((s) => s.enzyme).join(',')} ${pos + 1}`), here[0]));
       lastLabelled = pos;
     });
 
@@ -284,15 +306,15 @@ class PlasmidMap {
 
     const byPos = new Map();
     for (const s of this._labelSites(sites)) {
-      byPos.set(s.cut_top, (byPos.get(s.cut_top) || []).concat(s.enzyme));
+      byPos.set(s.cut_top, (byPos.get(s.cut_top) || []).concat(s));
     }
     let flip = 0;
-    for (const [pos, names] of byPos) {
+    for (const [pos, here] of byPos) {
       const y = 20 + (flip++ % 2) * 16;
       svg.appendChild(svgEl('line', { x1: x(pos), y1: y + 8, x2: x(pos), y2: axisY - 8,
         stroke: '#b45309', 'stroke-width': 1 }));
-      svg.appendChild(svgEl('text', { x: x(pos), y, 'text-anchor': 'middle', 'font-size': 9,
-        fill: '#b45309' }, `${names[0]} ${pos + 1}`));
+      svg.appendChild(this._attachSite(svgEl('text', { x: x(pos), y, 'text-anchor': 'middle',
+        'font-size': 9, fill: '#b45309' }, `${here[0].enzyme} ${pos + 1}`), here[0]));
     }
 
     svg.appendChild(svgEl('text', { x: padX, y: height - 8, 'font-size': 11, fill: '#6b7280' },

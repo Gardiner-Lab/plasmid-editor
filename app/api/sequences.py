@@ -27,6 +27,30 @@ def _owned_or_404(sequence_id, user, for_write=False):
     return doc, None
 
 
+def _sequencing_viewable_or_404(sequence_id, user):
+    """
+    Sequencing results (reads and their alignments) are open to every
+    signed-in user, private plasmids included, so anyone in the lab can check
+    a construct. Changing them stays with the owner.
+    """
+    doc = StoredSequence.get(sequence_id)
+    if doc is None:
+        return None, (jsonify({'error': 'Sequence not found'}), 404)
+    # A private plasmid with no reads has no alignment to show, so it stays
+    # private here too.
+    if not doc['shared'] and not _can_change(doc, user) and not Read.list_for(sequence_id):
+        return None, (jsonify({'error': 'This sequence is private'}), 403)
+    return doc, None
+
+
+def _can_change(doc, user) -> bool:
+    return doc['owner_id'] == user.id or user.is_admin
+
+
+def _can_add_reads(doc, user) -> bool:
+    return doc['shared'] or _can_change(doc, user)
+
+
 @sequences_bp.route('/parse', methods=['POST'])
 @require_auth
 def parse_upload(user):
@@ -58,7 +82,10 @@ def list_sequences(user):
         user.id,
         search=request.args.get('search', ''),
         golden_gate_only=request.args.get('golden_gate') == 'true',
-        mine_only=request.args.get('mine') == 'true')}), 200
+        mine_only=request.args.get('mine') == 'true',
+        # The sequencing page also lists other people's private plasmids that
+        # have reads, since their alignments are open to everyone.
+        with_sequenced=request.args.get('sequencing') == 'true')}), 200
 
 
 @sequences_bp.route('', methods=['POST'])
@@ -322,7 +349,7 @@ def contribute_to_moclo(user, sequence_id):
 @sequences_bp.route('/<sequence_id>/reads', methods=['GET'])
 @require_auth
 def list_reads(user, sequence_id):
-    _, err = _owned_or_404(sequence_id, user)
+    _, err = _sequencing_viewable_or_404(sequence_id, user)
     if err:
         return err
     return jsonify({'reads': Read.list_for(sequence_id)}), 200
@@ -410,10 +437,15 @@ def set_read_verdict(user, read_id):
                                    data.get('note'), data.get('clone_number'))
     except ValueError as exc:
         return jsonify({'error': str(exc)}), 400
+    withdrawn = StoredSequence.withdraw_unsupported(read['sequence_id'])
+    moclo_note = moclo_bridge.clear_withdrawn(withdrawn)
     return jsonify({
         'read': updated,
         # The caller asks for a glycerol stock and then calls /confirm.
         'needs_confirmation': (updated['verdict'] == 'sufficient' and not doc['confirmed']),
+        # No read judged sufficient is left, so the plasmid is no longer confirmed.
+        'confirmation_withdrawn': bool(withdrawn),
+        'moclo_note': moclo_note,
         'sequence': StoredSequence.get(read['sequence_id']),
     }), 200
 
@@ -451,13 +483,15 @@ def confirm_sequence(user, sequence_id):
 @sequences_bp.route('/<sequence_id>/confirm', methods=['DELETE'])
 @require_auth
 def unconfirm_sequence(user, sequence_id):
-    _, err = _owned_or_404(sequence_id, user, for_write=True)
+    doc, err = _owned_or_404(sequence_id, user, for_write=True)
     if err:
         return err
     updated = StoredSequence.unconfirm(sequence_id)
     if updated is None:
         return jsonify({'error': 'Sequence not found'}), 404
-    return jsonify({'sequence': updated}), 200
+    # MoClo was told it was sequenced when it was confirmed; take that back.
+    moclo_note = (moclo_bridge.clear_withdrawn([doc]) if doc['confirmed'] else None)
+    return jsonify({'sequence': updated, 'moclo_note': moclo_note}), 200
 
 
 @sequences_bp.route('/<sequence_id>/sequencing', methods=['GET'])
@@ -465,18 +499,24 @@ def unconfirm_sequence(user, sequence_id):
 def sequencing_history(user, sequence_id):
     """
     Everything known about how this plasmid has been sequenced: every read,
-    its clone, its verdict and its discrepancies.
+    its clone, its verdict and its discrepancies. Open to every signed-in
+    user; the plasmid's bases are included because an alignment shows them.
     """
-    doc, err = _owned_or_404(sequence_id, user)
+    doc, err = _sequencing_viewable_or_404(sequence_id, user)
     if err:
         return err
     reads = Read.list_for(sequence_id)
     for r in reads:
         diffs = (r.get('alignment') or {}).get('differences') or []
         r['difference_count'] = len(diffs)
+    sequence = {k: doc[k] for k in ('id', 'name', 'sequence', 'circular', 'shared', 'confirmed',
+                                    'confirmed_at', 'confirmed_by', 'confirmed_clone',
+                                    'glycerol_stock')}
+    sequence.update(feature_count=len(doc.get('features') or []),
+                    can_change=_can_change(doc, user),
+                    can_add_reads=_can_add_reads(doc, user))
     return jsonify({
-        'sequence': {k: doc[k] for k in ('id', 'name', 'confirmed', 'confirmed_at', 'confirmed_by',
-                                         'confirmed_clone', 'glycerol_stock')},
+        'sequence': sequence,
         'reads': reads,
         'clones': sorted({r['clone_number'] for r in reads if r.get('clone_number')}),
         'summary': {
@@ -495,7 +535,7 @@ def get_read(user, read_id):
     read = Read.get(read_id, include_trace=request.args.get('trace') == 'true')
     if read is None:
         return jsonify({'error': 'Read not found'}), 404
-    _, err = _owned_or_404(read['sequence_id'], user)
+    _, err = _sequencing_viewable_or_404(read['sequence_id'], user)
     if err:
         return err
     return jsonify({'read': read}), 200
@@ -511,4 +551,6 @@ def delete_read(user, read_id):
     if err:
         return err
     Read.delete(read_id)
-    return jsonify({'ok': True}), 200
+    withdrawn = StoredSequence.withdraw_unsupported(read['sequence_id'])
+    return jsonify({'ok': True, 'confirmation_withdrawn': bool(withdrawn),
+                    'moclo_note': moclo_bridge.clear_withdrawn(withdrawn)}), 200

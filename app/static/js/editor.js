@@ -22,12 +22,18 @@ const Editor = {
     this.map = new PlasmidMap(document.getElementById('mapPane'));
     this.view.onSelect = () => this.refreshStats();
     this.view.onCaret = () => this.refreshStats();
-    this.view.onFeatureClick = (f) => this.editFeature(f);
+    // One click on a feature or an enzyme name highlights its bases; a double
+    // click opens the feature's settings or the enzyme's details.
+    for (const pane of [this.view, this.map]) {
+      pane.onFeatureClick = (f) => this.selectRange({ start: f.start, end: f.end });
+      pane.onFeatureDblClick = (f) => this.editFeature(f);
+      pane.onSiteClick = (site) => this.selectRange({ start: site.start, end: site.end });
+      pane.onSiteDblClick = (site) => this.showSite(site);
+    }
     // Typing, Backspace and Delete in the sequence view land here.
     this.view.onEdit = ({ start, end, text }) => {
       this.replaceRange({ start, end }, text, { collapse: true });
     };
-    this.map.onFeatureClick = (f) => this.editFeature(f);
 
     this.bindToolbar();
     this.bindPanels();
@@ -730,8 +736,8 @@ const Editor = {
       class: 'item',
       onclick: (ev) => {
         if (ev.target.closest('button')) return;
-        this.view.setSelection({ start: f.start, end: f.end });
-        this.scrollToPosition(f.start);
+        if (ev.detail >= 2) this.editFeature(f);
+        else this.selectRange({ start: f.start, end: f.end });
       },
     },
       el('span', { class: 'item-name' },
@@ -844,6 +850,13 @@ const Editor = {
     });
   },
 
+  /** Select a range and bring it into view in whichever pane is showing. */
+  selectRange(range) {
+    this.view.setSelection(range);
+    if (!document.getElementById('mapPane').hidden) this.map.render(this.doc, this.sites, range);
+    else this.scrollToPosition(range.start);
+  },
+
   scrollToPosition(pos) {
     const width = this.view.opts.width;
     const blocks = document.querySelectorAll('.seqmap-block');
@@ -883,17 +896,18 @@ const Editor = {
     const filter = document.getElementById('enzymeFilter').value.trim().toLowerCase();
     const showNon = document.getElementById('chkNonCutters').checked;
     const byEnzyme = new Map();
-    for (const s of this.sites) {
-      byEnzyme.set(s.enzyme, (byEnzyme.get(s.enzyme) || []).concat(s.cut_top ?? s.start));
-    }
+    for (const s of this.sites) byEnzyme.set(s.enzyme, (byEnzyme.get(s.enzyme) || []).concat(s));
     const rows = [];
-    for (const [enzyme, positions] of [...byEnzyme].sort((a, b) => a[0].localeCompare(b[0]))) {
+    for (const [enzyme, sites] of [...byEnzyme].sort((a, b) => a[0].localeCompare(b[0]))) {
       if (filter && !enzyme.toLowerCase().includes(filter)) continue;
+      const positions = sites.map((s) => s.cut_top ?? s.start);
       rows.push(el('tr', {
         style: 'cursor:pointer',
-        onclick: () => {
-          this.view.setHighlights(positions.map((p) => ({ start: p, end: p + 1, class: 'hit' })));
-          this.scrollToPosition(positions[0]);
+        title: 'Click to highlight the recognition sites, double-click for details',
+        onclick: (ev) => {
+          if (ev.detail >= 2) { this.showSite(sites[0]); return; }
+          this.view.setHighlights(sites.map((s) => ({ start: s.start, end: s.end, class: 'site-hit' })));
+          this.scrollToPosition(sites[0].start);
         },
       },
         el('td', { text: enzyme }),
@@ -910,6 +924,67 @@ const Editor = {
     }
     document.getElementById('enzymeRows').replaceChildren(
       ...(rows.length ? rows : [el('tr', {}, el('td', { colspan: '3', class: 'empty' }, 'No sites found.'))]));
+  },
+
+  /** The overhang a site leaves: its kind and the top-strand bases between the cuts. */
+  siteOverhang(site) {
+    const seq = this.doc.sequence;
+    const n = seq.length;
+    const ct = site.cut_top;
+    const cb = site.cut_bottom;
+    if (ct === null || ct === undefined || cb === null || cb === undefined) return null;
+    if (ct === cb) return { kind: 'blunt', bases: '' };
+    // Distance from the top-strand cut forward to the bottom-strand cut; on a
+    // circle the shorter way round is the overhang.
+    const ahead = this.doc.circular ? (cb - ct + n) % n : cb - ct;
+    const fivePrime = this.doc.circular ? ahead < n / 2 : ahead > 0;
+    const [a, b] = fivePrime ? [ct, cb] : [cb, ct];
+    const bases = a <= b ? seq.slice(a, b) : seq.slice(a) + seq.slice(0, b);
+    return { kind: fivePrime ? "5′ overhang" : "3′ overhang", bases: bases.toUpperCase() };
+  },
+
+  /** Details of one restriction site and its enzyme. */
+  async showSite(site) {
+    const doc = this.doc;
+    if (!doc) return;
+    const n = doc.sequence.length;
+    let info = null;
+    try {
+      info = await API.get(`/api/tools/enzymes/${encodeURIComponent(site.enzyme)}`);
+    } catch (err) {
+      // The site itself is still worth showing without the REBASE details.
+    }
+    const end = site.end || n;
+    const recognition = site.end > site.start || !doc.circular
+      ? doc.sequence.slice(site.start, end)
+      : doc.sequence.slice(site.start) + doc.sequence.slice(0, site.end);
+    const overhang = this.siteOverhang(site);
+    const count = this.sites.filter((s) => s.enzyme === site.enzyme).length;
+    const row = (label, value) => el('tr', {}, el('th', { text: label }), el('td', {}, value));
+    modal({
+      title: site.enzyme,
+      build: (body) => body.append(el('table', {},
+        row('Recognition site', el('span', { class: 'mono', text: info ? info.elucidate : recognition.toUpperCase() })),
+        row('This site', `${fmt(site.start + 1)}–${fmt(end)}, ${site.strand === -1 ? 'reverse' : 'forward'} strand`),
+        row('Bound sequence', el('span', { class: 'mono', text: recognition.toUpperCase() })),
+        row('Cuts', site.cut_top === null || site.cut_top === undefined
+          ? 'Outside the sequence'
+          : `top strand after ${fmt(site.cut_top)}, bottom strand after ${fmt(site.cut_bottom ?? site.cut_top)}`),
+        row('Ends', overhang
+          ? (overhang.bases ? overhang.kind : 'Blunt')
+          : (info ? info.ends : '—')),
+        overhang && overhang.bases
+          ? row('Overhang', el('span', { class: 'mono', text: overhang.bases }))
+          : null,
+        row('Sites in this sequence', String(count)),
+        info && info.suppliers.length ? row('Suppliers', info.suppliers.join(', ')) : null,
+      )),
+      buttons: [
+        { label: 'Highlight site', kind: 'secondary',
+          onClick: () => this.selectRange({ start: site.start, end: site.end }) },
+        { label: 'Close' },
+      ],
+    });
   },
 
   /* --- find ------------------------------------------------------------- */

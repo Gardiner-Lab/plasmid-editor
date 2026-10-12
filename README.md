@@ -64,11 +64,15 @@ re-implemented independently; see [Attribution](#attribution).
 - Judge each alignment **sufficient** or **not sufficient**; the judgement, who made it and
   any note are kept with the read and survive re-alignment
 - A sufficient alignment marks the plasmid **✓ confirmed and sequenced**, prompting for the
-  **glycerol stock number** it will be kept as
+  **glycerol stock number** it will be kept as. Only a plasmid with an alignment judged
+  sufficient can be confirmed, and it stops being confirmed if that judgement is changed,
+  cleared or its read removed
+- Alignments are **open to everyone signed in**, private plasmids included; only the owner
+  (or an admin) adds reads to a private plasmid, judges alignments and confirms
 - The sequence library shows the green check, the read count and how many alignments passed,
   linking straight to the alignments for that plasmid
 - For a plasmid linked to MoClo, confirmation is written into the MoClo record's own
-  `sequenced` field
+  `sequenced` field, and cleared from it again when the confirmation is withdrawn
 
 ### Shared with the MoClo Library Tool
 - Browse the MoClo tool's **parts, backbones and assembled plasmids** and open them here
@@ -114,11 +118,18 @@ Without the shared library — the MoClo browsing and contribution features hide
 SECRET_KEY=$(openssl rand -hex 32) docker compose -f docker-compose.standalone.yml up -d
 ```
 
-### First account
+### Accounts
 
-Self-registration is open by default, and the **first account created becomes the admin**.
-Alternatively set `ADMIN_USERNAME` and `ADMIN_PASSWORD` to create it automatically on an
-empty database, then set `ALLOW_REGISTRATION=false` to close registration.
+When the MoClo database is mounted (`MOCLO_DATABASE_PATH`), accounts are **shared with the
+MoClo Library Tool**: an account created in either tool works in both, with the same username
+and password, and administrator status comes from MoClo. Accounts made here before sharing
+was set up are copied across automatically, and accounts in an existing MoClo instance
+become users here when the editor starts. See
+[docs/SHARED_DATABASE.md](docs/SHARED_DATABASE.md#shared-accounts).
+
+Running standalone, self-registration is open by default, and the **first account created
+becomes the admin**. Alternatively set `ADMIN_USERNAME` and `ADMIN_PASSWORD` to create it
+automatically on an empty database, then set `ALLOW_REGISTRATION=false` to close registration.
 
 ### Automatic updates
 

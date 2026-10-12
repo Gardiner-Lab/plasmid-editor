@@ -62,10 +62,20 @@ def create_app() -> Flask:
             os.environ.get('SESSION_COOKIE_SECURE', 'true').lower() not in ('0', 'false', 'no'))
 
     from app.models import initialize_database
-    from app.models.user import ensure_default_admin
+    from app.models.sequence import StoredSequence
+    from app.models.user import ensure_default_admin, sync_accounts
+    from app.services import moclo_bridge
     initialize_database(os.environ.get('EDITOR_DATABASE_PATH', '/data/plasmid_editor.db'))
+    # A plasmid counts as sequenced only while a read the user judged
+    # sufficient backs it; clear any confirmation made before that rule, here
+    # and in MoClo.
+    moclo_bridge.clear_withdrawn(StoredSequence.withdraw_unsupported())
     if not os.environ.get('EDITOR_SKIP_SEED'):
         ensure_default_admin()
+    # Accounts made here before the lab tools shared them go into the shared
+    # directory, and accounts already in that directory (an existing MoClo
+    # instance) become users here, so every account works in every tool.
+    sync_accounts()
 
     @app.context_processor
     def inject_globals():

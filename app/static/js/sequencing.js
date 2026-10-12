@@ -35,7 +35,7 @@ const Sequencing = {
     });
 
     try {
-      const { sequences } = await API.get('/api/sequences');
+      const { sequences } = await API.get('/api/sequences?sequencing=true');
       this.sequences = sequences;
       this.combo.setItems(sequences);
       const preset = new URLSearchParams(location.search).get('sequence');
@@ -52,7 +52,7 @@ const Sequencing = {
   /** Keep the picker's metadata (read counts, green check) current. */
   async refreshList() {
     try {
-      const { sequences } = await API.get('/api/sequences');
+      const { sequences } = await API.get('/api/sequences?sequencing=true');
       this.sequences = sequences;
       this.combo.setItems(sequences);
       const current = sequences.find((s) => s.id === this.reference?.id);
@@ -72,21 +72,35 @@ const Sequencing = {
       return;
     }
     try {
-      const { sequence } = await API.get(`/api/sequences/${id}`);
+      // Alignments are open to everyone, so this goes through the sequencing
+      // view rather than the plasmid itself, which may be private.
+      const { sequence, reads } = await API.get(`/api/sequences/${id}/sequencing`);
       const changed = this.reference?.id !== sequence.id;
       this.reference = sequence;
-      this.reads = sequence.reads || [];
+      this.reads = reads || [];
       // Re-point at the refreshed copy of the same read, or drop the selection
       // when a different plasmid is chosen.
       this.activeRead = changed ? null
         : this.reads.find((r) => r.id === this.activeRead?.id) || null;
       document.getElementById('refInfo').textContent =
-        `${fmt(sequence.sequence.length)} bp, ${sequence.circular ? 'circular' : 'linear'}, ${sequence.features.length} features`;
+        `${fmt(sequence.sequence.length)} bp, ${sequence.circular ? 'circular' : 'linear'}, ${sequence.feature_count} features`
+        + (sequence.can_change ? '' : ' · view only: the owner uploads, judges and confirms');
+      this.applyPermissions();
       this.renderReads();
       this.renderVerification();
     } catch (err) {
       toast(err.message, 'error');
     }
+  },
+
+  /** Hide what only the owner (or an admin) may do; viewing stays open to all. */
+  applyPermissions() {
+    const seq = this.reference;
+    const canAdd = !seq || seq.can_add_reads;
+    for (const id of ['cloneNumber', 'readLabel']) {
+      document.getElementById(id).closest('.field, label').hidden = !canAdd;
+    }
+    document.getElementById('btnRealign').hidden = !!seq && !seq.can_change;
   },
 
   async upload(files) {
@@ -157,7 +171,9 @@ const Sequencing = {
               text: `${diffs} diff${diffs === 1 ? '' : 's'}` })
               : el('span', { class: 'badge badge-gg', text: 'clean' }),
           r.has_trace ? el('span', { class: 'badge', text: 'trace' }) : null,
-          el('button', { class: 'tool-btn', title: 'Remove read', onclick: () => this.remove(r) }, '🗑')));
+          this.reference?.can_change
+            ? el('button', { class: 'tool-btn', title: 'Remove read', onclick: () => this.remove(r) }, '🗑')
+            : null));
     }));
     this.renderCoverage();
   },
@@ -211,10 +227,20 @@ const Sequencing = {
       + (a.ref_end > a.ref_start ? '' : ', across the origin');
   },
 
+  /** Say so when the last sufficient verdict went and took the confirmation with it. */
+  noteWithdrawn(res) {
+    if (res?.confirmation_withdrawn) {
+      toast('No read is judged sufficient any more, so the plasmid is no longer confirmed as sequenced',
+            'info', 6000);
+    }
+    if (res?.moclo_note) toast(res.moclo_note, 'error', 8000);
+  },
+
   async remove(read) {
     if (!await confirmDialog('Remove read', `Remove “${read.name}”?`, 'Remove')) return;
     try {
-      await API.del(`/api/sequences/reads/${read.id}`);
+      const res = await API.del(`/api/sequences/reads/${read.id}`);
+      this.noteWithdrawn(res);
       if (this.activeRead?.id === read.id) {
         this.activeRead = null;
         document.getElementById('traceCard').hidden = true;
@@ -272,6 +298,14 @@ const Sequencing = {
 
   /** Judge this alignment, and record the clone it came from. */
   verdictBar(read) {
+    if (!this.reference?.can_change) {
+      return el('div', { class: 'hint', style: 'margin:.5rem 0 .75rem' },
+        read.clone_number ? `Clone ${read.clone_number} · ` : '',
+        read.verdict
+          ? `${read.verdict === 'sufficient' ? '✓ sufficient' : '✗ not sufficient'}`
+            + (read.verdict_by ? ` (judged by ${read.verdict_by})` : '')
+          : 'Not judged yet');
+    }
     const clone = el('input', {
       type: 'text', value: read.clone_number || '', placeholder: 'clone',
       style: 'width:6rem', title: 'Which colony this read came from',
@@ -285,6 +319,7 @@ const Sequencing = {
         const updated = this.reads.find((r) => r.id === read.id);
         if (updated) await this.showRead(updated);
         if (res.needs_confirmation) this.askGlycerolStock(clone.value || read.clone_number);
+        else if (res.confirmation_withdrawn) this.noteWithdrawn(res);
         else toast(verdict === 'sufficient' ? 'Marked sufficient' : 'Marked not sufficient',
                    'success', 2500);
       } catch (err) {
@@ -308,7 +343,8 @@ const Sequencing = {
         ? el('button', {
             class: 'tool-btn', title: 'Clear this judgement',
             onclick: async () => {
-              await API.post(`/api/sequences/reads/${read.id}/verdict`, { verdict: null });
+              const res = await API.post(`/api/sequences/reads/${read.id}/verdict`, { verdict: null });
+              this.noteWithdrawn(res);
               await this.selectReference(this.reference.id);
             },
           }, 'clear')
@@ -330,11 +366,12 @@ const Sequencing = {
             ' can be marked as confirmed and sequenced.'),
           el('div', { class: 'field' },
             el('label', { for: 'glyStock' }, 'Glycerol stock number'),
-            el('input', { type: 'text', id: 'glyStock', placeholder: 'e.g. GS-2026-041' }),
+            el('input', { type: 'text', id: 'glyStock', placeholder: 'e.g. GS-2026-041',
+              value: seq.glycerol_stock || '' }),
             el('span', { class: 'hint' }, 'Recorded with the plasmid so the stock can be found later.')),
           el('div', { class: 'field' },
             el('label', { for: 'glyClone' }, 'Confirmed clone'),
-            el('input', { type: 'text', id: 'glyClone', value: clone || '' })));
+            el('input', { type: 'text', id: 'glyClone', value: clone || seq.confirmed_clone || '' })));
         setTimeout(() => body.querySelector('#glyStock')?.focus(), 0);
       },
       buttons: [
@@ -384,22 +421,26 @@ const Sequencing = {
         seq.confirmed_clone ? ` · clone ${seq.confirmed_clone}` : '',
         seq.confirmed_by ? ` · confirmed by ${seq.confirmed_by}` : '',
         seq.confirmed_at ? ` on ${String(seq.confirmed_at).slice(0, 16)}` : ''));
-      parts.push(el('div', { class: 'btn-group', style: 'margin-top:.4rem' },
+      if (seq.can_change) parts.push(el('div', { class: 'btn-group', style: 'margin-top:.4rem' },
         el('button', {
           class: 'btn btn-sm btn-secondary',
           onclick: async () => {
             if (!await confirmDialog('Withdraw confirmation',
               `Mark ${seq.name} as no longer confirmed? The reads and their judgements stay.`,
               'Withdraw')) return;
-            await API.del(`/api/sequences/${seq.id}/confirm`);
+            const res = await API.del(`/api/sequences/${seq.id}/confirm`);
             await this.selectReference(seq.id);
+            this.refreshList();
             toast('Confirmation withdrawn', 'success');
+            if (res.moclo_note) toast(res.moclo_note, 'error', 8000);
           },
         }, 'Withdraw confirmation')));
     } else {
-      parts.push(el('div', {}, this.reads.length
-        ? 'Judge an alignment sufficient to confirm this plasmid.'
-        : 'No reads yet.'));
+      parts.push(el('div', {}, !this.reads.length
+        ? 'No reads yet.'
+        : seq.can_change
+          ? 'Judge an alignment sufficient to confirm this plasmid.'
+          : 'Not confirmed yet; the owner judges the alignments.'));
     }
     parts.push(el('div', { class: 'hint', style: 'margin-top:.35rem' },
       `${this.reads.length} read(s) · ${ok} sufficient · ${bad} not sufficient · `

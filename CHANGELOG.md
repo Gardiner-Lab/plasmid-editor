@@ -7,6 +7,17 @@ and the project uses [semantic versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Sequencing alignments are open to everyone signed in**, private plasmids included,
+  so anyone in the lab can check a construct's reads, alignments and traces on the
+  Sequencing page. Uploading reads, judging alignments and confirming stay with the
+  plasmid's owner (and admins), and their controls are hidden for viewers. The
+  plasmid itself stays private everywhere else.
+- **Shared accounts with the MoClo Library Tool.** When the MoClo database is mounted,
+  every account lives in MoClo's user directory: an account registered in either tool
+  works in both, and administrator status comes from MoClo. Accounts that existed only
+  here are copied across on startup and keep everything they own, and accounts in an
+  existing MoClo instance become editor users at the same time. Without MoClo, local
+  accounts work as before.
 - **Direct sequence typing.** The sequence view is a focusable text field: click
   to place a cursor, then type A/C/G/T (and other IUPAC codes) to insert, or use
   Backspace and Delete. Arrow keys, Home, End, Page Up/Down and shift-select
@@ -20,6 +31,14 @@ and the project uses [semantic versioning](https://semver.org/).
 - An "Unsaved changes" badge in the editor header.
 
 ### Fixed
+- A plasmid could be marked "Sequenced" without any read judged sufficient. Confirming
+  now requires a sufficient verdict, and the confirmation is withdrawn automatically
+  when the last sufficient verdict is changed, cleared or its read deleted (the
+  glycerol stock and clone are kept for re-confirming). Older confirmations with no
+  sufficient read are cleared on start-up.
+- Withdrawing a confirmation, by hand or automatically, left MoClo showing the plasmid as
+  sequenced. The "Sequence confirmed" status the editor wrote is now cleared from the
+  linked MoClo record as well; text entered in MoClo itself is left alone.
 - A collapsed selection (a bare cursor) was measured as the whole sequence, so the
   statistics line read "Selection 18-17 (129 bp)" and Ctrl+C would have copied the
   entire sequence instead of nothing.

@@ -9,12 +9,14 @@ from typing import Any, Callable, Optional
 
 from flask import jsonify, session
 
-from app.models.user import User
+from app.models.user import User, authenticate
 
 
 def login(username: str, password: str) -> Optional[User]:
-    user = User.get_by_username((username or '').strip())
-    if user is None or not user.check_password(password or ''):
+    # Credentials are checked against the suite's shared account directory
+    # first, so one account works across the tools.
+    user = authenticate(username, password)
+    if user is None:
         return None
     session.clear()
     session['user_id'] = user.id

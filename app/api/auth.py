@@ -4,7 +4,7 @@ import os
 
 from flask import Blueprint, jsonify, request
 
-from app.models.user import User
+from app.models.user import register as register_account, shared_directory_available
 from app.services import auth as auth_service
 
 auth_bp = Blueprint('auth', __name__)
@@ -19,10 +19,11 @@ def register():
     if not _registration_open():
         return jsonify({'error': 'Registration is closed on this server'}), 403
     data = request.get_json(silent=True) or {}
+    # With a shared account directory, the account is created there and works
+    # in every lab tool.
     try:
-        user = User.create(data.get('username', ''), data.get('password', ''),
-                           data.get('lab_source', '') or os.environ.get('DEFAULT_LAB_SOURCE', ''),
-                           is_admin=User.count() == 0)
+        user = register_account(data.get('username', ''), data.get('password', ''),
+                                data.get('lab_source', '') or os.environ.get('DEFAULT_LAB_SOURCE', ''))
     except ValueError as exc:
         return jsonify({'error': str(exc)}), 400
     auth_service.login(data.get('username', ''), data.get('password', ''))
@@ -47,8 +48,10 @@ def logout():
 @auth_bp.route('/session', methods=['GET'])
 def session_status():
     user = auth_service.current_user()
+    shared = shared_directory_available()
     return jsonify({'authenticated': user is not None,
                     'user': user.to_dict() if user else None,
+                    'shared_accounts': shared,
                     'registration_open': _registration_open()}), 200
 
 

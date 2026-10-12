@@ -13,11 +13,14 @@ is entirely on the editor's side.
 | Database | Path in the editor container | Editor access |
 | --- | --- | --- |
 | MoClo parts (`parts.db`) | `PARTS_DATABASE_PATH`, e.g. `/moclo/parts.db` | read + **insert new parts** |
-| MoClo main (`moclo.db`) | `MOCLO_DATABASE_PATH`, e.g. `/moclo/moclo.db` | read only |
+| MoClo main (`moclo.db`) | `MOCLO_DATABASE_PATH`, e.g. `/moclo/moclo.db` | read only, except **creating accounts** in `users` |
 | Editor's own (`plasmid_editor.db`) | `EDITOR_DATABASE_PATH`, e.g. `/data/plasmid_editor.db` | full |
 
-Both MoClo databases are opened **read-only** (SQLite URI `mode=ro`) for every operation
-except contributing a part, which is the one write the editor performs.
+Both MoClo databases are opened **read-only** (SQLite URI `mode=ro`) except for the writes
+the editor makes on purpose: contributing a part, saving edits to a linked MoClo record,
+creating an account, and setting or clearing a linked record's `sequenced` status when a
+plasmid is confirmed or its confirmation withdrawn. Clearing touches only text the editor
+wrote (it starts "Sequence confirmed"), so a value entered in MoClo is kept.
 
 If the paths do not exist, the shared features disappear from the interface and the rest of
 the editor works normally. `GET /health` reports what the container can see:
@@ -25,6 +28,37 @@ the editor works normally. `GET /health` reports what the container can see:
 ```json
 {"status": "healthy", "version": "0.1.0", "moclo": {"parts": true, "plasmids": false}}
 ```
+
+## Shared accounts
+
+The `users` table in `moclo.db` is the suite's account directory. Every account lives there,
+so one username and password works in both tools, and administrator status is set in one
+place. The code is in `app/models/user.py`.
+
+- **Registering here** creates the account in the directory (a new row with a bcrypt hash,
+  `is_admin = 0`, or `1` if the directory was empty), then signs the person in. The editor's
+  username and password rules apply, and a name already in the directory, or already used
+  locally, is refused.
+- **Signing in** checks the directory first. If the username exists there, the directory's
+  hash decides; a stale local password for the same name cannot be used. Signing in never
+  writes to the directory.
+- **Accounts made here before sharing** are copied into the directory on startup, and again
+  when one signs in (in case the MoClo database appeared later). They keep their id, password
+  and administrator status. A username the directory already has is left alone: the
+  directory account wins, and the local person must use that password.
+- **Accounts already in the directory** (an existing MoClo instance) become users here on
+  startup, with MoClo's id, password and administrator status, so they appear in the editor
+  before their first sign-in.
+- **A local mirror row** is kept in `plasmid_editor.db` so sequences still have an owner.
+  Matching is by username, so a local account keeps its id and everything it owns. The
+  mirror's password hash and admin flag are refreshed from the directory on every sign-in.
+- **Without the directory** (standalone, or no `users` table yet), the editor manages its own
+  accounts exactly as before.
+
+The editor relies on `id`, `username` and `password_hash` (bcrypt) in MoClo's `users` table,
+and on `is_admin` when present; other columns are left to their defaults. Changing a password
+or admin status is done in the MoClo tool. `tests/test_shared_accounts.py` pins this
+behaviour; run it after a MoClo upgrade that touches accounts.
 
 ## The contribution rule
 
