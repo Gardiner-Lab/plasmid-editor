@@ -27,11 +27,12 @@
     <button class="tool-btn" id="btnTopology" title="Switch between circular and linear">↻ Topology</button>
     <button class="tool-btn" id="btnOrigin" title="Set the selection start as position 1">Set origin</button>
     <button class="tool-btn" id="btnFeature" title="Make a feature from the selection">🏷 Add feature</button>
+    <button class="tool-btn" id="btnTranslateSel" title="Translate the selection, showing each amino acid under its codon">🧬 Translate</button>
     <div class="tool-sep"></div>
 
     <span class="tool-label">Show</span>
     <button class="tool-btn on" id="tglComplement" title="Show the complement strand">Complement</button>
-    <button class="tool-btn" id="tglTranslation" title="Show a reading frame translation">Translate</button>
+    <button class="tool-btn" id="tglTranslation" title="Show the translation of a whole reading frame, chosen beside it">Reading frame</button>
     <select id="frameSelect" style="width:auto;padding:.2rem .3rem;font-size:.8rem" title="Reading frame">
         <option value="1">Frame +1</option><option value="2">Frame +2</option><option value="3">Frame +3</option>
         <option value="-1">Frame −1</option><option value="-2">Frame −2</option><option value="-3">Frame −3</option>
@@ -141,8 +142,20 @@
 
         <div class="panel">
             <div class="panel-head">
+                Translations <span class="hint" id="translationCount"></span>
+            </div>
+            <div class="panel-scroll panel-body-flush">
+                <ul class="item-list" id="translationList"></ul>
+            </div>
+        </div>
+
+        <div class="panel">
+            <div class="panel-head">
                 Enzymes
-                <select id="enzymeSet" style="width:auto;padding:.15rem .3rem;font-size:.75rem"></select>
+                <select id="enzymeSet" style="width:auto;max-width:11rem;padding:.15rem .3rem;font-size:.75rem"
+                        title="Which enzymes to show"></select>
+                <button class="tool-btn" id="btnEnzymeLists" type="button"
+                        title="Choose the enzymes to show, or make a list of your own">Choose…</button>
             </div>
             <div class="panel-body">
                 <div class="field">

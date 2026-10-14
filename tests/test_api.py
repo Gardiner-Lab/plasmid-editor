@@ -519,3 +519,68 @@ def test_suite_launch_page_link_hidden_when_standalone(monkeypatch, tmp_dbs):
 def test_editor_has_a_blast_button(monkeypatch, tmp_dbs):
     c = _logged_in(_app_with(monkeypatch, tmp_dbs))
     assert 'id="btnBlast"' in c.get('/editor').get_data(as_text=True)
+
+
+def test_the_sequencing_view_includes_the_features(user_client, rand_dna):
+    """So an alignment can show which features a read covers."""
+    seq = rand_dna(900)
+    doc = model.make_document('p', seq, True, [model.make_feature('lacZ', 100, 400, 1, 'CDS'),
+                                               model.make_feature('ori', 600, 800, -1, 'rep_origin')])
+    sid = user_client.post('/api/sequences', json={'document': doc}).get_json()['sequence']['id']
+    sequence = user_client.get(f'/api/sequences/{sid}/sequencing').get_json()['sequence']
+    assert sequence['feature_count'] == 2
+    assert [(f['name'], f['start'], f['end'], f['strand']) for f in sequence['features']] == [
+        ('lacZ', 100, 400, 1), ('ori', 600, 800, -1)]
+
+
+def test_translations_are_kept_apart_from_features(user_client, rand_dna):
+    """Saved with the plasmid, returned as they were, and never mixed into the features."""
+    seq = rand_dna(600)
+    doc = model.make_document('p', seq, True, [model.make_feature('lacZ', 100, 400, 1, 'CDS')])
+    doc['translations'] = [
+        {'id': 't1', 'name': 'lacZ protein', 'start': 100, 'end': 400, 'strand': 1},
+        {'name': 'reverse', 'start': 450, 'end': 30, 'strand': -1},        # through the origin
+        {'name': 'nothing', 'start': 10, 'end': 10},                        # empty: dropped
+        {'name': 'outside', 'start': 10, 'end': 9000},                      # off the end: dropped
+    ]
+    saved = user_client.post('/api/sequences', json={'document': doc}).get_json()['sequence']
+    got = user_client.get(f"/api/sequences/{saved['id']}").get_json()['sequence']
+    assert [(t['name'], t['start'], t['end'], t['strand']) for t in got['translations']] == [
+        ('lacZ protein', 100, 400, 1), ('reverse', 450, 30, -1)]
+    assert got['translations'][0]['id'] == 't1' and got['translations'][1]['id']
+    assert [f['name'] for f in got['features']] == ['lacZ']
+
+    # Updating the plasmid keeps them, or clears them when asked to.
+    got['translations'] = got['translations'][:1]
+    user_client.put(f"/api/sequences/{saved['id']}", json={'document': got})
+    again = user_client.get(f"/api/sequences/{saved['id']}").get_json()['sequence']
+    assert [t['name'] for t in again['translations']] == ['lacZ protein']
+
+
+def test_translations_follow_rotation_and_reverse_complement():
+    doc = model.make_document('p', 'A' * 100, True)
+    doc['translations'] = [{'id': 't', 'name': 'x', 'start': 10, 'end': 40, 'strand': 1}]
+    rotated = model.rotate(doc, 20)
+    assert (rotated['translations'][0]['start'], rotated['translations'][0]['end']) == (90, 20)
+    flipped = model.reverse_complement_document(doc)
+    t = flipped['translations'][0]
+    assert (t['start'], t['end'], t['strand']) == (60, 90, -1)
+    linear = model.normalize_document({'sequence': 'ACGT' * 10, 'circular': False,
+                                       'translations': [{'start': 30, 'end': 3}]})
+    assert linear['translations'] == []                  # only a circular plasmid wraps
+
+
+def test_snapgene_export_and_import(user_client, rand_dna):
+    doc = model.make_document('pDna', rand_dna(500), True, [model.make_feature('ori', 10, 200, 1, 'rep_origin')])
+    sid = user_client.post('/api/sequences', json={'document': doc}).get_json()['sequence']['id']
+    r = user_client.get(f'/api/sequences/{sid}/export/snapgene')
+    assert r.status_code == 200 and r.headers['Content-Disposition'].endswith('pDna.dna')
+    assert r.data[5:13] == b'SnapGene'
+    # Save as -> download, for a document that was never saved
+    r2 = user_client.post('/api/sequences/convert', json={'document': doc, 'format': 'snapgene'})
+    assert r2.status_code == 200 and r2.data[5:13] == b'SnapGene'
+    # And the file opens again, as from the Open button
+    parsed = user_client.post('/api/sequences/parse', data={'file': (__import__('io').BytesIO(r.data), 'pDna.dna')},
+                              content_type='multipart/form-data').get_json()
+    back = parsed['documents'][0]
+    assert back['sequence'] == doc['sequence'] and [f['name'] for f in back['features']] == ['ori']

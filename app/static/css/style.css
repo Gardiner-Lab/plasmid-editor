@@ -92,7 +92,9 @@ a:hover { text-decoration: underline; }
 .btn-sm { padding: .25rem .6rem; font-size: .8125rem; }
 .btn-group { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; }
 
-label { display: block; font-size: .8125rem; font-weight: 600; color: var(--text-secondary); margin-bottom: .25rem; }
+label, .field-label { display: block; font-size: .8125rem; font-weight: 600; color: var(--text-secondary); margin-bottom: .25rem; }
+/* A radio button or checkbox with its text, side by side with others. */
+label.choice { display: inline-flex; align-items: center; gap: .35rem; font-weight: 400; color: var(--text-color); margin-right: 1rem; }
 input[type=text], input[type=password], input[type=number], input[type=search], select, textarea {
     width: 100%; padding: .45rem .6rem; border: 1px solid var(--border-color);
     border-radius: .375rem; font-size: .9rem; font-family: inherit; color: var(--text-color);
@@ -184,6 +186,21 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .seqmap-row.ticks { color: var(--text-secondary); font-size: .7rem; height: 1.1em; }
 .seqmap-row.complement { color: var(--text-secondary); }
 .seqmap-row.aa { color: #4338ca; font-size: .78rem; }
+/* The user's translations: a band under each codon, alternating so the
+   triplets read apart, and the amino acid under the codon's middle base. */
+.seqmap-row.aa-lane { height: 1.3em; }
+.aa-codon {
+    position: absolute; top: .1em; height: 1.15em; border-radius: .2rem;
+    background: #e0e7ff; cursor: pointer;
+}
+.aa-codon.alt { background: #c7d2fe; }
+.aa-codon.stop { background: #fecaca; }
+.aa-codon:hover { outline: 1px solid #4338ca; }
+.aa-letter {
+    position: absolute; top: .1em; line-height: 1.15em; text-align: center;
+    color: #3730a3; font-weight: 600; pointer-events: none;
+}
+.aa-letter.stop { color: #b91c1c; }
 .seqmap-row.enzyme { color: #b45309; font-size: .7rem; height: 1.1em; }
 .seqmap-row.feature-lane { height: 1.15em; }
 .base-a { color: var(--base-a); } .base-c { color: var(--base-c); }
@@ -197,6 +214,13 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
     overflow: hidden; white-space: nowrap; cursor: pointer; opacity: .85;
 }
 .feat-bar:hover { opacity: 1; outline: 1px solid var(--text-color); }
+/* A feature over an alignment. Placed in ch of the sequence's own font, so it
+   lines up with the bases; only the label inside is smaller. */
+.aln-feat {
+    position: absolute; height: .85em; top: .1em; border-radius: .15rem; opacity: .85;
+    overflow: hidden; white-space: nowrap; text-align: center; line-height: .85em;
+}
+.aln-feat > span { font-size: .68rem; color: #111827; }
 .site-hit { background: #fed7aa; }
 /* Enzyme names are clickable; a cut is drawn as a step across both strands. */
 .site-label { position: absolute; line-height: 1.1em; white-space: nowrap; cursor: pointer; }
@@ -291,6 +315,15 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
     max-width: 32rem; width: 100%; max-height: 90vh; overflow: auto;
 }
 .modal-wide { max-width: 50rem; }
+/* The enzyme chooser: a search and filters over every REBASE enzyme. */
+.enz-choose-bar { display: flex; gap: .5rem 1rem; align-items: center; flex-wrap: wrap; margin-bottom: .6rem; }
+.enz-choose-bar input[type="search"] { flex: 1 1 16rem; }
+.enz-choose-bar select { width: auto; }
+.enz-choose-list { max-height: 22rem; overflow: auto; border: 1px solid var(--border-color); border-radius: .4rem; }
+.enz-choose-list table { font-size: .8125rem; }
+.enz-choose-list tbody tr { cursor: pointer; }
+.enz-choose-list tbody tr:hover { background: var(--bg-color); }
+.enz-choose-list thead th { position: sticky; top: 0; background: var(--card-bg); }
 .modal-head { display: flex; justify-content: space-between; align-items: center; padding: .9rem 1.1rem; border-bottom: 1px solid var(--border-color); }
 .modal-title { font-weight: 600; }
 .modal-body { padding: 1.1rem; }

@@ -127,6 +127,18 @@ CREATE TABLE IF NOT EXISTS feature_library (
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_library_name_seq ON feature_library(name, sequence);
+
+-- Each person's own lists of restriction enzymes to show (app/models/enzyme_list.py).
+CREATE TABLE IF NOT EXISTS enzyme_lists (
+    id TEXT PRIMARY KEY,
+    owner_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    enzymes TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_enzyme_lists_owner ON enzyme_lists(owner_id);
 """
 
 
@@ -137,6 +149,9 @@ _ADDED_COLUMNS = {
         # 'lab_lead' for a lab lead; NULL for everyone else. Administrators are
         # marked by is_admin, which follows the shared account directory.
         ('role', 'TEXT'),
+        # The enzyme list last shown in the editor: a built-in set's name, or
+        # "list:<id>" for one of the person's own (enzyme_lists).
+        ('enzyme_choice', 'TEXT'),
     ],
     'sequences': [
         ('moclo_link', 'TEXT'),
@@ -148,6 +163,9 @@ _ADDED_COLUMNS = {
         ('confirmed_by', 'TEXT'),
         ('confirmed_clone', 'TEXT'),
         ('glycerol_stock', 'TEXT'),
+        # Translations of stretches of the sequence, kept apart from features:
+        # JSON, as features are.
+        ('translations', 'TEXT'),
     ],
     'reads': [
         # Which colony/clone this read came from, e.g. "3" or "A7".

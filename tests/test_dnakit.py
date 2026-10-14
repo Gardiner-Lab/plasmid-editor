@@ -4,7 +4,7 @@ import random
 
 import pytest
 
-from dnakit import align, assembly, features, model, primers, restriction, seqio, translate
+from dnakit import align, assembly, features, model, primers, restriction, seqio, snapgene, translate
 
 random.seed(1)
 
@@ -51,6 +51,65 @@ def test_genbank_roundtrip_with_wrapping_feature():
     assert (names['wrap']['start'], names['wrap']['end']) == (190, 15)
     assert names['wrap']['color'] == '#ff0000'
     assert names['rev']['strand'] == -1
+
+
+def test_translations_go_out_as_cds_and_come_back_as_translations():
+    gfp_start = 'ATGGCTAGCAAAGGAGAAGAACTTTTCACTGGAGTTGTCCCAATTCTTGTTGAATTAGATGGTGATG'   # MASKGEELFTGVVPILVELDGD
+    seq = 'CC' + gfp_start + 'TAAGG' + model.reverse_complement(gfp_start) + 'C' * 20
+    doc = model.make_document('pT', seq, True, [model.make_feature('marker', 0, 10, 1, 'misc_feature')])
+    doc['translations'] = [
+        {'id': 't1', 'name': 'GFP start', 'start': 2, 'end': 2 + len(gfp_start) + 3, 'strand': 1},
+        {'id': 't2', 'name': 'GFP start, reverse', 'start': 2 + len(gfp_start) + 5,
+         'end': 2 + 2 * len(gfp_start) + 5, 'strand': -1},
+        {'id': 't3', 'name': 'through the origin', 'start': len(seq) - 6, 'end': 6, 'strand': 1},
+    ]
+    gb = seqio.write_genbank(doc)
+    # Other programs see an ordinary CDS with its protein (the stop left out).
+    assert '/translation="MASKGEELFTGVVPILVELDGD"' in gb
+    assert gb.count('/note="Plasmid Editor translation"') == 3
+    assert 'complement(' in gb and 'join(' in gb
+
+    back = seqio.read_sequences(gb.encode(), 'pT.gb')[0]
+    assert [f['name'] for f in back['features']] == ['marker']
+    assert [(t['name'], t['start'], t['end'], t['strand']) for t in back['translations']] == [
+        (t['name'], t['start'], t['end'], t['strand']) for t in doc['translations']]
+    assert translate.translate_stretch(seq, **{k: back['translations'][1][k] for k in ('start', 'end', 'strand')})         == 'MASKGEELFTGVVPILVELDGD'
+
+
+def test_an_ordinary_cds_stays_a_feature():
+    doc = model.make_document('p', 'ATGAAATAA' * 4, False, [model.make_feature('orf', 0, 9, 1, 'CDS')])
+    back = seqio.read_sequences(seqio.write_genbank(doc).encode(), 'p.gb')[0]
+    assert [f['name'] for f in back['features']] == ['orf'] and back['translations'] == []
+
+
+def test_snapgene_round_trip_keeps_features_colours_and_translations():
+    seq = rand_dna(300).lower()[:150] + rand_dna(150)       # case is kept, as SnapGene does
+    doc = model.make_document('pSnap', seq, True,
+                              [model.make_feature('wrap', 280, 20, 1, 'CDS', '#ff0000'),
+                               model.make_feature('rev', 40, 90, -1, 'promoter', '#00aa00'),
+                               model.make_feature('plain', 100, 130, 1, 'misc_feature')])
+    doc['translations'] = [{'id': 't', 'name': 'peptide', 'start': 150, 'end': 180, 'strand': -1}]
+    data = seqio.write_snapgene(doc)
+    assert data[:1] == b'	' and data[5:13] == b'SnapGene'
+    assert snapgene.is_snapgene(data)
+
+    back = seqio.read_sequences(data, 'pSnap.dna')[0]
+    assert back['sequence'] == seq and back['circular'] and back['name'] == 'pSnap'
+    got = {f['name']: f for f in back['features']}
+    assert (got['wrap']['start'], got['wrap']['end'], got['wrap']['color']) == (280, 20, '#ff0000')
+    assert (got['rev']['strand'], got['rev']['color']) == (-1, '#00aa00')
+    assert [(t['name'], t['start'], t['end'], t['strand']) for t in back['translations']] == [
+        ('peptide', 150, 180, -1)]
+
+
+def test_snapgene_converts_to_and_from_genbank():
+    doc = model.make_document('pConv', rand_dna(120), False,
+                              [model.make_feature('orf', 0, 60, 1, 'CDS', '#123456')])
+    data = snapgene.from_genbank(seqio.write_genbank(doc))
+    gb = snapgene.to_genbank(data, 'pConv file')
+    back = seqio.read_sequences(gb.encode(), 'pConv.gb')[0]
+    assert back['sequence'] == doc['sequence'] and not back['circular']
+    assert [(f['name'], f['start'], f['end'], f['color']) for f in back['features']] == [('orf', 0, 60, '#123456')]
 
 
 def test_read_fasta_and_raw():

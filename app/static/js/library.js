@@ -74,8 +74,10 @@ const Library = {
         !s.shared ? el('span', { class: 'badge', text: 'private' }) : null),
       el('td', { class: 'item-meta nowrap', text: (s.updated_at || '').slice(0, 16) }),
       el('td', { class: 'nowrap' },
-        el('button', { class: 'tool-btn', title: 'Download GenBank',
-          onclick: () => downloadFrom(`/api/sequences/${s.id}/export/genbank`, `${s.name}.gb`).catch((e) => toast(e.message, 'error')) }, '⤓'),
+        el('button', { class: 'tool-btn', title: 'Download GenBank (.gb)',
+          onclick: () => downloadFrom(`/api/sequences/${s.id}/export/genbank`, `${s.name}.gb`).catch((e) => toast(e.message, 'error')) }, '⤓ gb'),
+        el('button', { class: 'tool-btn', title: 'Download SnapGene (.dna)',
+          onclick: () => downloadFrom(`/api/sequences/${s.id}/export/snapgene`, `${s.name}.dna`).catch((e) => toast(e.message, 'error')) }, '⤓ dna'),
         el('button', { class: 'tool-btn', title: 'Delete', onclick: () => this.remove(s) }, '🗑')))));
   },
 

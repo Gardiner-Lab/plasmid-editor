@@ -13,7 +13,8 @@ re-implemented independently; see [Attribution](#attribution).
 ## Features
 
 ### Sequence editing
-- Open **GenBank, FASTA, EMBL, SnapGene (.dna), ApE (.ape), ABI (.ab1)** and raw sequence files
+- Open **GenBank, FASTA, EMBL, SnapGene (.dna), ApE (.ape), ABI (.ab1)** and raw sequence files,
+  and save as **GenBank or SnapGene (.dna)** (or FASTA, JSON), with feature colours either way
 - Wrapped sequence view with complement strand, any of the six reading frames, feature
   bars and restriction cut marks
 - **Type directly into the sequence**: click to place a cursor and type A/C/G/T, or use
@@ -24,6 +25,10 @@ re-implemented independently; see [Attribution](#attribution).
 - Circular and linear plasmid maps as SVG, with features and cut sites
 - Feature editing with colours, strand and types; features that cross the origin are handled
   throughout, and move correctly when the sequence is edited
+- Translations of a selection on either strand, kept apart from the features, with each amino
+  acid shown under its codon. GenBank export writes them as `CDS` features with `/translation`
+  (marked by a `/note`, so importing the file brings them back as translations)
+- A whole reading frame can also be shown translated (Reading frame, under Show)
 - Save as: a copy in the lab library under a new name, or a downloaded file
 - Export GenBank, FASTA or JSON, singly or as a zip
 
@@ -191,6 +196,10 @@ node tests/js/helpers.test.js   # frontend sequence helpers
 | `MOCLO_DATABASE_PATH` | `/data/moclo.db` | MoClo main database (shared, read only here). |
 | `MOCLO_BASE_URL` | — | Where the MoClo tool is, for links out to it (`/` when it is at the root of the same host). Unset hides those links. |
 | `SUITE_HOME_URL` | — | The lab suite's launch page (`/` in the suite), linked as "← Lab tools" in the navigation bar. Unset hides the link. |
+| `SUITE_AUTH` | — | `proxy` inside the lab suite: the suite's proxy says who is signed in (an `X-Suite-User` header), and sign-in, registration, labs, codes and roles are all the suite's. Only set it behind the suite's proxy, which strips that header from what browsers send. |
+| `SUITE_LOGIN_URL` / `SUITE_LOGOUT_URL` | `/account/login` / `/account/logout` | With `SUITE_AUTH=proxy`, where Log in and Log out go. |
+| `SUITE_REGISTER_URL` / `SUITE_DASHBOARD_URL` | `/account/register` / `/account/` | With `SUITE_AUTH=proxy`, where Register goes, and the suite's dashboard, which replaces the Admin link (labs are its Labs tab). |
+| `SUITE_DATABASE_PATH` | `/suite/suite.db` | With `SUITE_AUTH=proxy`, the suite's database, read for each person's lab and lab-lead role. |
 | `ALLOW_REGISTRATION` | `true` | Set `false` to close self-registration. |
 | `REGISTRATION_CODE` | — | The first registration code, for the `DEFAULT_LAB_SOURCE` lab. Change it afterwards on the Admin page, which takes precedence. |
 | `REQUIRE_REGISTRATION_CODE` | `true` | Set `false` to let anyone register without a code. |
@@ -204,6 +213,8 @@ node tests/js/helpers.test.js   # frontend sequence helpers
 dnakit/            Framework-free sequence toolkit (no Flask imports)
   model.py         Sequence documents, features, coordinates
   seqio.py         GenBank / FASTA / EMBL / SnapGene / ABI reading and writing
+  snapgene.py      SnapGene .dna writing (Biopython only reads it) and colour-keeping
+                   reading; the MoClo Library Tool carries an identical copy
   restriction.py   REBASE enzymes, site finding, digests, gels, silent sites
   translate.py     Genetic code, translation, ORFs
   primers.py       Tm, binding sites, PCR, primer design

@@ -6,6 +6,66 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-14
+
+### Added
+- `SUITE_AUTH=proxy`: inside the Gardiner Lab tool suite, signing in to the suite
+  signs in here, and signing out of it signs out here. The suite's proxy names the
+  signed-in user in an `X-Suite-User` header; the editor follows it on every
+  request, and Log in and Log out go to the suite's pages (`SUITE_LOGIN_URL`,
+  `SUITE_LOGOUT_URL`). `POST /api/auth/login` is closed in this mode. Off
+  unless set.
+  - Registration, labs, their codes and roles are the suite's too: the
+    registration page and the Admin page send people to the suite's
+    (`SUITE_REGISTER_URL`, and the Labs tab of `SUITE_DASHBOARD_URL`), and
+    their APIs are closed. The navigation's Admin link becomes Dashboard, for
+    everyone.
+  - Each person's lab and lab-lead role are read from the suite's database
+    (`SUITE_DATABASE_PATH`), so a change there shows here at once.
+  - Administrator status given or taken away in the MoClo tool shows here at
+    the next request, rather than at the next sign-in.
+  - Being sent to sign in again comes back to the page you were on.
+
+- **Translations.** Select bases and choose 🧬 Translate to add a translation of
+  them, on either strand. Each amino acid appears under the codon that encodes
+  it, on a band per codon (stop codons in red); click one to select its codon,
+  double-click to select the whole translation. Translations are kept apart
+  from features, in their own panel, where each can be renamed, its protein
+  copied, or removed. They are saved with the plasmid (a new `translations`
+  column) and follow edits, reverse complementing and a new origin. GenBank
+  export writes each as a `CDS` feature with its protein in `/translation` and
+  a `/note` saying it is a Plasmid Editor translation, so other programs show
+  an ordinary CDS and importing the file here brings back the translation.
+- The toolbar's whole-frame translation toggle is now called Reading frame, so
+  it is not confused with the new Translate button.
+- **SnapGene export.** Save as and the library can download a SnapGene `.dna`
+  file, with the same features, colours and translations as the GenBank export;
+  SnapGene shows a CDS's protein under it. Opening a `.dna` file now keeps its
+  feature colours too (`dnakit/snapgene.py`).
+
+- **Your own enzyme lists.** Choose… beside the Enzymes panel's list opens every
+  REBASE enzyme, searchable by name or site and filterable to those sold
+  commercially. Tick the ones to show and either show them at once or save them
+  as a named list. Your lists are saved to your account, appear under "My lists"
+  in the panel and in the silent-site tool, and can be changed, renamed or
+  removed; the list you last showed is remembered on your account too.
+
+### Fixed
+- The Enzymes panel could show the sites of a previously chosen set when two
+  searches overlapped (opening a sequence, then switching sets at once); only
+  the latest search's answer is shown now.
+
+### Changed
+- The sequence view fills its pane: lines hold as many bases as fit, in tens
+  (they were always 60), and re-flow when the window is resized, keeping the
+  same part of the sequence at the top of the view.
+- A read's alignment on the Sequencing page shows the reference's features
+  above it, stacked where they overlap and with their strand, so you can see
+  which features the read covers and where a difference falls. Line numbers on
+  a read that runs through the origin of a circular plasmid start again at 1.
+  Like the sequence view, the alignment fills its box and re-flows when it is
+  resized.
+
 ## [0.2.1] - 2026-10-12
 
 ### Fixed

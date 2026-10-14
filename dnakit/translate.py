@@ -49,6 +49,16 @@ def translate(seq: str, to_stop: bool = False) -> str:
     return ''.join(protein)
 
 
+def translate_stretch(sequence: str, start: int, end: int, strand: int = 1) -> str:
+    """
+    The protein a stretch [start, end) of a sequence encodes, read on either
+    strand: what the editor shows under a translation. On a circular sequence
+    the stretch may run through the origin (end < start).
+    """
+    stretch = sequence[start:end] if end > start else sequence[start:] + sequence[:end]
+    return translate(reverse_complement(stretch) if strand == -1 else stretch)
+
+
 def protein_stats(protein: str) -> Dict[str, Any]:
     core = protein.rstrip('*')
     mass = sum(AA_MASS.get(a, 110.0) for a in core) + 18.015 if core else 0.0

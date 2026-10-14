@@ -9,8 +9,11 @@ const Editor = {
   view: null,
   map: null,
   sites: [],
-  enzymeSets: {},
-  activeSet: 'Default',
+  enzymeSets: {},        // built-in sets, by name
+  enzymeLists: [],       // the person's own lists, saved to their account
+  selection: null,       // enzymes chosen to show without saving them as a list
+  catalog: null,         // every enzyme, loaded when the chooser first opens
+  activeSet: 'Default',  // a set's name, "list:<id>", or "selection"
   findHits: [],
   findAt: -1,
   dirty: false,
@@ -39,13 +42,13 @@ const Editor = {
     this.bindPanels();
 
     try {
-      const { sets } = await API.get('/api/tools/enzymes');
+      const { sets, lists, choice } = await API.get('/api/tools/enzymes');
       this.enzymeSets = sets;
-      const sel = document.getElementById('enzymeSet');
-      sel.replaceChildren(...Object.keys(sets).map((name) =>
-        el('option', { value: name, text: `${name} (${sets[name].length})` })));
-      sel.value = this.activeSet;
-      sel.addEventListener('change', () => { this.activeSet = sel.value; this.refreshSites(); });
+      this.enzymeLists = lists || [];
+      if (choice && (sets[choice] || this.enzymeLists.some((l) => `list:${l.id}` === choice))) this.activeSet = choice;
+      this.renderEnzymeChoices();
+      document.getElementById('enzymeSet').addEventListener('change', (e) => this.useEnzymes(e.target.value));
+      document.getElementById('btnEnzymeLists').addEventListener('click', () => this.chooseEnzymes());
     } catch (err) {
       toast(err.message, 'error');
     }
@@ -67,6 +70,7 @@ const Editor = {
 
   addDocument(doc, { activate = true } = {}) {
     doc.features = doc.features || [];
+    doc.translations = doc.translations || [];
     this.docs.push(doc);
     if (activate) this.setActive(this.docs.length - 1);
     else this.renderDocList();
@@ -81,6 +85,7 @@ const Editor = {
     this.view.setDocument(doc || { sequence: '', features: [] });
     this.renderDocList();
     this.renderFeatures();
+    this.renderTranslations();
     this.refreshSites();
     this.updateBadges();
     this.renderGoldenGate();
@@ -122,6 +127,7 @@ const Editor = {
     if (!doc) return;
     this.view.setDocument(doc, { keepSelection: true });
     this.renderFeatures();
+    this.renderTranslations();
     // Re-scanning for restriction sites costs ~120 ms on a 150 kb sequence with
     // the default enzymes, and seconds with the full REBASE set, so it waits
     // until typing pauses rather than running on every keystroke.
@@ -205,6 +211,7 @@ const Editor = {
     on('btnTopology', () => this.toggleTopology());
     on('btnOrigin', () => this.setOrigin());
     on('btnFeature', () => this.newFeature());
+    on('btnTranslateSel', () => this.translateSelection());
 
     const toggle = (id, key) => {
       const btn = document.getElementById(id);
@@ -466,6 +473,7 @@ const Editor = {
             el('select', { id: 'saWhere' },
               el('option', { value: 'library', text: 'Lab library (a new, separate entry)' }),
               el('option', { value: 'genbank', text: 'Download as GenBank (.gb)' }),
+              el('option', { value: 'snapgene', text: 'Download as SnapGene (.dna)' }),
               el('option', { value: 'fasta', text: 'Download as FASTA (.fasta)' }),
               el('option', { value: 'json', text: 'Download as JSON (.json)' }))),
           el('p', { class: 'hint', id: 'saHint' },
@@ -489,7 +497,7 @@ const Editor = {
             const payload = { ...this.payloadDoc(), name };
 
             if (where !== 'library') {
-              const ext = where === 'genbank' ? 'gb' : where === 'fasta' ? 'fasta' : 'json';
+              const ext = { genbank: 'gb', snapgene: 'dna', fasta: 'fasta' }[where] || 'json';
               await downloadFrom('/api/sequences/convert', `${name}.${ext}`,
                                  { document: payload, format: where });
               toast(`Downloaded ${name}.${ext}`, 'success');
@@ -614,6 +622,7 @@ const Editor = {
     const next = applyEdit(doc, start, end, text);
     doc.sequence = next.sequence;
     doc.features = next.features;
+    doc.translations = next.translations;
 
     if (collapse) {
       this.view.caret = start + text.length;
@@ -637,7 +646,8 @@ const Editor = {
   snapshot() {
     const d = this.doc;
     return JSON.stringify({ name: d.name, sequence: d.sequence, circular: d.circular,
-                            description: d.description || '', features: d.features });
+                            description: d.description || '', features: d.features,
+                            translations: d.translations || [] });
   },
 
   pushUndo() {
@@ -665,6 +675,7 @@ const Editor = {
       this.dirty = true;
       this.view.setDocument(this.doc, { keepSelection: true });
       this.renderFeatures();
+      this.renderTranslations();
       this.refreshSites();
       this.updateBadges();
     }
@@ -679,6 +690,7 @@ const Editor = {
       this.dirty = true;
       this.view.setDocument(this.doc, { keepSelection: true });
       this.renderFeatures();
+      this.renderTranslations();
       this.refreshSites();
       this.updateBadges();
     }
@@ -711,6 +723,12 @@ const Editor = {
       end: n - f.start,
       strand: f.strand === -1 ? 1 : -1,
       segments: f.segments ? f.segments.map(([s, e]) => [n - e, n - s]).reverse() : undefined,
+    }));
+    doc.translations = (doc.translations || []).map((t) => ({
+      ...t,
+      start: doc.circular ? (n - t.end + n) % n : n - t.end,
+      end: n - t.start,
+      strand: t.strand === -1 ? 1 : -1,
     }));
     this.view.selection = null;
     this.markDirty();
@@ -745,9 +763,118 @@ const Editor = {
       end: ((f.end - k + n) % n) || n,
       segments: f.segments ? f.segments.map(([s, e]) => [(s - k + n) % n, ((e - k + n) % n) || n]) : undefined,
     }));
+    doc.translations = (doc.translations || []).map((t) => ({
+      ...t, start: (t.start - k + n) % n, end: ((t.end - k + n) % n) || n,
+    }));
     this.view.selection = null;
     this.markDirty();
     toast(`Origin moved to ${fmt(k + 1)}`, 'success');
+  },
+
+  /* --- translations ----------------------------------------------------- */
+  //
+  // Translations of a stretch of the sequence, kept apart from the features:
+  // the sequence view shows each amino acid under the codon that encodes it.
+
+  renderTranslations() {
+    const doc = this.doc;
+    const list = document.getElementById('translationList');
+    if (!list) return;
+    const items = doc?.translations || [];
+    document.getElementById('translationCount').textContent = items.length || '';
+    if (!items.length) {
+      list.replaceChildren(el('li', { class: 'empty' }, 'No translations. Select bases and choose “Translate”.'));
+      return;
+    }
+    const sorted = [...items].sort((a, b) => a.start - b.start);
+    list.replaceChildren(...sorted.map((t) => {
+      const protein = translationProtein(doc.sequence, t);
+      return el('li', {
+        class: 'item',
+        title: protein.length > 60 ? `${protein.slice(0, 60)}…` : protein,
+        onclick: (ev) => {
+          if (ev.target.closest('button')) return;
+          if (ev.detail >= 2) this.editTranslation(t);
+          else this.selectRange({ start: t.start, end: t.end });
+        },
+      },
+        el('span', { class: 'item-name' }, `${t.name} `,
+          el('span', { class: 'item-meta' }, `${fmt(protein.length)} aa`)),
+        el('span', { class: 'item-meta' },
+          `${fmt(t.start + 1)}–${fmt(t.end)} ${t.strand === -1 ? '←' : '→'} `,
+          el('button', { class: 'tool-btn', title: 'Copy the protein', onclick: () => this.copy(protein) }, '⧉'),
+          el('button', { class: 'tool-btn', title: 'Rename or change strand', onclick: () => this.editTranslation(t) }, '✎'),
+          el('button', { class: 'tool-btn', title: 'Remove this translation', onclick: () => this.removeTranslation(t) }, '✕')));
+    }));
+  },
+
+  translateSelection() {
+    const sel = this.view.selection;
+    if (this.view.selectionLength() < 3) { toast('Select at least one codon (3 bases) to translate', 'error'); return; }
+    const count = (this.doc.translations || []).length;
+    this.editTranslation({ id: null, name: `Translation ${count + 1}`, start: sel.start, end: sel.end, strand: 1 });
+  },
+
+  /** Add a translation, or rename one or change the strand it reads. */
+  editTranslation(translation) {
+    const doc = this.doc;
+    if (!doc) return;
+    const isNew = !translation.id;
+    const length = DNA.featLength(translation, doc.sequence.length);
+    const preview = el('div', { class: 'mono', style: 'word-break:break-all;font-size:.8rem;max-height:8rem;overflow:auto' });
+    const showPreview = () => {
+      const strand = Number(document.querySelector('input[name="tStrand"]:checked')?.value || 1);
+      const protein = translationProtein(doc.sequence, { ...translation, strand });
+      preview.textContent = protein || '—';
+    };
+    modal({
+      title: isNew ? 'Translate the selection' : `Edit “${translation.name}”`,
+      build: (body) => {
+        body.append(
+          el('div', { class: 'field' },
+            el('label', { for: 'tName' }, 'Name'),
+            el('input', { type: 'text', id: 'tName', value: translation.name, maxlength: 100 })),
+          el('div', { class: 'field' },
+            el('div', { class: 'field-label' }, 'Strand'),
+            el('label', { class: 'choice' },
+              el('input', { type: 'radio', name: 'tStrand', value: '1', checked: translation.strand !== -1,
+                            onchange: showPreview }), ' Forward →'),
+            el('label', { class: 'choice' },
+              el('input', { type: 'radio', name: 'tStrand', value: '-1', checked: translation.strand === -1,
+                            onchange: showPreview }), ' Reverse ←')),
+          el('div', { class: 'field' },
+            el('div', { class: 'field-label' }, `Protein (${fmt(Math.floor(length / 3))} aa from ${fmt(length)} bp)`),
+            preview,
+            length % 3 ? el('span', { class: 'hint' },
+              `The last ${length % 3} base${length % 3 > 1 ? 's are' : ' is'} not a whole codon and stay${length % 3 > 1 ? '' : 's'} untranslated.`) : null));
+        showPreview();
+        setTimeout(() => document.getElementById('tName')?.select(), 0);
+      },
+      buttons: [
+        { label: 'Cancel', kind: 'secondary' },
+        { label: isNew ? 'Add translation' : 'Save', onClick: () => {
+          const name = document.getElementById('tName').value.trim() || 'Translation';
+          const strand = Number(document.querySelector('input[name="tStrand"]:checked').value);
+          this.pushUndo();
+          doc.translations = doc.translations || [];
+          if (isNew) {
+            doc.translations.push({ id: `t${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
+                                    name, start: translation.start, end: translation.end, strand });
+          } else {
+            Object.assign(doc.translations.find((t) => t.id === translation.id), { name, strand });
+          }
+          this.markDirty();
+        } },
+      ],
+    });
+  },
+
+  removeTranslation(translation) {
+    const doc = this.doc;
+    this.pushUndo();
+    doc.translations = doc.translations.filter((t) => t.id !== translation.id);
+    this.markDirty();
+    toast(`Removed “${translation.name}”. Undo brings it back.`, 'success', 3000);
   },
 
   /* --- features --------------------------------------------------------- */
@@ -897,7 +1024,8 @@ const Editor = {
   payloadDoc() {
     const d = this.doc;
     return { name: d.name, sequence: d.sequence, circular: d.circular,
-             description: d.description || '', features: d.features };
+             description: d.description || '', features: d.features,
+             translations: d.translations || [] };
   },
 
   /* --- enzymes ---------------------------------------------------------- */
@@ -905,14 +1033,18 @@ const Editor = {
   async refreshSites() {
     const doc = this.doc;
     if (!doc || !doc.sequence) { this.sites = []; this.view.setSites([]); this.renderEnzymeTable({}, []); return; }
-    const enzymes = this.enzymeSets[this.activeSet] || [];
+    const enzymes = this.currentEnzymes();
     if (!enzymes.length) return;
+    // Searches can overlap (opening a sequence, then switching lists); only the
+    // latest one's answer is shown, whichever order the answers arrive in.
+    const ticket = (this._sitesTicket = (this._sitesTicket || 0) + 1);
     try {
       const body = await API.post('/api/tools/sites', {
         document: this.payloadDoc(),
         enzymes,
         unique_only: document.getElementById('chkUniqueOnly').checked,
       });
+      if (ticket !== this._sitesTicket) return;
       this.sites = body.sites;
       this.view.setSites(body.sites);
       this.renderEnzymeTable(body.counts, body.non_cutters);
@@ -920,6 +1052,166 @@ const Editor = {
     } catch (err) {
       toast(err.message, 'error');
     }
+  },
+
+  /* --- which enzymes to show ------------------------------------------ */
+  //
+  // The built-in sets, the person's own lists (saved to their account, so
+  // they follow them to any computer), or a selection shown without saving.
+
+  currentEnzymes() {
+    if (this.activeSet === 'selection') return this.selection || [];
+    if (this.activeSet.startsWith('list:')) {
+      return this.enzymeLists.find((l) => `list:${l.id}` === this.activeSet)?.enzymes || [];
+    }
+    return this.enzymeSets[this.activeSet] || [];
+  },
+
+  renderEnzymeChoices() {
+    const sel = document.getElementById('enzymeSet');
+    const option = (value, label, count) => el('option', { value, text: `${label} (${count})` });
+    sel.replaceChildren(
+      el('optgroup', { label: 'Sets' },
+        ...Object.entries(this.enzymeSets).map(([name, list]) => option(name, name, list.length))),
+      this.enzymeLists.length ? el('optgroup', { label: 'My lists' },
+        ...this.enzymeLists.map((l) => option(`list:${l.id}`, l.name, l.enzymes.length))) : null,
+      this.selection ? option('selection', 'Chosen, not saved', this.selection.length) : null);
+    sel.value = this.activeSet;
+    if (sel.value !== this.activeSet) { this.activeSet = 'Default'; sel.value = 'Default'; }
+  },
+
+  /** Show these enzymes, and remember the choice on the account (not an unsaved selection). */
+  useEnzymes(value) {
+    this.activeSet = value;
+    this.renderEnzymeChoices();
+    this.refreshSites();
+    if (value !== 'selection') API.put('/api/tools/enzyme-choice', { choice: value }).catch(() => {});
+  },
+
+  /**
+   * Choose enzymes from every one REBASE knows: show them as they are, save
+   * them as a new list, or change or remove one of your lists.
+   */
+  async chooseEnzymes() {
+    if (!this.catalog) {
+      try {
+        this.catalog = (await API.get('/api/tools/enzymes?catalog=1')).catalog;
+      } catch (err) { toast(err.message, 'error'); return; }
+    }
+    const editing = this.activeSet.startsWith('list:')
+      ? this.enzymeLists.find((l) => `list:${l.id}` === this.activeSet) : null;
+    const chosen = new Set(this.currentEnzymes());
+    const rows = new Map();          // name -> { row, box, entry }
+    const count = el('span', { class: 'hint' });
+    const showCount = () => { count.textContent = `${chosen.size} chosen`; };
+
+    const search = el('input', { type: 'search', placeholder: 'Find an enzyme or a site, e.g. EcoRI or GAATTC',
+                                 'aria-label': 'Find enzymes' });
+    const onlyCommercial = el('input', { type: 'checkbox' });
+    const onlyChosen = el('input', { type: 'checkbox' });
+    const visible = () => [...rows.values()].filter((r) => r.row.style.display !== 'none');
+    const applyFilter = () => {
+      const q = search.value.trim().toUpperCase();
+      for (const { row, entry } of rows.values()) {
+        const match = (!q || entry.name.toUpperCase().includes(q) || entry.site.toUpperCase().includes(q))
+          && (!onlyCommercial.checked || entry.commercial)
+          && (!onlyChosen.checked || chosen.has(entry.name));
+        row.style.display = match ? '' : 'none';
+      }
+    };
+    for (const input of [search, onlyCommercial, onlyChosen]) input.addEventListener('input', applyFilter);
+
+    const tbody = el('tbody');
+    for (const entry of this.catalog) {
+      const box = el('input', { type: 'checkbox', checked: chosen.has(entry.name),
+                                'aria-label': `Show ${entry.name}` });
+      box.addEventListener('change', () => {
+        if (box.checked) chosen.add(entry.name); else chosen.delete(entry.name);
+        showCount();
+      });
+      const row = el('tr', { onclick: (ev) => { if (ev.target !== box) { box.checked = !box.checked; box.dispatchEvent(new Event('change')); } } },
+        el('td', {}, box), el('td', {}, entry.name), el('td', { class: 'mono' }, entry.site),
+        el('td', {}, entry.ends), el('td', {}, entry.commercial ? 'yes' : '—'));
+      rows.set(entry.name, { row, box, entry });
+      tbody.append(row);
+    }
+    const setAll = (on) => {
+      for (const { box, entry } of visible()) { box.checked = on; if (on) chosen.add(entry.name); else chosen.delete(entry.name); }
+      showCount();
+    };
+    const addFrom = el('select', { 'aria-label': 'Add the enzymes of a set or list' },
+      el('option', { value: '' }, 'Add a set…'),
+      ...Object.keys(this.enzymeSets).filter((n) => n !== 'All REBASE').map((n) => el('option', { value: `set:${n}` }, n)),
+      ...this.enzymeLists.map((l) => el('option', { value: `list:${l.id}` }, l.name)));
+    addFrom.addEventListener('change', () => {
+      const [kind, key] = [addFrom.value.split(':')[0], addFrom.value.slice(addFrom.value.indexOf(':') + 1)];
+      const names = kind === 'set' ? this.enzymeSets[key] : this.enzymeLists.find((l) => l.id === key)?.enzymes;
+      for (const name of names || []) { chosen.add(name); const r = rows.get(name); if (r) r.box.checked = true; }
+      addFrom.value = '';
+      showCount();
+    });
+    const nameInput = el('input', { type: 'text', id: 'enzListName', maxlength: 60,
+                                    value: editing ? editing.name : '', placeholder: 'e.g. My cloning enzymes' });
+
+    const save = async (asNew) => {
+      const name = nameInput.value.trim();
+      if (!chosen.size) { toast('Choose at least one enzyme', 'error'); return false; }
+      if (!name) { toast('Give the list a name', 'error'); nameInput.focus(); return false; }
+      const body = { name, enzymes: [...chosen] };
+      const { list } = editing && !asNew
+        ? await API.put(`/api/tools/enzyme-lists/${editing.id}`, body)
+        : await API.post('/api/tools/enzyme-lists', body);
+      this.enzymeLists = [...this.enzymeLists.filter((l) => l.id !== list.id), list]
+        .sort((a, b) => a.name.localeCompare(b.name));
+      this.useEnzymes(`list:${list.id}`);
+      toast(`Saved “${list.name}” to your account (${list.enzymes.length} enzymes).`, 'success');
+      return true;
+    };
+
+    const buttons = [{ label: 'Cancel', kind: 'secondary' }];
+    if (editing) {
+      buttons.push({ label: 'Remove list', kind: 'danger', onClick: async () => {
+        await API.del(`/api/tools/enzyme-lists/${editing.id}`);
+        this.enzymeLists = this.enzymeLists.filter((l) => l.id !== editing.id);
+        this.useEnzymes('Default');
+        toast(`Removed “${editing.name}”.`, 'success');
+      } });
+    }
+    buttons.push({ label: 'Show without saving', kind: 'secondary', onClick: () => {
+      if (!chosen.size) { toast('Choose at least one enzyme', 'error'); return false; }
+      this.selection = [...chosen].sort((a, b) => a.localeCompare(b));
+      this.useEnzymes('selection');
+      return true;
+    } });
+    if (editing) buttons.push({ label: 'Save as a new list', kind: 'secondary', onClick: () => save(true) });
+    buttons.push({ label: editing ? 'Save changes' : 'Save as a list', onClick: () => save(false) });
+
+    modal({
+      title: editing ? `Edit “${editing.name}”` : 'Choose enzymes',
+      wide: true,
+      build: (body) => {
+        body.append(
+          el('p', { class: 'hint' }, editing
+            ? 'Tick the enzymes this list should show. Your lists are saved to your account.'
+            : 'Tick the enzymes to show. Show them now, or save them as a list on your account to use again.'),
+          el('div', { class: 'enz-choose-bar' }, search,
+            el('label', { class: 'choice' }, onlyCommercial, 'Sold commercially'),
+            el('label', { class: 'choice' }, onlyChosen, 'Chosen only')),
+          el('div', { class: 'enz-choose-bar' },
+            el('button', { class: 'tool-btn', type: 'button', onclick: () => setAll(true) }, 'Tick all shown'),
+            el('button', { class: 'tool-btn', type: 'button', onclick: () => setAll(false) }, 'Untick all shown'),
+            addFrom, count),
+          el('div', { class: 'table-scroll enz-choose-list' }, el('table', {},
+            el('thead', {}, el('tr', {}, el('th', {}), el('th', {}, 'Enzyme'), el('th', {}, 'Site'),
+              el('th', {}, 'Ends'), el('th', {}, 'Sold'))),
+            tbody)),
+          el('div', { class: 'field', style: 'margin-top:.75rem' },
+            el('label', { for: 'enzListName' }, 'List name (to save it)'), nameInput));
+        showCount();
+        setTimeout(() => search.focus(), 0);
+      },
+      buttons,
+    });
   },
 
   renderEnzymeTable(counts, nonCutters) {

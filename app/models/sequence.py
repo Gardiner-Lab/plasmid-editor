@@ -37,10 +37,15 @@ class StoredSequence:
             features = json.loads(row['features']) if row['features'] else []
         except (TypeError, ValueError):
             features = []
+        try:
+            translations = json.loads(row['translations'] or '[]') if 'translations' in row.keys() else []
+        except (TypeError, ValueError):
+            translations = []
         return {
             'id': row['id'], 'name': row['name'], 'sequence': row['sequence'],
             'circular': bool(row['circular']), 'description': row['description'] or '',
             'features': features,
+            'translations': translations,
             'golden_gate': bool(row['golden_gate']),
             'golden_gate_enzyme': row['golden_gate_enzyme'],
             'moclo_part_id': row['moclo_part_id'],
@@ -71,12 +76,13 @@ class StoredSequence:
         with get_connection() as conn:
             conn.execute(
                 'INSERT INTO sequences (id, name, sequence, circular, description, features, '
-                'golden_gate, golden_gate_enzyme, owner_id, shared, origin, moclo_link, '
+                'translations, golden_gate, golden_gate_enzyme, owner_id, shared, origin, moclo_link, '
                 'moclo_synced_hash, moclo_synced_at) '
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
                 "CASE WHEN ? IS NULL THEN NULL ELSE CURRENT_TIMESTAMP END)",
                 (sid, doc['name'], doc['sequence'], 1 if doc['circular'] else 0, doc['description'],
-                 json.dumps(doc['features']), 1 if golden_gate else 0, golden_gate_enzyme,
+                 json.dumps(doc['features']), json.dumps(doc['translations']),
+                 1 if golden_gate else 0, golden_gate_enzyme,
                  owner_id, 1 if shared else 0, origin, moclo_link, moclo_synced_hash,
                  moclo_synced_hash))
             row = conn.execute('SELECT * FROM sequences WHERE id = ?', (sid,)).fetchone()
@@ -135,9 +141,10 @@ class StoredSequence:
                 raise ValueError('Sequence is empty')
             if len(doc['sequence']) > MAX_SEQUENCE_LENGTH:
                 raise ValueError(f'Sequence is longer than {MAX_SEQUENCE_LENGTH:,} bp')
-            sets += ['name = ?', 'sequence = ?', 'circular = ?', 'description = ?', 'features = ?']
+            sets += ['name = ?', 'sequence = ?', 'circular = ?', 'description = ?', 'features = ?',
+                     'translations = ?']
             args += [doc['name'], doc['sequence'], 1 if doc['circular'] else 0, doc['description'],
-                     json.dumps(doc['features'])]
+                     json.dumps(doc['features']), json.dumps(doc['translations'])]
         if golden_gate is not None:
             sets.append('golden_gate = ?')
             args.append(1 if golden_gate else 0)

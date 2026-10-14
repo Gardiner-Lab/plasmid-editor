@@ -20,7 +20,8 @@ const API = {
     }
     const res = await fetch(path, init);
     if (res.status === 401 && !opts.allowAnonymous) {
-      window.location.href = url('/login');
+      // Back to this page once signed in again.
+      window.location.href = url('/login') + '?next=' + encodeURIComponent(window.location.pathname);
       throw new Error('Not signed in');
     }
     const type = res.headers.get('content-type') || '';
@@ -188,11 +189,12 @@ const DNA = {
 };
 
 /**
- * Replace doc.sequence[start:end] with `text`, moving every feature to match.
+ * Replace doc.sequence[start:end] with `text`, moving every feature, and every
+ * translation, to match.
  *
  * Features are shifted when the edit falls before them, stretched or shortened
  * when it falls inside them, and dropped when the edit removes them entirely.
- * Pure: returns {sequence, features} and does not touch `doc`.
+ * Pure: returns {sequence, features, translations} and does not touch `doc`.
  */
 function applyEdit(doc, start, end, text) {
   const seq = doc.sequence;
@@ -209,15 +211,44 @@ function applyEdit(doc, start, end, text) {
     if (p === end) return p + delta;                     // right edge
     return start + text.length;                          // strictly inside it
   };
-  const features = [];
-  for (const f of doc.features || []) {
-    const g = { ...f, start: shift(f.start, true), end: shift(f.end, false) };
-    if (f.segments) g.segments = f.segments.map(([s, e]) => [shift(s, true), shift(e, false)]);
-    if (g.start === g.end) continue;   // the edit removed the whole feature
-    features.push(g);
-  }
-  return { sequence: seq.slice(0, start) + text + seq.slice(end), features };
+  const move = (items) => {
+    const moved = [];
+    for (const f of items || []) {
+      const g = { ...f, start: shift(f.start, true), end: shift(f.end, false) };
+      if (f.segments) g.segments = f.segments.map(([s, e]) => [shift(s, true), shift(e, false)]);
+      if (g.start === g.end) continue;   // the edit removed it entirely
+      moved.push(g);
+    }
+    return moved;
+  };
+  return { sequence: seq.slice(0, start) + text + seq.slice(end),
+           features: move(doc.features), translations: move(doc.translations) };
 }
+
+/**
+ * The codons of a translation: for each, the three positions of its bases in
+ * reading order and the amino acid they encode. A reverse-strand translation
+ * reads the complement from its end back to its start. A stretch that is not
+ * a whole number of codons leaves its last one or two bases untranslated.
+ */
+function translationCodons(sequence, t) {
+  const n = sequence.length;
+  const length = t.end > t.start ? t.end - t.start : n - t.start + t.end;
+  const at = (p) => ((p % n) + n) % n;
+  const codons = [];
+  for (let k = 0; k + 3 <= length; k += 3) {
+    const positions = t.strand === -1
+      ? [at(t.start + length - k - 1), at(t.start + length - k - 2), at(t.start + length - k - 3)]
+      : [at(t.start + k), at(t.start + k + 1), at(t.start + k + 2)];
+    let codon = positions.map((p) => sequence[p]).join('').toUpperCase();
+    if (t.strand === -1) codon = DNA.complement(codon);
+    codons.push({ positions, codon, aa: CODONS[codon] ?? 'X' });
+  }
+  return codons;
+}
+
+/** The protein a translation encodes, one letter per amino acid. */
+const translationProtein = (sequence, t) => translationCodons(sequence, t).map((c) => c.aa).join('');
 
 /**
  * How well `text` matches `query`, higher being better and 0 meaning no match.
@@ -295,6 +326,26 @@ const FEATURE_COLORS = {
   polyA_signal: '#fca5a5', "5'UTR": '#a3e635', "3'UTR": '#fb923c',
 };
 const featureColor = (f) => f.color || FEATURE_COLORS[f.type] || FEATURE_COLORS.misc_feature;
+
+/**
+ * How many bases fit on one line of a .seqmap box beside its position
+ * numbers, in whole tens so the numbers stay round; null while it is hidden.
+ * `spare` leaves room after the last base (the editor's caret).
+ */
+function basesPerLine(box, spare = 0) {
+  if (!box.clientWidth) return null;
+  const probe = el('span', { class: 'mono', style: 'position:absolute;visibility:hidden' }, 'M'.repeat(50));
+  box.appendChild(probe);
+  const charWidth = probe.getBoundingClientRect().width / 50;
+  probe.remove();
+  const style = getComputedStyle(box);
+  const num = box.querySelector('.seqmap-num');
+  const numWidth = num ? num.getBoundingClientRect().width
+    : 5.5 * (parseFloat(getComputedStyle(document.documentElement).fontSize) || 16);
+  const usable = box.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight) - numWidth;
+  const bases = Math.floor(usable / charWidth) - spare;
+  return Math.max(10, Math.floor(bases / 10) * 10);
+}
 
 const FEATURE_TYPES = ['CDS', 'gene', 'promoter', 'terminator', 'RBS', 'rep_origin', 'primer_bind',
   'protein_bind', 'regulatory', 'enhancer', 'intron', "5'UTR", "3'UTR", 'polyA_signal',

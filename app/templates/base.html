@@ -27,7 +27,9 @@
                 <a href="{{ url_for('cloning_page') }}" class="navbar-link {{ 'active' if page == 'cloning_page' }}">Cloning</a>
                 <a href="{{ url_for('sequencing_page') }}" class="navbar-link {{ 'active' if page == 'sequencing_page' }}">Sequencing</a>
                 <a href="{{ url_for('features_page') }}" class="navbar-link {{ 'active' if page == 'features_page' }}">Features</a>
-                {% if session.get('role') in ('admin', 'lab_lead') %}
+                {% if suite_dashboard %}
+                    <a href="{{ suite_dashboard }}" class="navbar-link">Dashboard</a>
+                {% elif session.get('role') in ('admin', 'lab_lead') %}
                     <a href="{{ url_for('admin_page') }}" class="navbar-link {{ 'active' if page == 'admin_page' }}">Admin</a>
                 {% endif %}
                 <span class="navbar-divider"></span>

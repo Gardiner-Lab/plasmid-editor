@@ -15,13 +15,19 @@ from Bio.Seq import Seq
 from Bio.SeqFeature import CompoundLocation, FeatureLocation, SeqFeature
 from Bio.SeqRecord import SeqRecord
 
+from . import snapgene
 from .model import clean_sequence, make_document, new_id
+from .translate import translate_stretch
 
 # ApE stores feature colours in these qualifiers; SnapGene and Benchling use the others.
 _FWD_COLOR_KEYS = ('ApEinfo_fwdcolor', 'color', 'note_color')
 _REV_COLOR_KEYS = ('ApEinfo_revcolor',)
 _LABEL_KEYS = ('label', 'gene', 'product', 'note', 'locus_tag', 'name')
 _DROP_QUALIFIERS = {'ApEinfo_fwdcolor', 'ApEinfo_revcolor', 'ApEinfo_graphicformat'}
+# A translation the user made goes out as a CDS feature with this note, which
+# other programs show as an ordinary CDS with its protein, and comes back in
+# as a translation rather than a feature.
+TRANSLATION_NOTE = 'Plasmid Editor translation'
 
 _EXT_FORMAT = {
     '.gb': 'genbank', '.gbk': 'genbank', '.genbank': 'genbank', '.ape': 'genbank', '.gbff': 'genbank',
@@ -79,12 +85,19 @@ def record_to_document(record: SeqRecord, fallback_name: str = 'Untitled') -> Di
         name = record.id
     doc = make_document(name or fallback_name, seq, circular,
                         description=record.description if record.description not in ('<unknown description>', '.') else '')
+    doc['translations'] = []
     for feat in record.features:
         if feat.type == 'source':
             continue
         if feat.location is None:
             continue
-        doc['features'].append(_feature_from_bio(feat, len(seq), circular))
+        feature = _feature_from_bio(feat, len(seq), circular)
+        if feat.type == 'CDS' and TRANSLATION_NOTE in (feat.qualifiers.get('note') or []):
+            doc['translations'].append({'id': feature['id'], 'name': feature['name'],
+                                        'start': feature['start'], 'end': feature['end'],
+                                        'strand': feature['strand']})
+        else:
+            doc['features'].append(feature)
     return doc
 
 
@@ -107,7 +120,8 @@ def read_sequences(data: bytes, filename: str = '') -> List[Dict[str, Any]]:
 
     if fmt in ('snapgene', 'abi'):
         try:
-            records = list(SeqIO.parse(io.BytesIO(data), fmt))
+            # SnapGene through our reader, which keeps the feature colours.
+            records = [snapgene.read(data)] if fmt == 'snapgene' else list(SeqIO.parse(io.BytesIO(data), fmt))
         except Exception as exc:
             raise SequenceFileError(f'could not read {fmt} file: {exc}') from exc
         docs = [record_to_document(r, fallback) for r in records]
@@ -169,29 +183,46 @@ def _to_record(doc: Dict[str, Any]) -> SeqRecord:
     rec.annotations['topology'] = 'circular' if doc.get('circular') else 'linear'
     n = len(doc['sequence'])
     for f in doc.get('features', []):
-        strand = f.get('strand', 1)
-        if f.get('segments'):
-            parts = [FeatureLocation(s, e, strand=strand) for s, e in f['segments']]
-            loc = CompoundLocation(parts) if len(parts) > 1 else parts[0]
-        elif f['end'] > f['start']:
-            loc = FeatureLocation(f['start'], f['end'], strand=strand)
-        else:
-            a = FeatureLocation(f['start'], n, strand=strand)
-            b = FeatureLocation(0, f['end'], strand=strand)
-            loc = CompoundLocation([a, b] if strand == 1 else [b, a])
         q = {k: (v if isinstance(v, list) else [v]) for k, v in (f.get('qualifiers') or {}).items()}
         q['label'] = [f['name']]
         if f.get('color'):
             q['ApEinfo_fwdcolor'] = [f['color']]
             q['ApEinfo_revcolor'] = [f['color']]
-        rec.features.append(SeqFeature(loc, type=f.get('type') or 'misc_feature', qualifiers=q))
+        rec.features.append(SeqFeature(_location(f, n), type=f.get('type') or 'misc_feature', qualifiers=q))
+    for t in doc.get('translations') or []:
+        protein = translate_stretch(doc['sequence'], t['start'], t['end'], t.get('strand', 1))
+        rec.features.append(SeqFeature(_location(t, n), type='CDS', qualifiers={
+            'label': [t['name']],
+            'note': [TRANSLATION_NOTE],
+            'codon_start': ['1'],
+            # GenBank leaves the stop codon out of /translation.
+            'translation': [protein.rstrip('*')],
+        }))
     return rec
+
+
+def _location(f: Dict[str, Any], n: int):
+    """A feature's or translation's location, joined through the origin when it wraps."""
+    strand = f.get('strand', 1)
+    if f.get('segments'):
+        parts = [FeatureLocation(s, e, strand=strand) for s, e in f['segments']]
+        return CompoundLocation(parts) if len(parts) > 1 else parts[0]
+    if f['end'] > f['start']:
+        return FeatureLocation(f['start'], f['end'], strand=strand)
+    a = FeatureLocation(f['start'], n, strand=strand)
+    b = FeatureLocation(0, f['end'], strand=strand)
+    return CompoundLocation([a, b] if strand == 1 else [b, a])
 
 
 def write_genbank(doc: Dict[str, Any]) -> str:
     out = io.StringIO()
     SeqIO.write(_to_record(doc), out, 'genbank')
     return out.getvalue()
+
+
+def write_snapgene(doc: Dict[str, Any]) -> bytes:
+    """A SnapGene .dna file, with the same features (and translations) as the GenBank export."""
+    return snapgene.write(_to_record(doc))
 
 
 def write_fasta(doc: Dict[str, Any], line_width: int = 70) -> str:

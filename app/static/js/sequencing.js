@@ -448,23 +448,121 @@ const Sequencing = {
     summary.replaceChildren(...parts);
   },
 
-  /** Reference over read, in blocks, with mismatches marked. */
+  /**
+   * Reference over read, in blocks, with mismatches marked, and the
+   * reference's features above it, so you see which of them the read covers.
+   * Lines are as long as the box allows, and re-flow when it is resized.
+   */
   alignmentView(a) {
-    const width = 60;
+    const lanes = this.alignedFeatures(a);
     const wrap = el('div', { class: 'seqmap', style: 'max-height:24rem;overflow:auto' });
-    for (let i = 0; i < a.top.length; i += width) {
-      const top = a.top.slice(i, i + width);
-      const bottom = a.bottom.slice(i, i + width);
-      const marks = [...top].map((c, j) => (c === bottom[j] ? '|' : ' ')).join('');
-      const refStart = a.ref_start + [...a.top.slice(0, i)].filter((c) => c !== '-').length;
-      wrap.appendChild(el('div', { class: 'seqmap-block' },
-        el('div', { class: 'seqmap-num', text: String(refStart + 1) }),
-        el('div', { class: 'seqmap-rows' },
-          el('div', { class: 'seqmap-row', text: top }),
-          el('div', { class: 'seqmap-row', style: 'color:var(--text-secondary)', text: marks }),
-          el('div', { class: 'seqmap-row', text: bottom }))));
+    let width = 60;          // until the box is on the page and can be measured
+    const draw = () => {
+      const blocks = [];
+      for (let i = 0; i < a.top.length; i += width) {
+        const top = a.top.slice(i, i + width);
+        const bottom = a.bottom.slice(i, i + width);
+        const marks = [...top].map((c, j) => (c === bottom[j] ? '|' : ' ')).join('');
+        const refStart = (a.ref_start + [...a.top.slice(0, i)].filter((c) => c !== '-').length)
+          % this.reference.sequence.length;
+        blocks.push(el('div', { class: 'seqmap-block' },
+          el('div', { class: 'seqmap-num', text: String(refStart + 1) }),
+          el('div', { class: 'seqmap-rows' },
+            ...this.featureLanes(lanes, i, Math.min(i + width, a.top.length)),
+            el('div', { class: 'seqmap-row', text: top }),
+            el('div', { class: 'seqmap-row', style: 'color:var(--text-secondary)', text: marks }),
+            el('div', { class: 'seqmap-row', text: bottom }))));
+      }
+      wrap.replaceChildren(...blocks);
+    };
+    draw();
+    if ('ResizeObserver' in window) {
+      let shownOnce = false;
+      const observer = new ResizeObserver(() => {
+        // Not on the page yet (it is about to be), or replaced by another read's.
+        if (!wrap.isConnected) {
+          if (shownOnce) observer.disconnect();
+          return;
+        }
+        shownOnce = true;
+        const fits = basesPerLine(wrap);
+        if (!fits || fits === width) return;
+        // Keep the line at the top of the box's own scroll in view.
+        const viewTop = () => wrap.getBoundingClientRect().top + parseFloat(getComputedStyle(wrap).paddingTop);
+        const top = viewTop();
+        const shown = [...wrap.children].findIndex((b) => b.getBoundingClientRect().bottom > top);
+        const column = Math.max(shown, 0) * width;
+        width = fits;
+        draw();
+        const line = wrap.children[Math.floor(column / width)];
+        if (line) wrap.scrollTop += line.getBoundingClientRect().top - viewTop();
+      });
+      observer.observe(wrap);
     }
     return wrap;
+  },
+
+  /**
+   * The reference's features in alignment columns: for each, the runs of
+   * columns it covers, stacked in lanes so overlapping features do not hide
+   * each other. A gap in the reference (bases the read has extra) counts as
+   * inside a feature when the base before it is.
+   */
+  alignedFeatures(a) {
+    const features = this.reference?.features || [];
+    const n = this.reference?.sequence.length || 0;
+    if (!features.length || !n) return [];
+    // The reference position each column belongs to.
+    const refAt = [];
+    let pos = a.ref_start;
+    for (const c of a.top) {
+      refAt.push((c === '-' ? Math.max(pos - 1, a.ref_start) : pos) % n);
+      if (c !== '-') pos += 1;
+    }
+    const spans = (f) => (f.segments?.length ? f.segments
+      : f.end > f.start ? [[f.start, f.end]] : [[f.start, n], [0, f.end]]);
+    const placed = [];
+    for (const f of features) {
+      const inside = spans(f);
+      const runs = [];
+      refAt.forEach((p, col) => {
+        if (!inside.some(([s, e]) => p >= s && p < e)) return;
+        const last = runs[runs.length - 1];
+        if (last && last[1] === col) last[1] = col + 1;
+        else runs.push([col, col + 1]);
+      });
+      if (runs.length) placed.push({ f, runs, from: runs[0][0], to: runs[runs.length - 1][1] });
+    }
+    // Stack: each feature goes in the first lane it does not overlap.
+    const lanes = [];
+    for (const item of placed.sort((x, y) => x.from - y.from || y.to - x.to)) {
+      const lane = lanes.find((l) => l.every((o) => o.to <= item.from || item.to <= o.from));
+      if (lane) lane.push(item); else lanes.push([item]);
+    }
+    return lanes;
+  },
+
+  /** Feature bars for alignment columns [from, to), one row per lane in use. */
+  featureLanes(lanes, from, to) {
+    const rows = [];
+    for (const lane of lanes) {
+      const bars = [];
+      for (const { f, runs } of lane) {
+        for (const [s, e] of runs) {
+          const a = Math.max(s, from);
+          const b = Math.min(e, to);
+          if (b <= a) continue;
+          const label = f.strand === -1 ? `◀ ${f.name}` : `${f.name} ▶`;
+          bars.push(el('div', {
+            class: 'aln-feat',
+            style: `left:${a - from}ch;width:${b - a}ch;background:${featureColor(f)}`,
+            title: `${f.name} (${f.type}) ${f.start + 1}..${f.end}${f.strand === -1 ? ' complement' : ''}`,
+          }, b - a > 4 ? el('span', {}, label) : null));
+        }
+      }
+      if (bars.length) rows.push(el('div', { class: 'seqmap-row feature-lane' }, ...bars));
+    }
+    return rows;
   },
 
   drawTrace() {

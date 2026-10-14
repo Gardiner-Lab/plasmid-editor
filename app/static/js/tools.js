@@ -256,7 +256,7 @@ const Tools = {
               document: Editor.payloadDoc(),
               cds_start: start, cds_end: end,
               max_changes: Number(document.getElementById('ssChanges').value) || 2,
-              enzymes: Editor.enzymeSets[Editor.activeSet],
+              enzymes: Editor.currentEnzymes(),
             });
             if (!sites.length) { out.replaceChildren(el('div', { class: 'empty' }, 'No silent sites found.')); return; }
             out.replaceChildren(

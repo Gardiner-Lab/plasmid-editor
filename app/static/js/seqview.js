@@ -16,7 +16,8 @@ class SeqView {
     this.container = container;
     this.doc = { name: '', sequence: '', circular: false, features: [] };
     this.opts = {
-      width: 60,
+      width: 60,               // bases per line; set to what fits while autoWidth is on
+      autoWidth: true,         // follow the pane's width, in tens of bases
       showComplement: true,
       showTranslation: false,
       translationFrame: 1,     // 1,2,3 forward; -1,-2,-3 reverse
@@ -48,6 +49,10 @@ class SeqView {
     window.addEventListener('mouseup', () => { this._drag = null; });
     container.addEventListener('mousemove', (e) => this._mousemove(e));
     container.addEventListener('keydown', (e) => this._keydown(e));
+    // Lines as long as the pane allows, re-flowed when the window is resized.
+    if (this.opts.autoWidth && 'ResizeObserver' in window) {
+      new ResizeObserver(() => this._refit()).observe(container);
+    }
   }
 
   setDocument(doc, { keepSelection = false } = {}) {
@@ -138,6 +143,52 @@ class SeqView {
     return this._cw;
   }
 
+  /** Bases per line that fit the pane, with one to spare for the caret after the last. */
+  _widthThatFits() {
+    return basesPerLine(this.container, 1);
+  }
+
+  /** Re-flow to the pane's new width, keeping the same bases at the top of the view. */
+  _refit() {
+    if (this._refitFrame) return;
+    this._refitFrame = requestAnimationFrame(() => {
+      this._refitFrame = null;
+      const width = this._widthThatFits();
+      if (!width || width === this.opts.width || !this.doc.sequence.length) return;
+      const top = this._topVisibleBlock();
+      this.render();
+      if (top) this._restoreTop(top);
+    });
+  }
+
+  _scrollParent() {
+    for (let node = this.container; node; node = node.parentElement) {
+      const overflow = getComputedStyle(node).overflowY;
+      if ((overflow === 'auto' || overflow === 'scroll') && node.scrollHeight > node.clientHeight) return node;
+    }
+    return document.scrollingElement;
+  }
+
+  /** The first line in view: the base it starts at, and where it is on screen. */
+  _topVisibleBlock() {
+    const scroller = this._scrollParent();
+    const viewTop = Math.max(this.container.getBoundingClientRect().top,
+      scroller === document.scrollingElement ? 0 : scroller.getBoundingClientRect().top);
+    const blocks = this.container.querySelectorAll('.seqmap-block');
+    for (let i = 0; i < blocks.length; i++) {
+      const rect = blocks[i].getBoundingClientRect();
+      if (rect.bottom > viewTop) return { base: i * this.opts.width, top: rect.top, scroller };
+    }
+    return null;
+  }
+
+  _restoreTop({ base, top, scroller }) {
+    const block = this.container.querySelectorAll('.seqmap-block')[Math.floor(base / this.opts.width)];
+    if (!block) return;
+    const shift = block.getBoundingClientRect().top - top;
+    if (Math.abs(shift) >= 1) scroller.scrollTop += shift;
+  }
+
   _posFromEvent(e) {
     const row = e.target.closest('.seqmap-row.bases');
     if (!row) return null;
@@ -158,6 +209,25 @@ class SeqView {
         // read from the click count rather than a dblclick event.
         if (e.detail >= 2) this.onFeatureDblClick?.(f);
         else this.onFeatureClick?.(f);
+        return;
+      }
+    }
+    const codon = e.target.closest('.aa-codon');
+    if (codon) {
+      const t = (this.doc.translations || []).find((x) => x.id === codon.dataset.translation);
+      if (t) {
+        e.preventDefault();
+        this.container.focus({ preventScroll: true });
+        // One click selects the codon; a double click the whole translation.
+        if (e.detail >= 2) {
+          this.setSelection({ start: t.start, end: t.end });
+        } else {
+          // From the codon's first base to just past its last, in the forward
+          // direction, which also runs through the origin when the codon does.
+          const { positions } = translationCodons(this.doc.sequence, t)[Number(codon.dataset.codon)];
+          const [first, last] = t.strand === -1 ? [positions[2], positions[0]] : [positions[0], positions[2]];
+          this.setSelection({ start: first, end: (last + 1) % this.doc.sequence.length || this.doc.sequence.length });
+        }
         return;
       }
     }
@@ -284,6 +354,7 @@ class SeqView {
   render() {
     const { sequence, circular } = this.doc;
     const n = sequence.length;
+    if (this.opts.autoWidth) this.opts.width = this._widthThatFits() || this.opts.width;
     const width = this.opts.width;
     const frag = document.createDocumentFragment();
     if (!n) {
@@ -300,6 +371,7 @@ class SeqView {
 
     const sel = this.selection;
     const selLen = this.selectionLength();
+    const translated = this._translationsByBlock(n, width);
 
     for (let start = 0; start < n; start += width) {
       const end = Math.min(start + width, n);
@@ -333,6 +405,12 @@ class SeqView {
         : null;
       if (compRow) rows.appendChild(compRow);
       if (this.opts.showEnzymes) this._drawCuts(basesRow, compRow, start, end, n, circular);
+
+      // The user's translations, each amino acid under the codon that encodes it.
+      for (const lane of translated.lanes) {
+        const row = this._translationLane(lane, translated.byBlock.get(start / width) || [], start, end);
+        if (row) rows.appendChild(row);
+      }
 
       if (this.opts.showTranslation) {
         rows.appendChild(this._translationRow(text, start, end, n));
@@ -480,6 +558,65 @@ class SeqView {
     }
     flush();
     return out;
+  }
+
+  /**
+   * The document's translations, worked out once per render: their lanes
+   * (overlapping translations get a row each) and, for each line of the view,
+   * the codons with a base on it.
+   */
+  _translationsByBlock(n, width) {
+    const translations = this.doc.translations || [];
+    const byBlock = new Map();
+    if (!translations.length) return { lanes: [], byBlock };
+    const { laneOf, laneCount } = this._laneAssign(translations, n);
+    const lanes = Array.from({ length: laneCount }, (_, i) => i);
+    for (const t of translations) {
+      translationCodons(this.doc.sequence, t).forEach((c, index) => {
+        const item = { t, lane: laneOf.get(t.id) || 0, index, ...c };
+        for (const block of new Set(c.positions.map((p) => Math.floor(p / width)))) {
+          if (!byBlock.has(block)) byBlock.set(block, []);
+          byBlock.get(block).push(item);
+        }
+      });
+    }
+    return { lanes, byBlock };
+  }
+
+  /**
+   * One lane of translations on the line [start, end): a band under each codon,
+   * alternating in shade so the triplets read apart, and the amino acid under
+   * the codon's middle base. Stop codons are marked.
+   */
+  _translationLane(lane, codons, start, end) {
+    const cw = this._charWidth();
+    const row = el('div', { class: 'seqmap-row aa-lane' });
+    for (const c of codons) {
+      if (c.lane !== lane) continue;
+      const kind = `${c.index % 2 ? ' alt' : ''}${c.aa === '*' ? ' stop' : ''}`;
+      const title = `${c.t.name}: ${c.aa === '*' ? 'stop' : c.aa}${c.index + 1} (${c.codon})`;
+      // A band per run of this codon's bases on the line (two only when the
+      // codon crosses the origin).
+      const here = c.positions.filter((p) => p >= start && p < end).sort((a, b) => a - b);
+      for (let i = 0; i < here.length;) {
+        let j = i;
+        while (j + 1 < here.length && here[j + 1] === here[j] + 1) j++;
+        row.appendChild(el('span', {
+          class: `aa-codon${kind}`, title,
+          style: `left:${(here[i] - start) * cw}px;width:${(here[j] - here[i] + 1) * cw}px`,
+          'data-translation': c.t.id, 'data-codon': String(c.index),
+        }));
+        i = j + 1;
+      }
+      const middle = c.positions[1];
+      if (middle >= start && middle < end) {
+        row.appendChild(el('span', {
+          class: `aa-letter${c.aa === '*' ? ' stop' : ''}`,
+          style: `left:${(middle - start) * cw}px;width:${cw}px`,
+        }, c.aa));
+      }
+    }
+    return row.childElementCount ? row : null;
   }
 
   _translationRow(text, start, end, n) {

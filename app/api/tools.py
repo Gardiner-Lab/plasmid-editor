@@ -27,7 +27,64 @@ def _bad(exc):
 @tools_bp.route('/enzymes', methods=['GET'])
 @require_auth
 def enzymes(user):
-    return jsonify({'sets': restriction.enzyme_sets(), 'ladders': sorted(restriction.LADDERS)}), 200
+    """
+    The built-in enzyme sets, this person's own lists and the one they last
+    showed; with ?catalog=1, every enzyme too, for choosing a list from.
+    """
+    from app.models import enzyme_list
+    body = {'sets': restriction.enzyme_sets(), 'ladders': sorted(restriction.LADDERS),
+            'lists': enzyme_list.for_owner(user.id), 'choice': enzyme_list.choice(user.id)}
+    if request.args.get('catalog'):
+        body['catalog'] = restriction.enzyme_catalog()
+    return jsonify(body), 200
+
+
+# --- the person's own enzyme lists ------------------------------------------
+
+@tools_bp.route('/enzyme-lists', methods=['POST'])
+@require_auth
+def create_enzyme_list(user):
+    from app.models import enzyme_list
+    data = _json()
+    try:
+        made = enzyme_list.create(user.id, data.get('name', ''), data.get('enzymes'))
+    except ValueError as exc:
+        return _bad(exc)
+    return jsonify({'list': made}), 201
+
+
+@tools_bp.route('/enzyme-lists/<list_id>', methods=['PUT', 'PATCH'])
+@require_auth
+def update_enzyme_list(user, list_id):
+    from app.models import enzyme_list
+    data = _json()
+    try:
+        changed = enzyme_list.update(list_id, user.id, data.get('name'), data.get('enzymes'))
+    except ValueError as exc:
+        return _bad(exc)
+    if changed is None:
+        return jsonify({'error': 'No such list'}), 404
+    return jsonify({'list': changed}), 200
+
+
+@tools_bp.route('/enzyme-lists/<list_id>', methods=['DELETE'])
+@require_auth
+def delete_enzyme_list(user, list_id):
+    from app.models import enzyme_list
+    if not enzyme_list.delete(list_id, user.id):
+        return jsonify({'error': 'No such list'}), 404
+    if enzyme_list.choice(user.id) == f'list:{list_id}':
+        enzyme_list.set_choice(user.id, 'Default')
+    return jsonify({'ok': True}), 200
+
+
+@tools_bp.route('/enzyme-choice', methods=['PUT'])
+@require_auth
+def set_enzyme_choice(user):
+    """Remember which list the person is showing, for their next visit, on any computer."""
+    from app.models import enzyme_list
+    enzyme_list.set_choice(user.id, _json().get('choice', ''))
+    return jsonify({'ok': True}), 200
 
 
 @tools_bp.route('/enzymes/<name>', methods=['GET'])

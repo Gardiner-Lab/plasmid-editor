@@ -12,6 +12,9 @@ the server unchanged:
         "features": [
             {"id": "f1", "name": "AmpR", "type": "CDS", "start": 0, "end": 861,
              "strand": -1, "color": "#f59e0b", "qualifiers": {}}
+        ],
+        "translations": [
+            {"id": "t1", "name": "AmpR protein", "start": 0, "end": 861, "strand": -1}
         ]
     }
 
@@ -118,7 +121,34 @@ def normalize_document(doc: Dict[str, Any]) -> Dict[str, Any]:
         'circular': bool(doc.get('circular')),
         'description': str(doc.get('description') or ''),
         'features': feats,
+        'translations': normalize_translations(doc.get('translations'), n, bool(doc.get('circular'))),
     }
+
+
+def normalize_translations(items, n: int, circular: bool) -> List[Dict[str, Any]]:
+    """
+    Translations the user made of a stretch of the sequence, kept apart from
+    the features: a name, the bases [start, end) and the strand read. Each
+    codon's amino acid is shown under it; a stretch that is not a whole number
+    of codons leaves its last one or two bases untranslated.
+    """
+    out = []
+    for t in items or []:
+        try:
+            start, end = int(t['start']), int(t['end'])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if not (0 <= start <= n and 0 <= end <= n) or start == end:
+            continue
+        if end < start and not circular:
+            continue
+        out.append({
+            'id': t.get('id') or new_id(),
+            'name': str(t.get('name') or 'Translation')[:100],
+            'start': start, 'end': end,
+            'strand': -1 if t.get('strand') == -1 else 1,
+        })
+    return out
 
 
 def rotate(doc: Dict[str, Any], new_origin: int) -> Dict[str, Any]:
@@ -126,23 +156,28 @@ def rotate(doc: Dict[str, Any], new_origin: int) -> Dict[str, Any]:
     seq = doc['sequence']
     n = len(seq)
     k = new_origin % n
-    out = dict(doc, sequence=seq[k:] + seq[:k], features=[])
+    out = dict(doc, sequence=seq[k:] + seq[:k], features=[], translations=[])
     for f in doc['features']:
         g = dict(f, start=(f['start'] - k) % n, end=(f['end'] - k) % n or n)
         if g['start'] == n:
             g['start'] = 0
         g.pop('segments', None)
         out['features'].append(g)
+    for t in doc.get('translations') or []:
+        out['translations'].append(dict(t, start=(t['start'] - k) % n, end=(t['end'] - k) % n or n))
     return out
 
 
 def reverse_complement_document(doc: Dict[str, Any]) -> Dict[str, Any]:
     seq = doc['sequence']
     n = len(seq)
-    out = dict(doc, sequence=reverse_complement(seq), features=[])
+    out = dict(doc, sequence=reverse_complement(seq), features=[], translations=[])
     for f in doc['features']:
         g = dict(f, start=(n - f['end']) % n if doc['circular'] else n - f['end'],
                  end=n - f['start'], strand=-f.get('strand', 1))
         g.pop('segments', None)
         out['features'].append(g)
+    for t in doc.get('translations') or []:
+        out['translations'].append(dict(t, start=(n - t['end']) % n if doc['circular'] else n - t['end'],
+                                        end=n - t['start'], strand=-t.get('strand', 1)))
     return out

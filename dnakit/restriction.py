@@ -51,6 +51,33 @@ def enzyme_sets() -> Dict[str, List[str]]:
     }
 
 
+def enzyme_names() -> set:
+    """Every enzyme name known, from REBASE."""
+    return set(_ENZYMES)
+
+
+_CATALOG: Optional[List[Dict[str, Any]]] = None
+
+
+def enzyme_catalog() -> List[Dict[str, Any]]:
+    """
+    Every enzyme, for choosing from: its recognition site, the ends it leaves,
+    and whether a supplier sells it. Worked out once; REBASE does not change
+    while the program runs.
+    """
+    global _CATALOG
+    if _CATALOG is None:
+        commercial = {str(e) for e in R.CommOnly}
+        catalog = []
+        for name in sorted(_ENZYMES, key=str.casefold):
+            e = _ENZYMES[name]
+            ends = 'blunt' if e.is_blunt() else "5'" if e.is_5overhang() else "3'" if e.is_3overhang() else '?'
+            catalog.append({'name': name, 'site': e.site, 'ends': ends,
+                            'commercial': name in commercial})
+        _CATALOG = catalog
+    return _CATALOG
+
+
 def get_enzyme(name: str):
     enz = _ENZYMES.get(name)
     if enz is None:

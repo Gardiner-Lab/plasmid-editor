@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Optional
 
 import bcrypt
 
+from app.models import suite_labs
 from app.models.database import get_connection
 
 logger = logging.getLogger(__name__)
@@ -77,9 +78,13 @@ class User:
     @staticmethod
     def _row(row) -> 'User':
         keys = row.keys()
-        return User(row['id'], row['username'], row['password_hash'], row['lab_source'],
-                    bool(row['is_admin']), row['created_at'],
-                    row['role'] if 'role' in keys else None)
+        lab_source, lab_role = row['lab_source'], row['role'] if 'role' in keys else None
+        # Inside the lab suite, its record of labs and lab leads is the one that counts.
+        suite = suite_labs.membership(row['username'])
+        if suite is not None:
+            lab_source, lab_role = suite['lab'], suite['role']
+        return User(row['id'], row['username'], row['password_hash'], lab_source,
+                    bool(row['is_admin']), row['created_at'], lab_role)
 
     @staticmethod
     def hash_password(password: str) -> str:
@@ -275,6 +280,12 @@ def _mirror(account: dict) -> 'User':
                          (account['password_hash'], 1 if account['is_admin'] else 0, row['id']))
         row = conn.execute('SELECT * FROM users WHERE username = ?', (account['username'],)).fetchone()
         return User._row(row)
+
+
+# For the suite's sign-in (app/services/suite_auth.py), which identifies people
+# by username and needs their local row without a password to check.
+shared_account = _shared_account
+mirror_shared_account = _mirror
 
 
 def register(username: str, password: str, lab_source: str = '') -> 'User':

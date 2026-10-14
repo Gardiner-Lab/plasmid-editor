@@ -9,9 +9,9 @@ for work that is not Golden Gate based or needs manual DNA manipulation.
 import os
 from datetime import timedelta
 
-from flask import Flask, redirect, render_template, session, url_for
+from flask import Flask, redirect, render_template, request, session, url_for
 
-APP_VERSION = '0.2.1'
+APP_VERSION = '0.3.0'
 
 _DEFAULT_SECRET = 'dev-secret-key-change-in-production'
 
@@ -38,6 +38,8 @@ class PrefixMiddleware:
 
 
 def create_app() -> Flask:
+    from app.services import suite_auth
+
     app = Flask(__name__)
 
     app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', _DEFAULT_SECRET)
@@ -94,6 +96,8 @@ def create_app() -> Flask:
         return {
             'app_version': APP_VERSION,
             'suite_home': suite_home,
+            # Inside the suite, its dashboard has every account and admin control.
+            'suite_dashboard': suite_auth.dashboard_url() if suite_auth.enabled() else '',
             'moclo': {
                 'enabled': bool(raw),
                 'base': base,
@@ -102,6 +106,10 @@ def create_app() -> Flask:
                 'protocol': f'{base}/protocol',
             },
         }
+
+    # Inside the suite (SUITE_AUTH=proxy), the suite's sign-in decides who is
+    # signed in here; see app/services/suite_auth.py.
+    app.before_request(suite_auth.follow_suite_sign_in)
 
     from app.api import admin_bp, auth_bp, library_bp, moclo_bp, sequences_bp, tools_bp
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
@@ -124,11 +132,19 @@ def create_app() -> Flask:
     def login_page():
         if 'user_id' in session:
             return redirect(url_for('editor_page'))
+        # Inside the suite, people sign in and register on the suite's pages.
+        if suite_auth.enabled():
+            if 'register' in request.args:
+                return redirect(suite_auth.register_url())
+            return redirect(suite_auth.login_url(request.args.get('next') or url_for('editor_page')))
         return render_template('login.html')
 
     @app.route('/logout')
     def logout_page():
         session.clear()
+        if suite_auth.enabled():
+            # Signing out of the suite signs out of every tool.
+            return redirect(suite_auth.logout_url())
         return redirect(url_for('login_page'))
 
     @app.route('/editor')
@@ -159,6 +175,9 @@ def create_app() -> Flask:
             return redirect(url_for('login_page'))
         if not user.can_administer:
             return redirect(url_for('editor_page'))
+        # Inside the suite, labs, codes and roles are managed on its own page.
+        if suite_auth.enabled():
+            return redirect(suite_auth.admin_url())
         return render_template('admin.html')
 
     @app.route('/about')

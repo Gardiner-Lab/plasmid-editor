@@ -6,7 +6,7 @@ from flask import Blueprint, jsonify, request
 
 from app.models.user import register as register_account, shared_directory_available
 from app.services import auth as auth_service
-from app.services import registration
+from app.services import registration, suite_auth
 
 auth_bp = Blueprint('auth', __name__)
 
@@ -17,6 +17,9 @@ def _registration_open() -> bool:
 
 @auth_bp.route('/register', methods=['POST'])
 def register():
+    if suite_auth.enabled():
+        return jsonify({'error': 'Accounts are created on the lab tools registration page',
+                        'register_url': suite_auth.register_url()}), 403
     if not _registration_open():
         return jsonify({'error': 'Registration is closed on this server'}), 403
     data = request.get_json(silent=True) or {}
@@ -38,6 +41,9 @@ def register():
 
 @auth_bp.route('/login', methods=['POST'])
 def login():
+    if suite_auth.enabled():
+        return jsonify({'error': 'Sign in on the lab tools sign-in page',
+                        'login_url': suite_auth.login_url()}), 403
     data = request.get_json(silent=True) or {}
     user = auth_service.login(data.get('username', ''), data.get('password', ''))
     if user is None:
@@ -76,6 +82,9 @@ def labs():
 @auth_service.require_auth
 def update_profile(user):
     data = request.get_json(silent=True) or {}
+    if 'lab_source' in data and suite_auth.enabled():
+        return jsonify({'error': 'Your lab is set on the lab tools dashboard',
+                        'admin_url': suite_auth.admin_url()}), 403
     if 'lab_source' in data:
         user.set_lab_source(str(data['lab_source']))
     return jsonify({'user': user.to_dict()}), 200

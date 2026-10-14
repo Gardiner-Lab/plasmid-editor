@@ -219,9 +219,22 @@ def delete_sequence(user, sequence_id):
 # Export
 # ---------------------------------------------------------------------------
 
-def _download(text: str, filename: str, mimetype: str = 'chemical/seq-na-genbank'):
-    buf = io.BytesIO(text.encode('utf-8'))
+def _download(content, filename: str, mimetype: str = 'chemical/seq-na-genbank'):
+    buf = io.BytesIO(content if isinstance(content, bytes) else content.encode('utf-8'))
     return send_file(buf, mimetype=mimetype, as_attachment=True, download_name=filename)
+
+
+def _write(doc, fmt: str, name: str):
+    """A document as a download in one of the export formats, or None for an unknown one."""
+    if fmt in ('genbank', 'gb'):
+        return _download(seqio.write_genbank(doc), f'{name}.gb')
+    if fmt in ('snapgene', 'dna'):
+        return _download(seqio.write_snapgene(doc), f'{name}.dna', 'application/octet-stream')
+    if fmt in ('fasta', 'fa'):
+        return _download(seqio.write_fasta(doc), f'{name}.fasta', 'text/x-fasta')
+    if fmt == 'json':
+        return _download(json.dumps(doc, indent=2), f'{name}.json', 'application/json')
+    return None
 
 
 def _safe(name: str) -> str:
@@ -234,14 +247,10 @@ def export_sequence(user, sequence_id, fmt):
     doc, err = _owned_or_404(sequence_id, user)
     if err:
         return err
-    name = _safe(doc['name'])
-    if fmt in ('genbank', 'gb'):
-        return _download(seqio.write_genbank(doc), f'{name}.gb')
-    if fmt in ('fasta', 'fa'):
-        return _download(seqio.write_fasta(doc), f'{name}.fasta', 'text/x-fasta')
-    if fmt == 'json':
-        return _download(json.dumps(doc, indent=2), f'{name}.json', 'application/json')
-    return jsonify({'error': f'Unsupported format: {fmt}'}), 400
+    response = _write(doc, fmt, _safe(doc['name']))
+    if response is None:
+        return jsonify({'error': f'Unsupported format: {fmt}'}), 400
+    return response
 
 
 @sequences_bp.route('/convert', methods=['POST'])
@@ -261,13 +270,9 @@ def convert(user):
     if not doc['sequence']:
         return jsonify({'error': 'The sequence is empty'}), 400
     fmt = (data.get('format') or 'genbank').lower()
-    name = _safe(doc['name'])
-    if fmt in ('genbank', 'gb'):
-        return _download(seqio.write_genbank(doc), f'{name}.gb')
-    if fmt in ('fasta', 'fa'):
-        return _download(seqio.write_fasta(doc), f'{name}.fasta', 'text/x-fasta')
-    if fmt == 'json':
-        return _download(json.dumps(doc, indent=2), f'{name}.json', 'application/json')
+    response = _write(doc, fmt, _safe(doc['name']))
+    if response is not None:
+        return response
     return jsonify({'error': f'Unsupported format: {fmt}'}), 400
 
 
@@ -513,7 +518,9 @@ def sequencing_history(user, sequence_id):
     sequence = {k: doc[k] for k in ('id', 'name', 'sequence', 'circular', 'shared', 'confirmed',
                                     'confirmed_at', 'confirmed_by', 'confirmed_clone',
                                     'glycerol_stock')}
-    sequence.update(feature_count=len(doc.get('features') or []),
+    # The features too, so an alignment shows which of them a read covers.
+    sequence.update(features=doc.get('features') or [],
+                    feature_count=len(doc.get('features') or []),
                     can_change=_can_change(doc, user),
                     can_add_reads=_can_add_reads(doc, user))
     return jsonify({

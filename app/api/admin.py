@@ -16,6 +16,15 @@ from app.services.auth import require_admin, require_lab_admin
 admin_bp = Blueprint('admin', __name__)
 
 
+@admin_bp.before_request
+def managed_by_the_suite():
+    """Inside the lab suite, labs, codes and roles are managed on its own page."""
+    from app.services import suite_auth
+    if suite_auth.enabled():
+        return jsonify({'error': 'Labs, codes and roles are managed on the lab tools '
+                                 'dashboard', 'admin_url': suite_auth.admin_url()}), 403
+
+
 def _user_row(u: User) -> dict:
     return {'username': u.username, 'lab': u.lab_source, 'role': u.role,
             'created_at': u.created_at}
