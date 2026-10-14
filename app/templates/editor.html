@@ -18,7 +18,7 @@
 
     <button class="tool-btn" id="btnCopy" title="Copy selection (Ctrl+C)">Copy</button>
     <button class="tool-btn" id="btnCopyRC" title="Copy reverse complement">Copy RC</button>
-    <button class="tool-btn" id="btnCopyProtein" title="Copy translation of the selection">Copy AA</button>
+    <button class="tool-btn" id="btnCopyProtein" title="Copy amino acids: those chosen on a translation, or the selection translated">Copy AA</button>
     <button class="tool-btn" id="btnPaste" title="Replace the selection with pasted sequence">Paste</button>
     <button class="tool-btn" id="btnDelete" title="Delete the selected bases">Delete</button>
     <div class="tool-sep"></div>
@@ -150,14 +150,14 @@
         </div>
 
         <div class="panel">
-            <div class="panel-head">
-                Enzymes
-                <select id="enzymeSet" style="width:auto;max-width:11rem;padding:.15rem .3rem;font-size:.75rem"
-                        title="Which enzymes to show"></select>
-                <button class="tool-btn" id="btnEnzymeLists" type="button"
-                        title="Choose the enzymes to show, or make a list of your own">Choose…</button>
-            </div>
+            <div class="panel-head">Enzymes</div>
             <div class="panel-body">
+                <!-- Which enzymes to show: a set or one of your lists, and the chooser. -->
+                <div class="enzyme-source">
+                    <select id="enzymeSet" title="Which enzymes to show" aria-label="Which enzymes to show"></select>
+                    <button class="btn btn-secondary btn-sm" id="btnEnzymeLists" type="button"
+                            title="Choose the enzymes to show, or make a list of your own">Choose…</button>
+                </div>
                 <div class="field">
                     <input type="search" id="enzymeFilter" placeholder="Filter enzymes">
                 </div>

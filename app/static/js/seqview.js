@@ -31,6 +31,10 @@ class SeqView {
     this.caret = null;           // insertion point; equals selection.start when collapsed
     this.sites = [];
     this.highlights = [];        // [{start, end, class}]
+    // Codons of one translation chosen on its row ({id, from, to}, inclusive),
+    // so a copy can give their amino acids; any other selection clears it.
+    this.aaSelection = null;
+    this._codonDrag = null;
     this.onSelect = null;
     this.onFeatureClick = null;
     this.onFeatureDblClick = null;
@@ -46,7 +50,7 @@ class SeqView {
     container.setAttribute('aria-multiline', 'true');
     container.setAttribute('aria-label', 'DNA sequence, editable');
     container.addEventListener('mousedown', (e) => this._mousedown(e));
-    window.addEventListener('mouseup', () => { this._drag = null; });
+    window.addEventListener('mouseup', () => { this._drag = null; this._codonDrag = null; });
     container.addEventListener('mousemove', (e) => this._mousemove(e));
     container.addEventListener('keydown', (e) => this._keydown(e));
     // Lines as long as the pane allows, re-flowed when the window is resized.
@@ -83,6 +87,7 @@ class SeqView {
   }
 
   setSelection(sel, notify = true) {
+    this.aaSelection = null;
     this.selection = sel;
     this.caret = sel ? sel.end : null;
     this._anchor = sel ? sel.start : null;
@@ -92,6 +97,7 @@ class SeqView {
 
   /** Put the insertion point at `pos`, optionally extending from the anchor. */
   setCaret(pos, extend = false) {
+    this.aaSelection = null;
     const n = this.doc.sequence.length;
     pos = Math.max(0, Math.min(n, pos));
     if (extend && this._anchor !== null) {
@@ -104,6 +110,37 @@ class SeqView {
     this.render();
     this.onSelect?.(this.selection);
     this.scrollCaretIntoView();
+  }
+
+  /**
+   * Select codons `from` to `to` (in either order, inclusive) of a translation:
+   * their bases, as any selection, and the amino acids themselves, for copying.
+   */
+  selectCodons(t, from, to) {
+    const codons = translationCodons(this.doc.sequence, t);
+    if (!codons.length) return;
+    const n = this.doc.sequence.length;
+    const lo = Math.max(0, Math.min(from, to));
+    const hi = Math.min(codons.length - 1, Math.max(from, to));
+    // The bases from the first to the last, in the forward direction; a reverse
+    // translation reads its codons from right to left.
+    const [first, last] = t.strand === -1
+      ? [codons[hi].positions[2], codons[lo].positions[0]]
+      : [codons[lo].positions[0], codons[hi].positions[2]];
+    this.selection = { start: first, end: (last + 1) % n || n };
+    this.caret = this.selection.end;
+    this._anchor = this.selection.start;
+    this.aaSelection = { id: t.id, from: lo, to: hi };
+    this.render();
+    this.onSelect?.(this.selection);
+  }
+
+  /** The amino acids chosen on a translation's row, or null when the selection is plain bases. */
+  selectedProtein() {
+    const chosen = this.aaSelection;
+    const t = chosen && (this.doc.translations || []).find((x) => x.id === chosen.id);
+    if (!t) return null;
+    return translationCodons(this.doc.sequence, t).slice(chosen.from, chosen.to + 1).map((c) => c.aa).join('');
   }
 
   isCollapsed() {
@@ -218,15 +255,14 @@ class SeqView {
       if (t) {
         e.preventDefault();
         this.container.focus({ preventScroll: true });
-        // One click selects the codon; a double click the whole translation.
+        // One click selects the codon, dragging across the row more of them,
+        // and a double click the whole translation.
+        const index = Number(codon.dataset.codon);
         if (e.detail >= 2) {
-          this.setSelection({ start: t.start, end: t.end });
+          this.selectCodons(t, 0, Infinity);
         } else {
-          // From the codon's first base to just past its last, in the forward
-          // direction, which also runs through the origin when the codon does.
-          const { positions } = translationCodons(this.doc.sequence, t)[Number(codon.dataset.codon)];
-          const [first, last] = t.strand === -1 ? [positions[2], positions[0]] : [positions[0], positions[2]];
-          this.setSelection({ start: first, end: (last + 1) % this.doc.sequence.length || this.doc.sequence.length });
+          this.selectCodons(t, index, index);
+          this._codonDrag = { t, from: index };
         }
         return;
       }
@@ -312,11 +348,23 @@ class SeqView {
   }
 
   _mousemove(e) {
+    if (this._codonDrag) {
+      const codon = e.target.closest('.aa-codon');
+      if (codon && codon.dataset.translation === this._codonDrag.t.id) {
+        const to = Number(codon.dataset.codon);
+        const chosen = this.aaSelection;
+        if (!chosen || chosen.to !== Math.max(to, this._codonDrag.from) || chosen.from !== Math.min(to, this._codonDrag.from)) {
+          this.selectCodons(this._codonDrag.t, this._codonDrag.from, to);
+        }
+      }
+      return;
+    }
     if (this._drag === null || this._drag === undefined) return;
     const pos = this._posFromEvent(e);
     if (pos === null) return;
     const sel = { start: Math.min(this._drag, pos), end: Math.max(this._drag, pos) };
     if (sel.start === sel.end) return;
+    this.aaSelection = null;
     this.selection = sel;
     this._anchor = this._drag;
     this.caret = pos;
@@ -591,9 +639,11 @@ class SeqView {
   _translationLane(lane, codons, start, end) {
     const cw = this._charWidth();
     const row = el('div', { class: 'seqmap-row aa-lane' });
+    const chosen = this.aaSelection;
     for (const c of codons) {
       if (c.lane !== lane) continue;
-      const kind = `${c.index % 2 ? ' alt' : ''}${c.aa === '*' ? ' stop' : ''}`;
+      const picked = chosen && chosen.id === c.t.id && c.index >= chosen.from && c.index <= chosen.to;
+      const kind = `${c.index % 2 ? ' alt' : ''}${c.aa === '*' ? ' stop' : ''}${picked ? ' chosen' : ''}`;
       const title = `${c.t.name}: ${c.aa === '*' ? 'stop' : c.aa}${c.index + 1} (${c.codon})`;
       // A band per run of this codon's bases on the line (two only when the
       // codon crosses the origin).

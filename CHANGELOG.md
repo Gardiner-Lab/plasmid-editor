@@ -6,6 +6,22 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-10-14
+
+### Added
+- Select amino acids on a translation's row: click one, drag across several, or
+  double-click (or click the translation in its panel) for all of it. Copy AA
+  and Ctrl+C then copy exactly those amino acids, read on the translation's own
+  strand; a plain selection of bases still copies bases.
+
+### Fixed
+- Find selected the match it moved to, but the selection was hidden under the
+  match colour; the selected match now shows as selected, ready to copy, cut or
+  annotate like a clicked feature.
+- The Enzymes panel's Choose… button ran off the edge of the panel. The set or
+  list picker and Choose… now share a row of their own under the panel's title,
+  the picker taking whatever room the button leaves.
+
 ## [0.3.1] - 2026-10-14
 
 ### Added

@@ -305,7 +305,12 @@ const Editor = {
 
     on('btnCopy', () => this.copy(this.view.selectedSequence()));
     on('btnCopyRC', () => this.copy(DNA.revComp(this.view.selectedSequence())));
-    on('btnCopyProtein', () => this.copy(translateSeq(this.view.selectedSequence())));
+    // The amino acids chosen on a translation's row, read on its own strand;
+    // otherwise the selected bases translated forward.
+    on('btnCopyProtein', () => {
+      const protein = this.view.selectedProtein();
+      this.copy(protein ?? translateSeq(this.view.selectedSequence()), 'amino acid');
+    });
     on('btnPaste', () => this.paste());
     on('btnDelete', () => this.deleteSelection());
 
@@ -374,7 +379,12 @@ const Editor = {
       }
       if (key === 'z' && !e.shiftKey) { e.preventDefault(); this.undo(); }
       if ((key === 'z' && e.shiftKey) || key === 'y') { e.preventDefault(); this.redo(); }
-      if (key === 'c' && this.view.selectionLength()) { e.preventDefault(); this.copy(this.view.selectedSequence()); }
+      if (key === 'c' && this.view.selectionLength()) {
+        e.preventDefault();
+        // Amino acids when they were chosen on a translation's row, else bases.
+        const protein = this.view.selectedProtein();
+        if (protein) this.copy(protein, 'amino acid'); else this.copy(this.view.selectedSequence(), 'base');
+      }
       if (key === 'v') { e.preventDefault(); this.paste(); }
       if (key === 'f') { e.preventDefault(); document.getElementById('findQuery').focus(); }
       if (key === 'a' && this.doc) {
@@ -657,11 +667,11 @@ const Editor = {
           'success', 3000);
   },
 
-  async copy(text) {
+  async copy(text, unit = 'character') {
     if (!text) { toast('Nothing selected', 'error'); return; }
     try {
       await navigator.clipboard.writeText(text);
-      toast(`Copied ${fmt(text.length)} character${text.length > 1 ? 's' : ''}`, 'success', 2000);
+      toast(`Copied ${fmt(text.length)} ${unit}${text.length > 1 ? 's' : ''}`, 'success', 2000);
     } catch {
       // Clipboard needs a secure context; show the text so it can be copied by hand.
       modal({
@@ -896,15 +906,17 @@ const Editor = {
         title: protein.length > 60 ? `${protein.slice(0, 60)}…` : protein,
         onclick: (ev) => {
           if (ev.target.closest('button')) return;
-          if (ev.detail >= 2) this.editTranslation(t);
-          else this.selectRange({ start: t.start, end: t.end });
+          if (ev.detail >= 2) { this.editTranslation(t); return; }
+          // Select it as amino acids, so Copy AA and Ctrl+C give its protein.
+          this.view.selectCodons(t, 0, Infinity);
+          this.scrollToPosition(t.start);
         },
       },
         el('span', { class: 'item-name' }, `${t.name} `,
           el('span', { class: 'item-meta' }, `${fmt(protein.length)} aa`)),
         el('span', { class: 'item-meta' },
           `${fmt(t.start + 1)}–${fmt(t.end)} ${t.strand === -1 ? '←' : '→'} `,
-          el('button', { class: 'tool-btn', title: 'Copy the protein', onclick: () => this.copy(protein) }, '⧉'),
+          el('button', { class: 'tool-btn', title: 'Copy the protein', onclick: () => this.copy(protein, 'amino acid') }, '⧉'),
           el('button', { class: 'tool-btn', title: 'Rename or change strand', onclick: () => this.editTranslation(t) }, '✎'),
           el('button', { class: 'tool-btn', title: 'Remove this translation', onclick: () => this.removeTranslation(t) }, '✕')));
     }));
