@@ -158,3 +158,18 @@ def test_standalone_ignores_the_header(tmp_dbs, monkeypatch, client):
     assert client.get('/login').status_code == 200
     assert client.post('/api/auth/login', json={'username': 'alice',
                                                  'password': 'alicepassword'}).status_code == 200
+
+
+def test_open_tabs_last_until_signing_out_of_the_suite(suite, client):
+    """Keyed by the suite's id for the sign-in, which changes with every sign-in."""
+    first = {**as_user('alice'), 'X-Suite-Session': 'sign-in-1'}
+    tabs = {'docs': [{'name': 'pA', 'sequence': 'ACGT'}], 'active': 0}
+    assert client.put('/api/workspace', json=tabs, headers=first).status_code == 200
+    assert client.get('/api/workspace', headers=first).get_json()['workspace']['docs'][0]['name'] == 'pA'
+    # Signed out and straight back in, without the editor seeing anyone signed out:
+    # a new sign-in, so nothing is open.
+    again = {**as_user('alice'), 'X-Suite-Session': 'sign-in-2'}
+    assert client.get('/api/workspace', headers=again).get_json()['workspace'] is None
+    # Someone else signing in on the same browser gets nothing of alice's either.
+    boss = {**as_user('boss'), 'X-Suite-Session': 'sign-in-3'}
+    assert client.get('/api/workspace', headers=boss).get_json()['workspace'] is None

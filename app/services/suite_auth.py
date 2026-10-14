@@ -74,9 +74,13 @@ def follow_suite_sign_in() -> None:
     # bring their local row up to date from the directory, as signing in here
     # used to, so what they own can point at them.
     user = mirror_shared_account(account) if account else User.get_by_username(username)
+    # The same person, still signed in, keeps their open tabs (app/api/workspace.py).
+    workspace = session.get('workspace') if session.get('username') == username else None
     session.clear()
     if user is None:
         return
+    if workspace:
+        session['workspace'] = workspace
     session['user_id'] = user.id
     session['username'] = user.username
     session['is_admin'] = user.is_admin

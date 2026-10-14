@@ -111,13 +111,14 @@ def create_app() -> Flask:
     # signed in here; see app/services/suite_auth.py.
     app.before_request(suite_auth.follow_suite_sign_in)
 
-    from app.api import admin_bp, auth_bp, library_bp, moclo_bp, sequences_bp, tools_bp
+    from app.api import admin_bp, auth_bp, library_bp, moclo_bp, sequences_bp, tools_bp, workspace_bp
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
     app.register_blueprint(admin_bp, url_prefix='/api/admin')
     app.register_blueprint(sequences_bp, url_prefix='/api/sequences')
     app.register_blueprint(tools_bp, url_prefix='/api/tools')
     app.register_blueprint(moclo_bp, url_prefix='/api/moclo')
     app.register_blueprint(library_bp, url_prefix='/api/library')
+    app.register_blueprint(workspace_bp, url_prefix='/api/workspace')
 
     def _page(template: str):
         if 'user_id' not in session:

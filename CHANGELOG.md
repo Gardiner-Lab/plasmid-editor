@@ -6,6 +6,21 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **Open sequences are kept until you sign out.** Every sequence open in the
+  editor, unsaved edits included, and which one you were working on, come back
+  after a reload, a visit to another tool or closing the browser tab. They are
+  kept on the server for that sign-in (new `workspaces` table); signing out, or
+  signing in again, starts with nothing open. Inside the suite they follow the
+  suite's sign-in (`X-Suite-Session`).
+- The Open panel works as tabs: click one to switch, × to close it (asking
+  first if it has unsaved changes), and a dot marks unsaved changes per tab.
+
+### Changed
+- The side panels (Open, Find, Analysis, Features, Translations, Enzymes) stay
+  in view under the toolbar while the sequence scrolls; a column taller than
+  the window scrolls on its own.
+
 ## [0.3.0] - 2026-10-14
 
 ### Added

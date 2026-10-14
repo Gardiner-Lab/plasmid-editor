@@ -139,6 +139,16 @@ CREATE TABLE IF NOT EXISTS enzyme_lists (
 );
 
 CREATE INDEX IF NOT EXISTS idx_enzyme_lists_owner ON enzyme_lists(owner_id);
+
+-- The sequences open in the editor for one sign-in, unsaved edits included,
+-- kept until signing out (app/api/workspace.py).
+CREATE TABLE IF NOT EXISTS workspaces (
+    user_id TEXT NOT NULL,
+    token TEXT NOT NULL,
+    state TEXT NOT NULL,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (user_id, token)
+);
 """
 
 

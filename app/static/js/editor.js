@@ -16,7 +16,9 @@ const Editor = {
   activeSet: 'Default',  // a set's name, "list:<id>", or "selection"
   findHits: [],
   findAt: -1,
-  dirty: false,
+  // Whether the open sequence has unsaved changes: each tab keeps its own.
+  get dirty() { return !!this.doc?.dirty; },
+  set dirty(value) { if (this.doc) this.doc.dirty = !!value; },
 
   get doc() { return this.index >= 0 ? this.docs[this.index] : null; },
 
@@ -39,6 +41,7 @@ const Editor = {
     };
 
     this.bindToolbar();
+    this.keepSidePanelsUnderToolbar();
     this.bindPanels();
 
     try {
@@ -53,17 +56,108 @@ const Editor = {
       toast(err.message, 'error');
     }
 
-    // Reopen a sequence passed as ?open=<id>, else load the most recent one.
+    // The tabs open before (this sign-in's, until signing out), then a
+    // sequence passed as ?open=<id>, switching to it if it is already open.
+    await this.restoreWorkspace();
     const open = new URLSearchParams(location.search).get('open');
-    if (open) {
+    const already = open ? this.docs.findIndex((d) => d.id === open) : -1;
+    if (already >= 0) {
+      this.setActive(already);
+    } else if (open) {
       await this.openStored(open);
-    } else {
+    } else if (!this.docs.length) {
       this.addDocument({ name: 'Untitled', sequence: '', circular: true, features: [] });
     }
+    this._workspaceReady = true;
+    this.saveWorkspace();
 
+    // Leaving the page sends the tabs one last time; only if that cannot work
+    // (they were too large to keep) is there anything to warn about.
+    window.addEventListener('pagehide', () => this.saveWorkspace({ now: true }));
     window.addEventListener('beforeunload', (e) => {
-      if (this.dirty) { e.preventDefault(); e.returnValue = ''; }
+      if (this._workspaceFailed && this.docs.some((d) => d.dirty)) { e.preventDefault(); e.returnValue = ''; }
     });
+  },
+
+  /**
+   * The side columns stick just under the toolbar (see .editor-side), whose
+   * height changes as it wraps onto more lines; follow it.
+   */
+  keepSidePanelsUnderToolbar() {
+    const toolbar = document.getElementById('toolbar');
+    if (!toolbar) return;
+    const place = () => {
+      const top = parseFloat(getComputedStyle(toolbar).top) || 0;
+      const gap = parseFloat(getComputedStyle(toolbar).marginBottom) || 12;
+      document.documentElement.style.setProperty('--side-top', `${top + toolbar.offsetHeight + gap}px`);
+    };
+    place();
+    if ('ResizeObserver' in window) new ResizeObserver(place).observe(toolbar);
+    window.addEventListener('resize', place);
+  },
+
+  /* --- open tabs, kept until signing out ------------------------------- */
+  //
+  // Every open sequence, unsaved edits included, is saved for this sign-in
+  // (app/api/workspace.py) and reopened when the editor next loads.
+
+  async restoreWorkspace() {
+    try {
+      const { workspace } = await API.get('/api/workspace');
+      if (!workspace?.docs?.length) return;
+      for (const doc of workspace.docs) this.addDocument(doc, { activate: false });
+      this.setActive(Math.min(workspace.active || 0, this.docs.length - 1));
+    } catch { /* nothing remembered: start afresh */ }
+  },
+
+  /** Save the open tabs, shortly after the last change, or at once as the page closes. */
+  saveWorkspace({ now = false } = {}) {
+    if (!this._workspaceReady) return;
+    clearTimeout(this._workspaceTimer);
+    const send = () => {
+      const body = JSON.stringify({ docs: this.docs, active: Math.max(this.index, 0) });
+      if (now && navigator.sendBeacon) {
+        navigator.sendBeacon(url('/api/workspace'), new Blob([body], { type: 'text/plain' }));
+        return;
+      }
+      fetch(url('/api/workspace'), { method: 'PUT', credentials: 'same-origin',
+                                     headers: { 'Content-Type': 'application/json' }, body })
+        .then((res) => {
+          const failed = res.status === 413;
+          if (failed && !this._workspaceFailed) {
+            toast('Too much is open to remember after a reload; save or close some sequences.', 'error', 8000);
+          }
+          this._workspaceFailed = failed;
+        })
+        .catch(() => {});
+    };
+    if (now) send(); else this._workspaceTimer = setTimeout(send, 800);
+  },
+
+  /** Close a tab, asking first if it has changes not saved to the library. */
+  async closeDocument(i) {
+    const doc = this.docs[i];
+    if (!doc) return;
+    if (doc.dirty && !(await confirmDialog(`Close “${doc.name || 'Untitled'}”?`,
+      'It has changes not saved to the lab library, which will be lost.', 'Close without saving'))) {
+      return;
+    }
+    this.docs.splice(i, 1);
+    // Undo history follows its own tab; the tabs after this one move up a place.
+    for (const stack of [this.undoStack, this.redoStack]) {
+      for (let k = stack.length - 1; k >= 0; k--) {
+        if (stack[k].index === i) stack.splice(k, 1);
+        else if (stack[k].index > i) stack[k].index -= 1;
+      }
+    }
+    this.updateUndoButtons();
+    if (!this.docs.length) {
+      this.index = -1;
+      this.addDocument({ name: 'Untitled', sequence: '', circular: true, features: [] });
+      return;
+    }
+    const next = i < this.index ? this.index - 1 : Math.min(this.index, this.docs.length - 1);
+    this.setActive(next);
   },
 
   /* --- document handling ------------------------------------------------ */
@@ -101,13 +195,19 @@ const Editor = {
       return;
     }
     list.replaceChildren(...this.docs.map((d, i) => el('li', {
-      class: `item ${i === this.index ? 'active' : ''}`,
-      onclick: () => this.setActive(i),
+      class: `item doc-tab ${i === this.index ? 'active' : ''}`,
+      title: d.dirty ? 'Unsaved changes' : (d.id ? 'Saved in the lab library' : 'Not saved yet'),
+      onclick: (ev) => { if (!ev.target.closest('.doc-close') && i !== this.index) this.setActive(i); },
     },
-      el('span', { class: 'item-name', text: d.name || 'Untitled' }),
+      el('span', { class: 'item-name' },
+        d.dirty ? el('span', { class: 'doc-unsaved', 'aria-label': 'unsaved' }, '●') : null,
+        d.name || 'Untitled'),
       el('span', { class: 'item-meta' },
-        `${fmt(d.sequence.length)} bp${d.circular ? ' ○' : ''}`),
+        `${fmt(d.sequence.length)} bp${d.circular ? ' ○' : ''}`,
+        el('button', { class: 'doc-close', type: 'button', title: 'Close', 'aria-label': `Close ${d.name || 'Untitled'}`,
+                       onclick: () => this.closeDocument(i) }, '×')),
     )));
+    this.saveWorkspace();
   },
 
   async openStored(id) {
@@ -163,6 +263,8 @@ const Editor = {
     }
     const unsaved = document.getElementById('badgeUnsaved');
     if (unsaved) unsaved.hidden = !this.dirty;
+    // The tab's unsaved mark follows too (and the open tabs are saved).
+    this.renderDocList();
     this.updateUndoButtons();
     this.refreshStats();
   },
