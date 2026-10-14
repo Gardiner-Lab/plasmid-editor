@@ -6,6 +6,8 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-10-14
+
 ### Added
 - **Open sequences are kept until you sign out.** Every sequence open in the
   editor, unsaved edits included, and which one you were working on, come back
