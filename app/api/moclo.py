@@ -73,7 +73,8 @@ def import_into_editor(user):
                                       golden_gate=bool(doc.get('golden_gate')),
                                       origin=f'moclo:{kind}:{item_id}',
                                       moclo_link=f'{kind}:{item_id}',
-                                      moclo_synced_hash=record['hash'] if record else None)
+                                      moclo_synced_hash=record['hash'] if record else None,
+                                      created_by=user.username, revision_kind='imported')
     except ValueError as exc:
         return jsonify({'error': str(exc)}), 400
     return jsonify({'sequence': saved}), 201

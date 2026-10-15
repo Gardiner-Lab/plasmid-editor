@@ -140,6 +140,27 @@ CREATE TABLE IF NOT EXISTS enzyme_lists (
 
 CREATE INDEX IF NOT EXISTS idx_enzyme_lists_owner ON enzyme_lists(owner_id);
 
+-- Every saved version of a sequence's content (bases, topology, name,
+-- description, features, translations), who saved it and how, so a change can
+-- be traced and rolled back. Numbered from 1 per sequence; sequences.revision
+-- is the number of the one it holds now.
+CREATE TABLE IF NOT EXISTS sequence_revisions (
+    sequence_id TEXT NOT NULL,
+    number INTEGER NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    changed_by TEXT,
+    kind TEXT NOT NULL,
+    note TEXT,
+    summary TEXT,
+    name TEXT NOT NULL,
+    sequence TEXT NOT NULL,
+    circular INTEGER NOT NULL,
+    description TEXT,
+    features TEXT,
+    translations TEXT,
+    PRIMARY KEY (sequence_id, number)
+);
+
 -- The sequences open in the editor for one sign-in, unsaved edits included,
 -- kept until signing out (app/api/workspace.py).
 CREATE TABLE IF NOT EXISTS workspaces (
@@ -176,6 +197,9 @@ _ADDED_COLUMNS = {
         # Translations of stretches of the sequence, kept apart from features:
         # JSON, as features are.
         ('translations', 'TEXT'),
+        # The sequence_revisions number of the content held now; 0 until the
+        # first change after history began to be kept.
+        ('revision', 'INTEGER DEFAULT 0'),
     ],
     'reads': [
         # Which colony/clone this read came from, e.g. "3" or "A7".

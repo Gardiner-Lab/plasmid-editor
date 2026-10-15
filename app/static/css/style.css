@@ -252,7 +252,14 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 }
 .diff-chip:hover { border-color: #dc2626; }
 .diff-chip.active { background: #fee2e2; border-color: #dc2626; font-weight: 600; }
-.diff-nav { display: flex; align-items: center; gap: .4rem; margin: 0 0 .5rem; }
+.diff-nav { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; margin: 0 0 .5rem; }
+.diff-nav-fix { display: inline-flex; gap: .4rem; margin-left: auto; }
+.fix-list { margin: .3rem 0 .6rem 1.2rem; font-size: .85rem; }
+.history-scroll { max-height: 60vh; overflow: auto; }
+.history-table { width: 100%; font-size: .85rem; }
+.history-table td { vertical-align: top; }
+.history-table tr.current td { background: var(--hover-bg, #f1f5f9); }
+.nowrap { white-space: nowrap; }
 .site-hit { background: #fed7aa; }
 /* Enzyme names are clickable; a cut is drawn as a step across both strands. */
 .site-label { position: absolute; line-height: 1.1em; white-space: nowrap; cursor: pointer; }

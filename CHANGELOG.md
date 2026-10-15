@@ -6,6 +6,34 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.4] - 2026-10-15
+
+### Added
+- **Correct a plasmid to its sequencing read.** Beside an alignment's
+  differences, "Correct this one" changes the plasmid at the difference shown
+  to what the read has, and "Correct all to this read" does so at every
+  difference. Both list the changes and ask first. Bases change as they would
+  typed in the editor, so features and translations move, stretch or shrink
+  with them and keep marking the same parts; the reads are then aligned again,
+  keeping their verdicts, and a plasmid linked to MoClo is updated there too.
+  Only those who may change the plasmid see the buttons. A correction is saved
+  at once, and kept in the history as a correction to that read.
+- **History and rollback.** Every change to a sequence's content (created,
+  imported, saved, corrected to a read, pulled from MoClo, rolled back) is kept
+  as a version, with who made it, when and what changed. History, in the
+  editor's toolbar and on the Sequencing page, lists them; whoever may change
+  the sequence can roll back to any version, which is kept as a version too,
+  so a rollback can be undone. Reads are aligned again after a rollback, and
+  MoClo is updated. Sequences saved before this release keep their current
+  content as their first version at their next change.
+
+### Changed
+- **A save over a newer version is held back.** The editor says which
+  version it opened; if someone saved meanwhile (or corrected the plasmid to a
+  read), Save asks whether to save over it or open the saved version, rather
+  than overwriting it unseen. Ctrl+Z brings back your edits after opening the
+  saved version.
+
 ## [0.3.3] - 2026-10-15
 
 ### Added

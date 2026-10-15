@@ -10,6 +10,86 @@ from dnakit.model import normalize_document
 MAX_SEQUENCE_LENGTH = 2_000_000
 
 
+# What a revision keeps: the content of a sequence, not its links or status.
+_CONTENT = ('name', 'sequence', 'circular', 'description', 'features', 'translations')
+
+# How a revision came about. The editor's save and a correction to a read are
+# chosen by the client; the rest are set here.
+REVISION_KINDS = ('created', 'imported', 'saved', 'corrected', 'restored', 'moclo', 'baseline')
+
+
+def _json_list(text) -> list:
+    try:
+        return json.loads(text or '[]')
+    except (TypeError, ValueError):
+        return []
+
+
+def _without_ids(text) -> list:
+    # Features given without ids get new ones on every save; an id alone is
+    # not a change to the content.
+    return [{k: v for k, v in item.items() if k != 'id'} if isinstance(item, dict) else item
+            for item in _json_list(text)]
+
+
+def _same_content(a, b) -> bool:
+    return all(
+        bool(a[k]) == bool(b[k]) if k == 'circular'
+        else _without_ids(a[k]) == _without_ids(b[k]) if k in ('features', 'translations')
+        else (a[k] or '') == (b[k] or '')
+        for k in _CONTENT)
+
+
+def describe_change(before, after) -> str:
+    """A short account of what changed between two versions of the content."""
+    if before is None:
+        return f"{len(after['sequence']):,} bp, {len(_json_list(after['features']))} features"
+    parts = []
+    old, new = before['sequence'], after['sequence']
+    if old != new:
+        if len(old) == len(new):
+            changed = sum(1 for a, b in zip(old, new) if a != b)
+            parts.append(f"{changed:,} base{'s' if changed != 1 else ''} changed")
+        else:
+            parts.append(f'{len(old):,} → {len(new):,} bp')
+    if before['circular'] != after['circular']:
+        parts.append('made circular' if after['circular'] else 'made linear')
+    if before['name'] != after['name']:
+        parts.append(f"renamed to {after['name']}")
+    for key, label in (('features', 'features'), ('translations', 'translations')):
+        a, b = _without_ids(before[key]), _without_ids(after[key])
+        if a != b:
+            parts.append(f'{label} {len(a)} → {len(b)}' if len(a) != len(b) else f'{label} edited')
+    if (before['description'] or '') != (after['description'] or ''):
+        parts.append('description edited')
+    return ', '.join(parts) or 'no change to the content'
+
+
+def record_revision(conn, sequence_id: str, changed_by: Optional[str], kind: str,
+                    note: Optional[str] = None) -> Optional[int]:
+    """
+    Keep the sequence's current content as its next revision, unless it is the
+    same as the last one kept. Returns the new revision's number, or None.
+    """
+    row = conn.execute('SELECT * FROM sequences WHERE id = ?', (sequence_id,)).fetchone()
+    if row is None:
+        return None
+    last = conn.execute('SELECT * FROM sequence_revisions WHERE sequence_id = ? '
+                        'ORDER BY number DESC LIMIT 1', (sequence_id,)).fetchone()
+    if last is not None and _same_content(last, row):
+        return None
+    number = (last['number'] if last else 0) + 1
+    conn.execute(
+        'INSERT INTO sequence_revisions (sequence_id, number, changed_by, kind, note, summary, '
+        'name, sequence, circular, description, features, translations) '
+        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        (sequence_id, number, changed_by, kind, note, describe_change(last, row),
+         row['name'], row['sequence'], row['circular'], row['description'],
+         row['features'] or '[]', row['translations'] or '[]'))
+    conn.execute('UPDATE sequences SET revision = ? WHERE id = ?', (number, sequence_id))
+    return number
+
+
 def withdraw_unsupported_confirmations(conn, sequence_id: Optional[str] = None) -> List[Dict[str, Any]]:
     """
     Clear confirmations that no read judged sufficient supports any more.
@@ -60,13 +140,16 @@ class StoredSequence:
             'owner_id': row['owner_id'], 'shared': bool(row['shared']),
             'origin': row['origin'],
             'created_at': row['created_at'], 'updated_at': row['updated_at'],
+            'revision': (row['revision'] or 0) if 'revision' in row.keys() else 0,
         }
 
     @staticmethod
     def create(doc: Dict[str, Any], owner_id: str, golden_gate: bool = False,
                golden_gate_enzyme: Optional[str] = None, origin: Optional[str] = None,
                shared: bool = True, moclo_link: Optional[str] = None,
-               moclo_synced_hash: Optional[str] = None) -> Dict[str, Any]:
+               moclo_synced_hash: Optional[str] = None,
+               created_by: Optional[str] = None,
+               revision_kind: str = 'created') -> Dict[str, Any]:
         doc = normalize_document(doc)
         if not doc['sequence']:
             raise ValueError('Sequence is empty')
@@ -85,6 +168,7 @@ class StoredSequence:
                  1 if golden_gate else 0, golden_gate_enzyme,
                  owner_id, 1 if shared else 0, origin, moclo_link, moclo_synced_hash,
                  moclo_synced_hash))
+            record_revision(conn, sid, created_by, revision_kind)
             row = conn.execute('SELECT * FROM sequences WHERE id = ?', (sid,)).fetchone()
             return StoredSequence._to_document(row)
 
@@ -133,7 +217,13 @@ class StoredSequence:
                golden_gate: Optional[bool] = None, golden_gate_enzyme: Optional[str] = None,
                shared: Optional[bool] = None, moclo_part_id: Optional[str] = None,
                moclo_link: Optional[str] = None,
-               moclo_synced_hash: Optional[str] = None) -> Optional[Dict[str, Any]]:
+               moclo_synced_hash: Optional[str] = None,
+               changed_by: Optional[str] = None, revision_kind: str = 'saved',
+               revision_note: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """
+        Change a sequence. A change to its content (`doc`) is kept in its
+        history as a new revision, by `changed_by`, of `revision_kind`.
+        """
         sets, args = [], []
         if doc is not None:
             doc = normalize_document(doc)
@@ -168,9 +258,18 @@ class StoredSequence:
         sets.append('updated_at = CURRENT_TIMESTAMP')
         args.append(sequence_id)
         with get_connection() as conn:
+            if doc is not None and not conn.execute(
+                    'SELECT 1 FROM sequence_revisions WHERE sequence_id = ? LIMIT 1',
+                    (sequence_id,)).fetchone():
+                # Saved before history was kept: keep that version first, so
+                # this change can be rolled back too.
+                record_revision(conn, sequence_id, None, 'baseline',
+                                'As it was before its history was kept')
             cur = conn.execute(f'UPDATE sequences SET {", ".join(sets)} WHERE id = ?', args)
             if cur.rowcount == 0:
                 return None
+            if doc is not None:
+                record_revision(conn, sequence_id, changed_by, revision_kind, revision_note)
             row = conn.execute('SELECT * FROM sequences WHERE id = ?', (sequence_id,)).fetchone()
             return StoredSequence._to_document(row)
 
@@ -225,8 +324,38 @@ class StoredSequence:
         return StoredSequence.get(sequence_id)
 
     @staticmethod
+    def history(sequence_id: str) -> List[Dict[str, Any]]:
+        """The sequence's revisions, newest first, without their content."""
+        with get_connection() as conn:
+            rows = conn.execute(
+                'SELECT sequence_id, number, created_at, changed_by, kind, note, summary, name, '
+                'length(sequence) AS length, circular, features, translations '
+                'FROM sequence_revisions WHERE sequence_id = ? ORDER BY number DESC',
+                (sequence_id,)).fetchall()
+        return [{
+            'number': r['number'], 'created_at': r['created_at'], 'changed_by': r['changed_by'],
+            'kind': r['kind'], 'note': r['note'], 'summary': r['summary'], 'name': r['name'],
+            'length': r['length'], 'circular': bool(r['circular']),
+            'feature_count': len(_json_list(r['features'])),
+            'translation_count': len(_json_list(r['translations'])),
+        } for r in rows]
+
+    @staticmethod
+    def revision(sequence_id: str, number: int) -> Optional[Dict[str, Any]]:
+        """One revision's content, as a document."""
+        with get_connection() as conn:
+            r = conn.execute('SELECT * FROM sequence_revisions WHERE sequence_id = ? AND number = ?',
+                             (sequence_id, number)).fetchone()
+        if r is None:
+            return None
+        return {'name': r['name'], 'sequence': r['sequence'], 'circular': bool(r['circular']),
+                'description': r['description'] or '', 'features': _json_list(r['features']),
+                'translations': _json_list(r['translations'])}
+
+    @staticmethod
     def delete(sequence_id: str) -> bool:
         with get_connection() as conn:
+            conn.execute('DELETE FROM sequence_revisions WHERE sequence_id = ?', (sequence_id,))
             return conn.execute('DELETE FROM sequences WHERE id = ?', (sequence_id,)).rowcount > 0
 
 

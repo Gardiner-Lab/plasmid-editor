@@ -300,6 +300,11 @@ const Editor = {
     document.getElementById('fileInput').addEventListener('change', (e) => this.openFiles(e.target.files));
     on('btnSave', () => this.save());
     on('btnSaveAs', () => this.saveAs());
+    on('btnHistory', () => {
+      const doc = this.doc;
+      if (!doc?.id) { toast('Save it to the lab library first: the history starts there', 'error'); return; }
+      showHistory(doc.id, { unsaved: this.dirty, onRestored: (sequence) => this.replaceWithStored(doc, sequence) });
+    });
     on('btnUndo', () => this.undo());
     on('btnRedo', () => this.redo());
 
@@ -418,13 +423,16 @@ const Editor = {
     document.getElementById('fileInput').value = '';
   },
 
-  async save({ force = false } = {}) {
+  async save({ force = false, overwrite = false } = {}) {
     const doc = this.doc;
     if (!doc || !doc.sequence) { toast('Nothing to save', 'error'); return; }
     const payload = {
       document: this.payloadDoc(),
       golden_gate: !!doc.golden_gate,
       ...(force ? { force: true } : {}),
+      // The version this was opened at, so a newer one saved meanwhile (by
+      // someone else, or a correction to a read) is not overwritten unseen.
+      ...(doc.id && doc.revision !== undefined && !overwrite ? { base_revision: doc.revision } : {}),
     };
     try {
       const saved = doc.id
@@ -432,6 +440,7 @@ const Editor = {
         : await API.post('/api/sequences', payload);
       doc.id = saved.sequence.id;
       doc.moclo_link = saved.sequence.moclo_link;
+      doc.revision = saved.sequence.revision;
       this.dirty = false;
       if (saved.synced_to_moclo) {
         toast(`Saved, and the MoClo ${saved.synced_to_moclo.kind} updated to match`, 'success', 5000);
@@ -442,14 +451,17 @@ const Editor = {
       this.refreshMocloLink();
       return true;
     } catch (err) {
+      if (err.payload?.stale) { this.resolveStale(doc, err.payload); return false; }
       // A 409 means the local save worked but MoClo was not updated.
       if (err.payload?.conflict) {
+        doc.revision = err.payload.sequence?.revision ?? doc.revision;
         this.dirty = false;
         this.updateBadges();
         this.resolveConflict(err.payload);
         return false;
       }
       if (err.payload?.sync_failed) {
+        doc.revision = err.payload.sequence?.revision ?? doc.revision;
         this.dirty = false;
         this.updateBadges();
         this.refreshMocloLink();
@@ -459,6 +471,61 @@ const Editor = {
       toast(err.message, 'error');
       return false;
     }
+  },
+
+  /**
+   * The sequence was saved by someone else (or corrected to a read) since it
+   * was opened here: keep this version over it, or take the saved one. Either
+   * way nothing is lost, since the history keeps every version.
+   */
+  resolveStale(doc, payload) {
+    const latest = payload.latest || {};
+    modal({
+      title: 'Changed since you opened it',
+      build: (body) => body.append(
+        el('div', { class: 'alert alert-warning' },
+          el('b', { text: doc.name }), ' was saved again after you opened it: ',
+          `${REVISION_KINDS[latest.kind] || latest.kind || 'a change'}`,
+          latest.note ? ` (${latest.note})` : '',
+          latest.changed_by ? ` by ${latest.changed_by}` : '',
+          latest.created_at ? `, ${localTime(latest.created_at)}` : '', '.'),
+        el('p', { class: 'hint' },
+          'Save yours over it, or open the saved version instead of your changes. '
+          + 'Either way the other stays in the history, and can be rolled back to.')),
+      buttons: [
+        { label: 'Cancel', kind: 'secondary' },
+        {
+          label: 'Open the saved version', kind: 'secondary',
+          onClick: async () => {
+            const { sequence } = await API.get(`/api/sequences/${doc.id}`);
+            this.replaceWithStored(doc, sequence);
+            toast('Opened the saved version', 'success');
+            return true;
+          },
+        },
+        { label: 'Save mine over it', onClick: async () => { await this.save({ overwrite: true }); return true; } },
+      ],
+    });
+  },
+
+  /** Show the stored version of a sequence in its tab, in place of what was there. */
+  replaceWithStored(doc, sequence) {
+    // Ctrl+Z still brings back what the tab held, unsaved edits included.
+    const i = this.docs.indexOf(doc);
+    if (i >= 0 && i !== this.index) this.setActive(i);
+    if (i >= 0) this.pushUndo();
+    for (const key of ['name', 'sequence', 'circular', 'description', 'features', 'translations',
+                       'revision', 'moclo_link', 'golden_gate']) {
+      if (sequence[key] !== undefined) doc[key] = sequence[key];
+    }
+    doc.features = doc.features || [];
+    doc.translations = doc.translations || [];
+    if (i >= 0) this.setActive(i);
+    this.dirty = false;
+    this.markDirty();
+    this.dirty = false;
+    this.updateBadges();
+    this.refreshSites?.();
   },
 
   /** Offer a way out when the same record was edited in both tools. */
@@ -623,6 +690,7 @@ const Editor = {
             });
             // Work on the copy from here, leaving the original entry untouched.
             doc.id = saved.sequence.id;
+            doc.revision = saved.sequence.revision;
             doc.name = name;
             doc.moclo_part_id = null;
             this.dirty = false;

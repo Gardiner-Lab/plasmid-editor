@@ -99,7 +99,8 @@ def create_sequence(user):
                                       golden_gate=bool(data.get('golden_gate')),
                                       golden_gate_enzyme=data.get('golden_gate_enzyme'),
                                       origin=data.get('origin'),
-                                      shared=data.get('shared', True) is not False)
+                                      shared=data.get('shared', True) is not False,
+                                      created_by=user.username)
     except ValueError as exc:
         return jsonify({'error': str(exc)}), 400
     return jsonify({'sequence': saved}), 201
@@ -125,18 +126,38 @@ def update_sequence(user, sequence_id):
     If the MoClo record was also changed since this sequence last synced, the
     save is refused with 409 and the caller chooses what to do; `force: true`
     then overwrites MoClo with the editor's version.
+
+    A change to the content is kept in the sequence's history. With
+    `base_revision`, the revision the caller started from, a save over a newer
+    one (someone else saved, or corrected it to a read, meanwhile) is refused
+    with 409 and `stale`, so it is not lost unseen. `revision`, {kind, note},
+    says how the change came about: a save ('saved') or a correction to a
+    sequencing read ('corrected').
     """
     existing, err = _owned_or_404(sequence_id, user, for_write=True)
     if err:
         return err
     data = request.get_json(silent=True) or {}
+    base = data.get('base_revision')
+    if data.get('document') is not None and base is not None and str(base) != str(existing['revision']):
+        latest = (StoredSequence.history(sequence_id) or [None])[0]
+        return jsonify({
+            'error': 'This sequence was changed since you opened it'
+                     + (f" ({latest['changed_by']}, {latest['created_at']})"
+                        if latest and latest.get('changed_by') else ''),
+            'stale': True, 'latest': latest, 'sequence': existing,
+        }), 409
+    revision = data.get('revision') if isinstance(data.get('revision'), dict) else {}
+    kind = revision.get('kind') if revision.get('kind') in ('saved', 'corrected') else 'saved'
     try:
         updated = StoredSequence.update(
             sequence_id,
             doc=data.get('document'),
             golden_gate=data.get('golden_gate'),
             golden_gate_enzyme=data.get('golden_gate_enzyme'),
-            shared=data.get('shared'))
+            shared=data.get('shared'),
+            changed_by=user.username, revision_kind=kind,
+            revision_note=str(revision.get('note') or '')[:500] or None)
     except ValueError as exc:
         return jsonify({'error': str(exc)}), 400
 
@@ -188,7 +209,9 @@ def moclo_pull(user, sequence_id):
     except moclo_bridge.ContributionError as exc:
         return jsonify({'error': str(exc)}), 400
     updated = StoredSequence.update(sequence_id, doc=pulled['document'],
-                                    moclo_synced_hash=pulled['hash'])
+                                    moclo_synced_hash=pulled['hash'],
+                                    changed_by=user.username, revision_kind='moclo',
+                                    revision_note='Replaced with the MoClo version')
     return jsonify({'sequence': updated}), 200
 
 
@@ -405,6 +428,15 @@ def realign_reads(user, sequence_id):
     doc, err = _owned_or_404(sequence_id, user, for_write=True)
     if err:
         return err
+    results = _realign(doc)
+    return jsonify({'reads': results,
+                    'coverage': align.coverage(len(doc['sequence']),
+                                               [r['alignment'] for r in results])}), 200
+
+
+def _realign(doc):
+    """Align a sequence's reads again, keeping their clones and verdicts."""
+    sequence_id = doc['id']
     results = []
     for r in Read.list_for(sequence_id):
         full = Read.get(r['id'], include_trace=True)
@@ -417,9 +449,65 @@ def realign_reads(user, sequence_id):
                     verdict_note=full.get('verdict_note'), verdict_by=full.get('verdict_by'))
         results.append({'name': full['name'], 'clone_number': full.get('clone_number'),
                         'alignment': alignment})
-    return jsonify({'reads': results,
-                    'coverage': align.coverage(len(doc['sequence']),
-                                               [r['alignment'] for r in results])}), 200
+    return results
+
+
+@sequences_bp.route('/<sequence_id>/history', methods=['GET'])
+@require_auth
+def sequence_history(user, sequence_id):
+    """Every saved version of the sequence, newest first: when, who and what changed."""
+    doc, err = _sequencing_viewable_or_404(sequence_id, user)
+    if err:
+        return err
+    return jsonify({'revisions': StoredSequence.history(sequence_id),
+                    'current': doc['revision'],
+                    'can_restore': _can_change(doc, user)}), 200
+
+
+@sequences_bp.route('/<sequence_id>/history/<int:number>', methods=['GET'])
+@require_auth
+def sequence_revision(user, sequence_id, number):
+    """One saved version's content, to look at or download."""
+    doc, err = _sequencing_viewable_or_404(sequence_id, user)
+    if err:
+        return err
+    revision = StoredSequence.revision(sequence_id, number)
+    if revision is None:
+        return jsonify({'error': 'No such version'}), 404
+    return jsonify({'document': revision, 'number': number}), 200
+
+
+@sequences_bp.route('/<sequence_id>/history/<int:number>/restore', methods=['POST'])
+@require_auth
+def restore_revision(user, sequence_id, number):
+    """
+    Roll the sequence back to a saved version. The rollback is itself a new
+    version, so it can be undone the same way. Reads are aligned again, keeping
+    their verdicts, and a sequence linked to MoClo is updated there too.
+    """
+    doc, err = _owned_or_404(sequence_id, user, for_write=True)
+    if err:
+        return err
+    revision = StoredSequence.revision(sequence_id, number)
+    if revision is None:
+        return jsonify({'error': 'No such version'}), 404
+    if number == doc['revision']:
+        return jsonify({'error': 'This is already the current version'}), 400
+    updated = StoredSequence.update(sequence_id, doc=revision, changed_by=user.username,
+                                    revision_kind='restored',
+                                    revision_note=f'Rolled back to version {number}')
+    _realign(updated)
+    synced = moclo_note = None
+    if updated.get('moclo_link'):
+        try:
+            synced = moclo_bridge.push_to_moclo(updated['moclo_link'], updated,
+                                                updated.get('moclo_synced_hash'),
+                                                editor_user=user.username)
+            updated = StoredSequence.update(sequence_id, moclo_synced_hash=synced['hash'])
+        except (moclo_bridge.SyncConflict, moclo_bridge.ContributionError) as exc:
+            moclo_note = str(exc)
+    return jsonify({'sequence': updated, 'synced_to_moclo': synced,
+                    'moclo_note': moclo_note}), 200
 
 
 @sequences_bp.route('/reads/<read_id>/verdict', methods=['POST'])

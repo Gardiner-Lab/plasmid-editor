@@ -188,6 +188,97 @@ const DNA = {
   featLength(f, n) { return f.end > f.start ? f.end - f.start : n - f.start + f.end; },
 };
 
+/** A time the server stored (SQLite's UTC "YYYY-MM-DD HH:MM:SS"), in local time. */
+function localTime(stamp) {
+  if (!stamp) return '';
+  const d = new Date(String(stamp).replace(' ', 'T') + (/[zZ]|[+-]\d\d:?\d\d$/.test(stamp) ? '' : 'Z'));
+  if (Number.isNaN(d.getTime())) return String(stamp).slice(0, 16);
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+const REVISION_KINDS = {
+  created: 'Created', imported: 'Imported from MoClo', saved: 'Saved', corrected: 'Corrected to a read',
+  restored: 'Rolled back', moclo: 'From MoClo', baseline: 'Earlier version',
+};
+
+/**
+ * A sequence's history: every saved version, who saved it, how and what
+ * changed, newest first, with a way back to any of them for whoever may
+ * change the sequence. `onRestored(sequence)` runs after a rollback;
+ * `unsaved` warns that edits not yet saved would be replaced.
+ */
+async function showHistory(sequenceId, { onRestored, unsaved = false } = {}) {
+  let data;
+  try {
+    data = await API.get(`/api/sequences/${sequenceId}/history`);
+  } catch (err) {
+    toast(err.message, 'error');
+    return;
+  }
+  const { revisions, current, can_restore: canRestore } = data;
+  const restore = (r) => modal({
+    title: `Roll back to version ${r.number}?`,
+    build: (body) => body.append(
+      el('p', {}, `The sequence becomes version ${r.number} again: `,
+        el('b', { text: r.name }), `, ${fmt(r.length)} bp, ${r.feature_count} features, `
+        + `${r.translation_count} translations, as saved${r.changed_by ? ` by ${r.changed_by}` : ''} `
+        + `on ${localTime(r.created_at)}.`),
+      el('p', { class: 'hint' },
+        'The rollback is kept as a new version, so it can be undone here as well. '
+        + 'Sequencing reads are aligned again, keeping their verdicts.'),
+      ...(unsaved ? [el('div', { class: 'alert alert-warning' },
+        'Your unsaved changes to this sequence will be replaced.')] : [])),
+    buttons: [
+      { label: 'Cancel', kind: 'secondary' },
+      {
+        label: `Roll back to version ${r.number}`,
+        onClick: async () => {
+          const res = await API.post(`/api/sequences/${sequenceId}/history/${r.number}/restore`, {});
+          toast(`Rolled back to version ${r.number}${res.synced_to_moclo ? ', and MoClo updated' : ''}`,
+                'success', 5000);
+          if (res.moclo_note) toast(`MoClo was not updated: ${res.moclo_note}`, 'error', 10000);
+          document.querySelector('.modal-backdrop')?.remove();   // the history, now out of date
+          await onRestored?.(res.sequence);
+          return true;
+        },
+      },
+    ],
+  });
+  modal({
+    title: 'History',
+    wide: true,
+    build: (body) => {
+      if (!revisions.length) {
+        body.append(el('p', { class: 'hint' }, 'No versions kept yet: the history starts with the next change saved.'));
+        return;
+      }
+      body.append(
+        el('p', { class: 'hint' }, 'Every saved version, newest first.'
+          + (canRestore ? ' Roll back to any of them; that is kept as a version too.' : '')),
+        el('div', { class: 'history-scroll' }, el('table', { class: 'history-table' },
+          el('thead', {}, el('tr', {},
+            el('th', {}, '#'), el('th', {}, 'When'), el('th', {}, 'Who'),
+            el('th', {}, 'Change'), el('th', { class: 'num' }, 'Length'), el('th', {}))),
+          el('tbody', {}, ...revisions.map((r) => el('tr', { class: r.number === current ? 'current' : '' },
+            el('td', {}, String(r.number)),
+            el('td', { class: 'nowrap' }, localTime(r.created_at)),
+            el('td', {}, r.changed_by || '—'),
+            el('td', {},
+              el('div', {}, el('b', {}, REVISION_KINDS[r.kind] || r.kind), r.note ? ` · ${r.note}` : ''),
+              r.summary ? el('div', { class: 'hint' }, r.summary) : null),
+            el('td', { class: 'num nowrap' }, `${fmt(r.length)} bp`),
+            el('td', { class: 'nowrap' }, r.number === current
+              ? el('span', { class: 'badge' }, 'current')
+              : canRestore
+                ? el('button', { class: 'btn btn-sm btn-secondary', type: 'button',
+                                 onclick: () => restore(r) }, 'Roll back')
+                : null)))))));
+    },
+    buttons: [{ label: 'Close', kind: 'secondary' }],
+  });
+}
+
 /**
  * Replace doc.sequence[start:end] with `text`, moving every feature, and every
  * translation, to match.

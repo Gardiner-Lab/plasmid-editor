@@ -274,7 +274,7 @@ const Sequencing = {
           : el('div', { class: 'hint' }, 'No differences from the reference.')));
       nodes.push(this.verdictBar(read));
       const view = this.alignmentView(a, (k) => nav.go(k));
-      const nav = this.differenceNav(a, view);
+      const nav = this.differenceNav(a, view, read);
       if (a.differences.length) nodes.push(nav.bar);
       nodes.push(view);
     }
@@ -429,9 +429,23 @@ const Sequencing = {
     const bad = this.reads.filter((r) => r.verdict === 'insufficient').length;
     const diffs = this.reads.filter((r) => (r.alignment?.differences || []).length).length;
 
-    badge.replaceChildren(seq.confirmed
-      ? el('span', { class: 'badge badge-confirmed' }, '✓ Confirmed and sequenced')
-      : el('span', { class: 'badge' }, 'Not yet confirmed'));
+    badge.replaceChildren(
+      el('button', {
+        class: 'btn btn-sm btn-secondary', type: 'button', style: 'margin-right:.4rem',
+        title: 'Every saved version of this plasmid, and rolling back to one',
+        onclick: () => showHistory(seq.id, {
+          onRestored: async () => {
+            const shown = this.activeRead;
+            await this.selectReference(seq.id);
+            this.refreshList();
+            const again = shown && this.reads.find((r) => r.name === shown.name);
+            if (again) await this.showRead(again);
+          },
+        }),
+      }, 'History'),
+      seq.confirmed
+        ? el('span', { class: 'badge badge-confirmed' }, '✓ Confirmed and sequenced')
+        : el('span', { class: 'badge' }, 'Not yet confirmed'));
 
     const parts = [];
     if (seq.confirmed) {
@@ -504,7 +518,7 @@ const Sequencing = {
   },
 
   /** Previous / Next through the differences, and which one is shown. */
-  differenceNav(a, view) {
+  differenceNav(a, view, read) {
     const status = el('span', { class: 'hint' }, `${fmt(a.differences.length)} difference${a.differences.length > 1 ? 's' : ''}`);
     const nav = {
       at: -1,
@@ -525,8 +539,108 @@ const Sequencing = {
                      onclick: () => nav.go(nav.at - 1) }, '◀ Previous'),
       el('button', { class: 'btn btn-sm btn-secondary', type: 'button', title: 'Next difference',
                      onclick: () => nav.go(nav.at + 1) }, 'Next ▶'),
-      status);
+      status,
+      // Whoever may change the plasmid may correct it to what was sequenced.
+      this.reference?.can_change ? el('span', { class: 'diff-nav-fix' },
+        el('button', {
+          class: 'btn btn-sm btn-secondary', type: 'button',
+          title: 'Change the plasmid at the difference shown to what this read has',
+          onclick: () => (nav.at < 0
+            ? toast('Choose a difference first: click it, or use Next', 'error')
+            : this.correctFromRead(read, [nav.at])),
+        }, 'Correct this one'),
+        el('button', {
+          class: 'btn btn-sm btn-secondary', type: 'button',
+          title: 'Change the plasmid to what this read has at every difference',
+          onclick: () => this.correctFromRead(read, a.differences.map((_, k) => k)),
+        }, 'Correct all to this read')) : null);
     return nav;
+  },
+
+  /**
+   * The plasmid with the chosen differences of an alignment changed to what
+   * the read has. The bases change as they would typed in the editor, so
+   * features and translations move, stretch or shrink with them and keep
+   * marking the same parts of the plasmid. Worked from the last position back,
+   * so each change leaves the positions of the ones still to do as they were.
+   */
+  correctedDocument(doc, differences) {
+    const ordered = [...differences].sort((x, y) => y.position - x.position || y.k - x.k);
+    let d = { ...doc };
+    for (const c of ordered) {
+      const p = c.position;
+      const [start, end, text] = c.type === 'mismatch' ? [p, p + 1, c.read]
+        : c.type === 'deletion' ? [p, p + 1, ''] : [p, p, c.read];   // an insertion goes before p
+      d = { ...d, ...applyEdit(d, start, end, text) };
+    }
+    return d;
+  },
+
+  /** Ask, then correct the plasmid to what a read has at the chosen differences. */
+  correctFromRead(read, indexes) {
+    const a = read.alignment;
+    const chosen = indexes.map((k) => ({ ...a.differences[k], k }));
+    if (!chosen.length) return;
+    const describe = (d) => (d.type === 'mismatch' ? `${d.ref} → ${d.read} at ${fmt(d.position + 1)}`
+      : d.type === 'deletion' ? `remove ${d.ref} at ${fmt(d.position + 1)}`
+      : `insert ${d.read} before ${fmt(d.position + 1)}`);
+    const seq = this.reference;
+    modal({
+      title: chosen.length === 1 ? 'Correct the plasmid to this read' : `Correct ${fmt(chosen.length)} differences to this read`,
+      build: (body) => body.append(
+        el('p', {}, 'Changes ', el('b', { text: seq.name }), ` to what ${read.name} has:`),
+        el('ul', { class: 'fix-list' },
+          ...chosen.slice(0, 12).map((d) => el('li', { class: 'mono' }, describe(d))),
+          chosen.length > 12 ? el('li', { class: 'hint' }, `and ${fmt(chosen.length - 12)} more`) : null),
+        el('p', { class: 'hint' },
+          'Features and translations move with the changed bases, so they keep marking the same parts. '
+          + 'Every read is then aligned again. Check the trace first: an error in the read would be written into the plasmid.'),
+        ...(seq.confirmed ? [el('p', { class: 'hint' }, 'The plasmid stays confirmed: its reads keep their verdicts.')] : [])),
+      buttons: [
+        { label: 'Cancel', kind: 'secondary' },
+        {
+          label: chosen.length === 1 ? 'Correct' : `Correct ${fmt(chosen.length)}`,
+          onClick: async () => { await this.applyCorrections(seq.id, read, chosen); return true; },
+        },
+      ],
+    });
+  },
+
+  /** Save the corrected plasmid, align its reads again, and show the same read. */
+  async applyCorrections(sequenceId, read, chosen) {
+    const { sequence: doc } = await API.get(`/api/sequences/${sequenceId}`);
+    const fixed = this.correctedDocument(doc, chosen);
+    let mocloNote = null;
+    let synced = null;
+    try {
+      const saved = await API.put(`/api/sequences/${sequenceId}`, {
+        document: { name: doc.name, sequence: fixed.sequence, circular: doc.circular,
+                    description: doc.description || '', features: fixed.features,
+                    translations: fixed.translations || [] },
+        // Kept in its history as a correction, with the read it came from.
+        base_revision: doc.revision,
+        revision: { kind: 'corrected',
+                    note: `${chosen.length} difference${chosen.length > 1 ? 's' : ''} to read ${read.name}`
+                          + (read.clone_number ? ` (clone ${read.clone_number})` : '') },
+      });
+      synced = saved.synced_to_moclo;
+    } catch (err) {
+      // Saved here, but MoClo was changed meanwhile or could not be written:
+      // the plasmid is corrected, and the editor's Save resolves MoClo.
+      if (!err.payload?.sequence) throw err;
+      mocloNote = err.message;
+    }
+    await API.post(`/api/sequences/${sequenceId}/reads/realign`, {});
+    await this.selectReference(sequenceId);
+    this.refreshList();
+    // Re-aligning stores each read again, under a new id.
+    const again = this.reads.find((r) => r.name === read.name && r.clone_number === read.clone_number)
+      || this.reads.find((r) => r.name === read.name);
+    if (again) await this.showRead(again);
+    const what = `${fmt(chosen.length)} difference${chosen.length > 1 ? 's' : ''}`;
+    toast(`Corrected ${what}; features moved with them and the reads were aligned again`
+          + (synced ? ', and MoClo updated' : ''), 'success', 6000);
+    if (mocloNote) toast(`MoClo was not updated: ${mocloNote} Open the plasmid in the editor and save it to resolve this.`, 'error', 12000);
   },
 
   /** One row of bases, with the bases that differ marked (and the one shown outlined). */
