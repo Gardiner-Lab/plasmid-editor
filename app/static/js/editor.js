@@ -251,6 +251,8 @@ const Editor = {
     moclo.hidden = !(doc?.moclo_part_id || doc?.moclo_link);
     moclo.textContent = doc?.moclo_link ? 'Linked to MoClo' : 'In MoClo library';
     const confirmed = document.getElementById('badgeConfirmed');
+    const unsequenced = document.getElementById('badgeUnsequenced');
+    if (unsequenced) unsequenced.hidden = !doc?.sequence || !!doc?.confirmed;
     if (confirmed) {
       confirmed.hidden = !doc?.confirmed;
       if (doc?.confirmed) {
@@ -258,6 +260,7 @@ const Editor = {
           doc.glycerol_stock ? `Glycerol stock ${doc.glycerol_stock}` : null,
           doc.confirmed_clone ? `clone ${doc.confirmed_clone}` : null,
           doc.confirmed_by ? `confirmed by ${doc.confirmed_by}` : null,
+          'click to see the sequencing reads',
         ].filter(Boolean).join(' · ');
       }
     }
@@ -299,6 +302,8 @@ const Editor = {
     on('btnNew', () => this.addDocument({ name: 'Untitled', sequence: '', circular: true, features: [] }));
     document.getElementById('fileInput').addEventListener('change', (e) => this.openFiles(e.target.files));
     on('btnSave', () => this.save());
+    on('badgeConfirmed', () => this.openSequencing());
+    on('badgeUnsequenced', () => this.openSequencing());
     on('btnSaveAs', () => this.saveAs());
     on('btnHistory', () => {
       const doc = this.doc;
@@ -526,6 +531,38 @@ const Editor = {
     this.dirty = false;
     this.updateBadges();
     this.refreshSites?.();
+  },
+
+  /**
+   * Open this plasmid on the Sequencing page. Reads are aligned to the saved
+   * plasmid, so one never saved has to be saved first, and unsaved changes are
+   * offered a save. The open tabs, unsaved changes included, are kept, so
+   * coming back to the editor finds them as they were.
+   */
+  async openSequencing() {
+    const doc = this.doc;
+    if (!doc?.sequence) return;
+    const go = () => { this.saveWorkspace?.({ now: true }); location.href = url(`/sequencing?sequence=${encodeURIComponent(doc.id)}`); };
+    if (!doc.id) {
+      modal({
+        title: 'Save it first',
+        build: (body) => body.append(el('p', {}, 'Sequencing reads are kept with plasmids in the lab library. ',
+          'Save this one there first, then add its reads on the Sequencing page.')),
+        buttons: [{ label: 'Cancel', kind: 'secondary' },
+          { label: 'Save and open sequencing', onClick: async () => { if (await this.save()) go(); } }],
+      });
+      return;
+    }
+    if (!this.dirty) { go(); return; }
+    modal({
+      title: 'Save your changes first?',
+      build: (body) => body.append(el('p', {}, 'Reads are aligned to the saved plasmid. ',
+        'Save your changes so they are aligned to it as it is now, or open the version saved before them. ',
+        'Your unsaved changes stay in this tab either way.')),
+      buttons: [{ label: 'Cancel', kind: 'secondary' },
+        { label: 'Open the saved version', kind: 'secondary', onClick: go },
+        { label: 'Save and open', onClick: async () => { if (await this.save()) go(); } }],
+    });
   },
 
   /** Offer a way out when the same record was edited in both tools. */

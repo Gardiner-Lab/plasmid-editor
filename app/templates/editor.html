@@ -105,7 +105,10 @@
                     <span class="badge" id="badgeTopology">linear</span>
                     <span class="badge badge-gg" id="badgeGG" hidden>Golden Gate</span>
                     <span class="badge badge-moclo" id="badgeMoclo" hidden>In MoClo library</span>
-                    <span class="badge badge-confirmed" id="badgeConfirmed" hidden>✓ Sequenced</span>
+                    <!-- Either opens this plasmid's sequencing reads and alignments. -->
+                    <button type="button" class="badge badge-confirmed badge-link" id="badgeConfirmed" hidden>✓ Sequenced</button>
+                    <button type="button" class="badge badge-unsequenced badge-link" id="badgeUnsequenced" hidden
+                            title="Not confirmed by sequencing yet: open the Sequencing page to add reads">Not sequenced</button>
                     <span class="badge badge-unsaved" id="badgeUnsaved" hidden>Unsaved changes</span>
                 </div>
             </div>

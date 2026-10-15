@@ -6,6 +6,14 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **The sequenced tag opens the plasmid's sequencing.** In the editor's header,
+  "✓ Sequenced", and a new "Not sequenced" tag for plasmids not confirmed yet,
+  open the plasmid on the Sequencing page, ready to add or judge reads.
+  - A plasmid never saved has to be saved first.
+  - With unsaved changes, you choose to save them first or open the saved version.
+  - The same tags in My sequences open the same page.
+
 ## [0.3.4] - 2026-10-15
 
 ### Added

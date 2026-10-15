@@ -62,13 +62,17 @@ const Library = {
             s.reads_ok ? el('span', { class: 'verdict-ok', text: ` ✓${s.reads_ok}` }) : null)
         : el('span', { class: 'muted', text: '—' })),
       el('td', {},
+        // Either tag opens the plasmid's reads and alignments.
         s.confirmed
-          ? el('span', {
-              class: 'badge badge-confirmed',
+          ? el('a', {
+              class: 'badge badge-confirmed badge-link', href: url(`/sequencing?sequence=${s.id}`),
               title: `Confirmed and sequenced${s.glycerol_stock ? ` · glycerol stock ${s.glycerol_stock}` : ''}`
-                + `${s.confirmed_clone ? ` · clone ${s.confirmed_clone}` : ''}`,
+                + `${s.confirmed_clone ? ` · clone ${s.confirmed_clone}` : ''} · click to see the reads`,
             }, '✓ sequenced')
-          : null,
+          : el('a', {
+              class: 'badge badge-unsequenced badge-link', href: url(`/sequencing?sequence=${s.id}`),
+              title: 'Not confirmed by sequencing yet: open the Sequencing page to add or judge reads',
+            }, 'not sequenced'),
         s.golden_gate ? el('span', { class: 'badge badge-gg', text: 'Golden Gate' }) : null,
         s.moclo_part_id ? el('span', { class: 'badge badge-moclo', text: 'in MoClo' }) : null,
         !s.shared ? el('span', { class: 'badge', text: 'private' }) : null),
