@@ -6,6 +6,8 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.5] - 2026-10-15
+
 ### Added
 - **The sequenced tag opens the plasmid's sequencing.** In the editor's header,
   "✓ Sequenced", and a new "Not sequenced" tag for plasmids not confirmed yet,
