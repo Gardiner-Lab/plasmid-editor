@@ -428,8 +428,10 @@ def set_read_verdict(user, read_id):
     """
     Record whether an alignment is good enough.
 
-    Judging one sufficient is what confirms the plasmid, so the response says
-    whether a glycerol stock number is still needed to complete that.
+    Judging one sufficient confirms the plasmid, so it needs the glycerol stock
+    the clone is kept as (`glycerol_stock`): without one the verdict is refused
+    and nothing changes. With one, the verdict, the stock and the confirmation
+    are recorded together, and MoClo is told the plasmid is sequenced.
     """
     read = Read.get(read_id, include_trace=False)
     if read is None:
@@ -438,17 +440,31 @@ def set_read_verdict(user, read_id):
     if err:
         return err
     data = request.get_json(silent=True) or {}
+    stock = str(data.get('glycerol_stock') or '').strip()
+    if data.get('verdict') == 'sufficient' and not stock:
+        return jsonify({'error': 'Give the glycerol stock this clone is kept as: a sufficient '
+                                 'alignment confirms the plasmid as sequenced'}), 400
     try:
         updated = Read.set_verdict(read_id, data.get('verdict'), user.username,
                                    data.get('note'), data.get('clone_number'))
     except ValueError as exc:
         return jsonify({'error': str(exc)}), 400
+    synced = moclo_note = None
+    if updated['verdict'] == 'sufficient':
+        confirmed = StoredSequence.confirm(read['sequence_id'], user.username, stock,
+                                           updated.get('clone_number'))
+        if confirmed and confirmed.get('moclo_link'):
+            try:
+                synced = moclo_bridge.record_verification(confirmed['moclo_link'], confirmed)
+            except moclo_bridge.ContributionError as exc:
+                moclo_note = str(exc)
     withdrawn = StoredSequence.withdraw_unsupported(read['sequence_id'])
-    moclo_note = moclo_bridge.clear_withdrawn(withdrawn)
+    moclo_note = moclo_bridge.clear_withdrawn(withdrawn) or moclo_note
     return jsonify({
         'read': updated,
-        # The caller asks for a glycerol stock and then calls /confirm.
-        'needs_confirmation': (updated['verdict'] == 'sufficient' and not doc['confirmed']),
+        # Kept for older pages: a sufficient verdict now confirms at once.
+        'needs_confirmation': False,
+        'synced_to_moclo': synced,
         # No read judged sufficient is left, so the plasmid is no longer confirmed.
         'confirmation_withdrawn': bool(withdrawn),
         'moclo_note': moclo_note,

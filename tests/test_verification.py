@@ -28,8 +28,11 @@ def _add_read(user_client, sid, name, bases, clone=None):
     return r.get_json()['reads'][0]
 
 
-def _judge(user_client, read_id, verdict):
-    r = user_client.post(f'/api/sequences/reads/{read_id}/verdict', json={'verdict': verdict})
+def _judge(user_client, read_id, verdict, glycerol_stock='GS-TEST-1'):
+    body = {'verdict': verdict}
+    if verdict == 'sufficient':
+        body['glycerol_stock'] = glycerol_stock        # required to judge sufficient
+    r = user_client.post(f'/api/sequences/reads/{read_id}/verdict', json=body)
     assert r.status_code == 200, r.get_json()
     return r.get_json()
 
@@ -72,23 +75,25 @@ def test_sufficient_verdict_confirms_the_plasmid_with_a_glycerol_stock(user_clie
     sid = _save(user_client, 'pGood', seq)
     read = _add_read(user_client, sid, 'read1', seq[100:600], clone='4')
 
+    # Without a glycerol stock, a sufficient verdict is refused and nothing changes.
+    for missing in ({}, {'glycerol_stock': '   '}):
+        bad = user_client.post(f"/api/sequences/reads/{read['id']}/verdict",
+                               json={'verdict': 'sufficient', **missing})
+        assert bad.status_code == 400 and 'glycerol stock' in bad.get_json()['error']
+    history = user_client.get(f'/api/sequences/{sid}/sequencing').get_json()
+    assert history['reads'][0]['verdict'] is None
+    assert history['sequence']['confirmed'] is False
+
+    # With one, the verdict, the stock and the confirmation are recorded together.
     r = user_client.post(f"/api/sequences/reads/{read['id']}/verdict",
-                         json={'verdict': 'sufficient', 'note': 'clean across the insert'})
+                         json={'verdict': 'sufficient', 'note': 'clean across the insert',
+                               'glycerol_stock': ' GS-2026-041 ', 'clone_number': '4'})
     assert r.status_code == 200
     body = r.get_json()
     assert body['read']['verdict'] == 'sufficient'
     assert body['read']['verdict_by'] == 'tester'
-    assert body['needs_confirmation'] is True, 'the caller must now ask for a glycerol stock'
-    assert body['sequence']['confirmed'] is False, 'not confirmed until the stock is given'
-
-    # Confirming without a stock number is refused.
-    bad = user_client.post(f'/api/sequences/{sid}/confirm', json={'glycerol_stock': '  '})
-    assert bad.status_code == 400 and 'glycerol stock' in bad.get_json()['error']
-
-    ok = user_client.post(f'/api/sequences/{sid}/confirm',
-                          json={'glycerol_stock': 'GS-2026-041', 'clone_number': '4'})
-    assert ok.status_code == 200
-    confirmed = ok.get_json()['sequence']
+    assert body['needs_confirmation'] is False
+    confirmed = body['sequence']
     assert confirmed['confirmed'] is True
     assert confirmed['glycerol_stock'] == 'GS-2026-041'
     assert confirmed['confirmed_clone'] == '4'
@@ -134,8 +139,7 @@ def test_verdict_and_clone_survive_realignment(user_client, rand_dna):
     seq = rand_dna(1200)
     sid = _save(user_client, 'pEdit', seq)
     read = _add_read(user_client, sid, 'read1', seq[300:800], clone='9')
-    user_client.post(f"/api/sequences/reads/{read['id']}/verdict",
-                     json={'verdict': 'sufficient'})
+    _judge(user_client, read['id'], 'sufficient')
 
     user_client.put(f'/api/sequences/{sid}',
                     json={'document': model.make_document('pEdit', seq[:700] + seq[800:], True)})

@@ -239,6 +239,20 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
     overflow: hidden; white-space: nowrap; text-align: center; line-height: .85em;
 }
 .aln-feat > span { font-size: .68rem; color: #111827; }
+/* Differences in an alignment, the list of them and the way between them. */
+.aln-diff { border-radius: 2px; cursor: pointer; }
+.aln-mismatch { background: #fecaca; }
+.aln-insertion { background: #fde68a; }
+.aln-deletion { background: #fed7aa; }
+.aln-focus { outline: 2px solid #dc2626; outline-offset: -1px; background: #fca5a5; }
+.diff-list { display: flex; flex-wrap: wrap; gap: .3rem; margin-top: .45rem; }
+.diff-chip {
+    font: inherit; font-size: .75rem; padding: .1rem .45rem; border-radius: .3rem; cursor: pointer;
+    border: 1px solid var(--border-color); background: var(--card-bg); color: var(--text-color);
+}
+.diff-chip:hover { border-color: #dc2626; }
+.diff-chip.active { background: #fee2e2; border-color: #dc2626; font-weight: 600; }
+.diff-nav { display: flex; align-items: center; gap: .4rem; margin: 0 0 .5rem; }
 .site-hit { background: #fed7aa; }
 /* Enzyme names are clickable; a cut is drawn as a step across both strands. */
 .site-label { position: absolute; line-height: 1.1em; white-space: nowrap; cursor: pointer; }

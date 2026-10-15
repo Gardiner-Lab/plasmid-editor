@@ -6,6 +6,24 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.3] - 2026-10-15
+
+### Added
+- **Go to the problems in a sequencing alignment.** Each difference listed
+  above an alignment is a button that scrolls the alignment to it and outlines
+  it; Previous and Next step through them ("Difference 3 of 12"); and every
+  difference is coloured in the alignment (mismatch, insertion, deletion), where
+  clicking one selects it.
+
+### Changed
+- **A sufficient alignment needs a glycerol stock.** Judging a sequencing read
+  sufficient confirms the plasmid, so the verdict now asks for the glycerol
+  stock the clone is kept as first, and records the verdict, the stock and the
+  confirmation together. The API refuses a sufficient verdict without
+  `glycerol_stock`, and nothing changes. Before, the verdict was saved first and
+  the stock asked for afterwards, so cancelling left a sufficient read on an
+  unconfirmed plasmid with no stock.
+
 ## [0.3.2] - 2026-10-14
 
 ### Added

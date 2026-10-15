@@ -270,13 +270,13 @@ const Sequencing = {
           ` — reference ${fmt(a.ref_start + 1)}–${fmt(a.ref_end)}, `,
           a.strand === -1 ? 'reverse strand' : 'forward strand'),
         a.differences.length
-          ? el('div', { class: 'hint' },
-            a.differences.slice(0, 40).map((d) =>
-              `${d.type === 'mismatch' ? `${d.ref}→${d.read}` : d.type} @ ${fmt(d.position + 1)}`).join(', ')
-            + (a.differences.length > 40 ? ' …' : ''))
+          ? this.differenceList(a, (k) => nav.go(k))
           : el('div', { class: 'hint' }, 'No differences from the reference.')));
       nodes.push(this.verdictBar(read));
-      nodes.push(this.alignmentView(a));
+      const view = this.alignmentView(a, (k) => nav.go(k));
+      const nav = this.differenceNav(a, view);
+      if (a.differences.length) nodes.push(nav.bar);
+      nodes.push(view);
     }
     box.replaceChildren(...nodes);
 
@@ -310,34 +310,39 @@ const Sequencing = {
       type: 'text', value: read.clone_number || '', placeholder: 'clone',
       style: 'width:6rem', title: 'Which colony this read came from',
     });
-    const judge = async (verdict) => {
-      try {
-        const res = await API.post(`/api/sequences/reads/${read.id}/verdict`, {
-          verdict, clone_number: clone.value,
-        });
-        await this.selectReference(this.reference.id);
-        const updated = this.reads.find((r) => r.id === read.id);
-        if (updated) await this.showRead(updated);
-        if (res.needs_confirmation) this.askGlycerolStock(clone.value || read.clone_number);
-        else if (res.confirmation_withdrawn) this.noteWithdrawn(res);
-        else toast(verdict === 'sufficient' ? 'Marked sufficient' : 'Marked not sufficient',
-                   'success', 2500);
-      } catch (err) {
-        toast(err.message, 'error');
-      }
+    const judge = async (verdict, extra = {}) => {
+      const res = await API.post(`/api/sequences/reads/${read.id}/verdict`, {
+        verdict, clone_number: clone.value, ...extra,
+      });
+      await this.selectReference(this.reference.id);
+      const updated = this.reads.find((r) => r.id === read.id);
+      if (updated) await this.showRead(updated);
+      if (res.confirmation_withdrawn) this.noteWithdrawn(res);
+      else if (verdict === 'sufficient') {
+        toast(res.synced_to_moclo ? 'Sufficient: plasmid confirmed, and recorded as sequenced in MoClo'
+                                  : 'Sufficient: plasmid confirmed as sequenced', 'success', 5000);
+        if (res.moclo_note) toast(res.moclo_note, 'error', 9000);
+        this.refreshList();
+      } else toast('Marked not sufficient', 'success', 2500);
     };
+    const tryJudge = (verdict) => judge(verdict).catch((err) => toast(err.message, 'error'));
     return el('div', { class: 'btn-group', style: 'margin:.5rem 0 .75rem;align-items:center' },
       el('span', { class: 'hint' }, 'Clone'),
       clone,
       el('button', {
         class: `btn btn-sm ${read.verdict === 'sufficient' ? '' : 'btn-secondary'}`,
         'aria-pressed': read.verdict === 'sufficient' ? 'true' : 'false',
-        onclick: () => judge('sufficient'),
+        // Sufficient confirms the plasmid, so it needs its glycerol stock first.
+        onclick: () => this.askGlycerolStock(clone.value || read.clone_number,
+          (stock, cloneNumber) => {
+            clone.value = cloneNumber;
+            return judge('sufficient', { glycerol_stock: stock, clone_number: cloneNumber });
+          }),
       }, '✓ Alignment is sufficient'),
       el('button', {
         class: `btn btn-sm ${read.verdict === 'insufficient' ? '' : 'btn-secondary'}`,
         'aria-pressed': read.verdict === 'insufficient' ? 'true' : 'false',
-        onclick: () => judge('insufficient'),
+        onclick: () => tryJudge('insufficient'),
       }, '✗ Not sufficient'),
       read.verdict
         ? el('button', {
@@ -354,16 +359,22 @@ const Sequencing = {
         : null);
   },
 
-  /** Confirming a plasmid records which glycerol stock it is kept as. */
-  askGlycerolStock(clone) {
+  /**
+   * Ask for the glycerol stock a confirmed plasmid is kept as. Judging an
+   * alignment sufficient confirms the plasmid, so it waits for this: with
+   * `onConfirm(stock, clone)` that judgement is what the button sends, and
+   * nothing is recorded unless a stock is given.
+   */
+  askGlycerolStock(clone, onConfirm) {
     const seq = this.reference;
     modal({
-      title: 'Confirm this plasmid as sequenced',
+      title: onConfirm ? 'Alignment sufficient: confirm the plasmid' : 'Confirm this plasmid as sequenced',
       build: (body) => {
         body.append(
-          el('p', {}, 'The alignment is good, so ',
+          el('p', {}, onConfirm ? 'Judging this alignment sufficient confirms ' : 'The alignment is good, so ',
             el('b', { text: seq.name }),
-            ' can be marked as confirmed and sequenced.'),
+            onConfirm ? ' as sequenced. Give the glycerol stock the clone is kept as.'
+                      : ' can be marked as confirmed and sequenced.'),
           el('div', { class: 'field' },
             el('label', { for: 'glyStock' }, 'Glycerol stock number'),
             el('input', { type: 'text', id: 'glyStock', placeholder: 'e.g. GS-2026-041',
@@ -375,12 +386,20 @@ const Sequencing = {
         setTimeout(() => body.querySelector('#glyStock')?.focus(), 0);
       },
       buttons: [
-        { label: 'Not yet', kind: 'secondary' },
+        { label: onConfirm ? 'Cancel' : 'Not yet', kind: 'secondary' },
         {
-          label: 'Confirm plasmid',
+          label: onConfirm ? 'Mark sufficient and confirm' : 'Confirm plasmid',
           onClick: async ({ body }) => {
             const stock = body.querySelector('#glyStock').value.trim();
-            if (!stock) { toast('A glycerol stock number is required', 'error'); return false; }
+            if (!stock) {
+              toast('A glycerol stock number is required', 'error');
+              body.querySelector('#glyStock').focus();
+              return false;
+            }
+            if (onConfirm) {
+              await onConfirm(stock, body.querySelector('#glyClone').value.trim());
+              return true;
+            }
             const res = await API.post(`/api/sequences/${seq.id}/confirm`, {
               glycerol_stock: stock,
               clone_number: body.querySelector('#glyClone').value.trim(),
@@ -449,14 +468,103 @@ const Sequencing = {
   },
 
   /**
+   * The column of the alignment each of its differences is in, in the order the
+   * server lists them (by reference position; an insertion of several bases is
+   * listed once per base, at the same position).
+   */
+  differenceColumns(a) {
+    const n = this.reference.sequence.length;
+    const found = new Map();          // "type:position" -> columns, in order
+    let pos = a.ref_start;
+    for (let c = 0; c < a.top.length; c++) {
+      const t = a.top[c];
+      const b = a.bottom[c];
+      if (t !== b) {
+        const type = t === '-' ? 'insertion' : b === '-' ? 'deletion' : 'mismatch';
+        const key = `${type}:${pos % n}`;
+        if (!found.has(key)) found.set(key, []);
+        found.get(key).push(c);
+      }
+      if (t !== '-') pos += 1;
+    }
+    return a.differences.map((d) => found.get(`${d.type}:${d.position}`)?.shift() ?? null);
+  },
+
+  /** Each difference as a button that goes to it in the alignment. */
+  differenceList(a, go) {
+    const label = (d) => `${d.type === 'mismatch' ? `${d.ref}→${d.read}` : d.type} @ ${fmt(d.position + 1)}`;
+    const shown = a.differences.slice(0, 60);
+    return el('div', { class: 'diff-list' },
+      ...shown.map((d, k) => el('button', {
+        class: `diff-chip diff-${d.type}`, type: 'button', 'data-diff': String(k),
+        title: 'Go to this difference in the alignment', onclick: () => go(k),
+      }, label(d))),
+      a.differences.length > shown.length
+        ? el('span', { class: 'hint' }, ` and ${fmt(a.differences.length - shown.length)} more: use Next`) : null);
+  },
+
+  /** Previous / Next through the differences, and which one is shown. */
+  differenceNav(a, view) {
+    const status = el('span', { class: 'hint' }, `${fmt(a.differences.length)} difference${a.differences.length > 1 ? 's' : ''}`);
+    const nav = {
+      at: -1,
+      go(k) {
+        const count = a.differences.length;
+        if (!count) return;
+        nav.at = ((k % count) + count) % count;
+        view.goTo(nav.at);
+        status.textContent = `Difference ${fmt(nav.at + 1)} of ${fmt(count)}`;
+        // The matching button in the list above, marked as the one shown.
+        for (const chip of document.querySelectorAll('#alignment .diff-chip')) {
+          chip.classList.toggle('active', Number(chip.dataset.diff) === nav.at);
+        }
+      },
+    };
+    nav.bar = el('div', { class: 'diff-nav' },
+      el('button', { class: 'btn btn-sm btn-secondary', type: 'button', title: 'Previous difference',
+                     onclick: () => nav.go(nav.at - 1) }, '◀ Previous'),
+      el('button', { class: 'btn btn-sm btn-secondary', type: 'button', title: 'Next difference',
+                     onclick: () => nav.go(nav.at + 1) }, 'Next ▶'),
+      status);
+    return nav;
+  },
+
+  /** One row of bases, with the bases that differ marked (and the one shown outlined). */
+  alignedRow(text, offset, diffAt, focusColumn) {
+    const row = el('div', { class: 'seqmap-row' });
+    let plain = '';
+    for (let j = 0; j < text.length; j++) {
+      const diff = diffAt.get(offset + j);
+      if (!diff) { plain += text[j]; continue; }
+      if (plain) { row.append(plain); plain = ''; }
+      row.append(el('span', {
+        class: `aln-diff aln-${diff.type}${offset + j === focusColumn ? ' aln-focus' : ''}`,
+        'data-diff': String(diff.index), title: diff.label,
+      }, text[j]));
+    }
+    if (plain) row.append(plain);
+    return row;
+  },
+
+  /**
    * Reference over read, in blocks, with mismatches marked, and the
    * reference's features above it, so you see which of them the read covers.
+   * Every difference is coloured, and `goTo(k)` brings the k-th into view.
    * Lines are as long as the box allows, and re-flow when it is resized.
    */
-  alignmentView(a) {
+  alignmentView(a, onPick) {
     const lanes = this.alignedFeatures(a);
     const wrap = el('div', { class: 'seqmap', style: 'max-height:24rem;overflow:auto' });
     let width = 60;          // until the box is on the page and can be measured
+    const columns = this.differenceColumns(a);
+    const diffAt = new Map();         // column -> the (first) difference there
+    columns.forEach((c, k) => {
+      if (c === null || diffAt.has(c)) return;
+      const d = a.differences[k];
+      diffAt.set(c, { index: k, type: d.type,
+                      label: `${d.type === 'mismatch' ? `${d.ref}→${d.read}` : d.type} at ${fmt(d.position + 1)}` });
+    });
+    let focus = null;                 // the column of the difference shown
     const draw = () => {
       const blocks = [];
       for (let i = 0; i < a.top.length; i += width) {
@@ -469,13 +577,29 @@ const Sequencing = {
           el('div', { class: 'seqmap-num', text: String(refStart + 1) }),
           el('div', { class: 'seqmap-rows' },
             ...this.featureLanes(lanes, i, Math.min(i + width, a.top.length)),
-            el('div', { class: 'seqmap-row', text: top }),
+            this.alignedRow(top, i, diffAt, focus),
             el('div', { class: 'seqmap-row', style: 'color:var(--text-secondary)', text: marks }),
-            el('div', { class: 'seqmap-row', text: bottom }))));
+            this.alignedRow(bottom, i, diffAt, focus))));
       }
       wrap.replaceChildren(...blocks);
     };
     draw();
+    // Clicking a coloured base picks that difference.
+    wrap.addEventListener('click', (e) => {
+      const base = e.target.closest('.aln-diff');
+      if (base) onPick?.(Number(base.dataset.diff));
+    });
+    /** Outline the k-th difference and scroll it into the middle of the box. */
+    wrap.goTo = (k) => {
+      focus = columns[k];
+      if (focus === null || focus === undefined) return;
+      draw();
+      const target = wrap.querySelector('.aln-focus');
+      if (!target) return;
+      wrap.scrollTop += target.getBoundingClientRect().top - wrap.getBoundingClientRect().top
+        - wrap.clientHeight / 3;
+      wrap.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    };
     if ('ResizeObserver' in window) {
       let shownOnce = false;
       const observer = new ResizeObserver(() => {
