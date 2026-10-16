@@ -233,9 +233,10 @@ const Cloning = {
           }, 'Save and open in editor'),
           el('button', {
             class: 'btn btn-sm btn-secondary',
-            onclick: () => navigator.clipboard?.writeText(p.sequence)
-              .then(() => toast('Sequence copied', 'success', 2000))
-              .catch(() => toast('Could not access the clipboard', 'error')),
+            onclick: async () => {
+              if (await copyText(p.sequence)) toast('Sequence copied', 'success', 2000);
+              else toast('Copying is blocked here: select the sequence in the editor and copy it', 'error');
+            },
           }, 'Copy sequence'))));
     });
     out.replaceChildren(...nodes);

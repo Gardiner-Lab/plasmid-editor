@@ -194,12 +194,8 @@ const Admin = {
   },
 
   async copy(code) {
-    try {
-      await navigator.clipboard.writeText(code);
-      toast('Code copied', 'success', 2000);
-    } catch {
-      toast(`The code is ${code}`, 'info', 5000);
-    }
+    if (await copyText(code)) toast('Code copied', 'success', 2000);
+    else toast(`Copying is blocked here: the code is ${code}`, 'info', 5000);
   },
 };
 

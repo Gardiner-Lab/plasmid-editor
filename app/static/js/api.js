@@ -108,6 +108,29 @@ const el = (tag, attrs = {}, ...children) => {
   return node;
 };
 
+/**
+ * Copy text to the clipboard; resolves true when it was copied. Browsers give
+ * pages the clipboard API only over https (or on localhost), so elsewhere, a
+ * suite reached over plain http say, it copies a selected text field with the
+ * copy command instead, which still works while handling a click.
+ */
+async function copyText(text) {
+  if (window.isSecureContext && navigator.clipboard) {
+    try { await navigator.clipboard.writeText(text); return true; } catch (e) { /* refused: try the other way */ }
+  }
+  const field = document.createElement('textarea');
+  field.value = text;
+  field.setAttribute('readonly', '');
+  field.style.position = 'fixed';
+  field.style.opacity = '0';
+  document.body.append(field);
+  field.select();
+  let copied = false;
+  try { copied = document.execCommand('copy'); } catch (e) { copied = false; }
+  field.remove();
+  return copied;
+}
+
 const fmt = (n) => Number(n).toLocaleString('en-US');
 
 /**

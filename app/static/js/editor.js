@@ -794,11 +794,10 @@ const Editor = {
 
   async copy(text, unit = 'character') {
     if (!text) { toast('Nothing selected', 'error'); return; }
-    try {
-      await navigator.clipboard.writeText(text);
+    if (await copyText(text)) {
       toast(`Copied ${fmt(text.length)} ${unit}${text.length > 1 ? 's' : ''}`, 'success', 2000);
-    } catch {
-      // Clipboard needs a secure context; show the text so it can be copied by hand.
+    } else {
+      // Copying is blocked here; show the text so it can be copied by hand.
       modal({
         title: 'Copy',
         build: (body) => {

@@ -6,6 +6,13 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-10-16
+
+### Fixed
+- **Copy buttons work over plain http.** Browsers allow the clipboard API only on secure pages
+  (https, or localhost); elsewhere Copy (sequences, selections, cloning products, lab codes) now copies with the copy command instead, and says so
+  when even that is blocked.
+
 ## [0.4.1] - 2026-10-16
 
 ### Fixed
