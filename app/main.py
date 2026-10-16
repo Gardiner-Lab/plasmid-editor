@@ -11,7 +11,7 @@ from datetime import timedelta
 
 from flask import Flask, redirect, render_template, request, session, url_for
 
-APP_VERSION = '0.4.2'
+APP_VERSION = '0.4.3'
 
 _DEFAULT_SECRET = 'dev-secret-key-change-in-production'
 

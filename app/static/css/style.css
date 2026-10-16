@@ -313,6 +313,9 @@ tr.clickable:hover td { background: var(--bg-color); }
 .combo-item { padding: .4rem .6rem; cursor: pointer; border-bottom: 1px solid var(--border-color); }
 .combo-item:last-child { border-bottom: none; }
 .combo-item.active { background: #eff6ff; }
+.combo-item.combo-pinned-last { border-bottom: 2px solid var(--border-color); }
+.combo-open { margin-left: .5rem; font-size: .72rem; font-weight: 600; color: #1d4ed8; background: #dbeafe;
+    border-radius: .6rem; padding: 0 .45rem; vertical-align: middle; }
 .combo-item mark { background: #fde68a; color: inherit; border-radius: 2px; padding: 0 1px; }
 .combo-name { font-size: .9rem; font-weight: 500; }
 .combo-meta { font-size: .75rem; color: var(--text-secondary); display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; }

@@ -7,6 +7,9 @@ const Sequencing = {
   activeRead: null,
   traceScale: 2,
 
+  /** Plasmids open in the editor's tabs (this sign-in's), by id: their place, the active tab first. */
+  open: new Map(),
+
   async init() {
     document.getElementById('readInput').addEventListener('change', (e) => this.upload(e.target.files));
     document.getElementById('btnRealign').addEventListener('click', () => this.realign());
@@ -20,10 +23,13 @@ const Sequencing = {
       fields: ['name', 'description'],
       dateField: 'created_at',
       emptyText: 'No plasmid matches. Save one in the editor first.',
+      // The plasmids open in the editor come first: most often the one to check.
+      pinned: (s) => (this.open.has(s.id) ? this.open.get(s.id) : -1),
       label: (s) => s.name,
       render: (s, query) => el('div', {},
         el('div', { class: 'combo-name' }, highlight(s.name, query),
-          s.confirmed ? el('span', { class: 'confirmed-tick', title: 'Confirmed and sequenced' }, ' ✓') : null),
+          s.confirmed ? el('span', { class: 'confirmed-tick', title: 'Confirmed and sequenced' }, ' ✓') : null,
+          this.open.has(s.id) ? el('span', { class: 'combo-open', title: 'Open in a tab of the editor' }, 'open in the editor') : null),
         el('div', { class: 'combo-meta' },
           el('span', {}, `${fmt(s.length)} bp`),
           el('span', {}, s.circular ? 'circular' : 'linear'),
@@ -35,7 +41,8 @@ const Sequencing = {
     });
 
     try {
-      const { sequences } = await API.get('/api/sequences?sequencing=true');
+      const [{ sequences }, open] = await Promise.all([API.get('/api/sequences?sequencing=true'), this.openInEditor()]);
+      this.open = open;
       this.sequences = sequences;
       this.combo.setItems(sequences);
       const preset = new URLSearchParams(location.search).get('sequence');
@@ -47,6 +54,20 @@ const Sequencing = {
     } catch (err) {
       toast(err.message, 'error');
     }
+  },
+
+  /** The saved plasmids open in the editor's tabs: id -> place, the active tab first, then the tabs in order. */
+  async openInEditor() {
+    const places = new Map();
+    try {
+      const { workspace } = await API.get('/api/workspace');
+      const docs = workspace?.docs || [];
+      const active = docs[workspace?.active || 0];
+      for (const doc of [active, ...docs]) {
+        if (doc?.id && !places.has(doc.id)) places.set(doc.id, places.size);
+      }
+    } catch { /* nothing open, or not remembered: no plasmid comes first */ }
+    return places;
   },
 
   /** Keep the picker's metadata (read counts, green check) current. */

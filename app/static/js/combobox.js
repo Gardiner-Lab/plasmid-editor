@@ -18,6 +18,8 @@ class Combobox {
    *   onSelect     (item) => void
    *   emptyText    shown when nothing matches
    *   limit        most rows to draw at once
+   *   pinned       (item) => a place (0, 1, ...) for items that come first, in
+   *                that order, before the ranked rest; -1 for any other item
    */
   constructor(container, opts = {}) {
     this.opts = {
@@ -61,6 +63,13 @@ class Combobox {
     this.filtered = rankByRelevance(this.items, this.query, {
       fields: this.opts.fields, dateField: this.opts.dateField,
     });
+    const place = this.opts.pinned;
+    if (place) {
+      // Pinned items that match come first, in their own order; the rest keep their ranking.
+      const first = this.filtered.filter((item) => place(item) >= 0).sort((a, b) => place(a) - place(b));
+      this.pinnedCount = first.length;
+      this.filtered = [...first, ...this.filtered.filter((item) => place(item) < 0)];
+    } else this.pinnedCount = 0;
     this.active = this.filtered.length ? 0 : -1;
     this.draw();
     this.open();
@@ -72,7 +81,7 @@ class Combobox {
       this.list.replaceChildren(el('div', { class: 'combo-empty', text: this.opts.emptyText }));
     } else {
       this.list.replaceChildren(...shown.map((item, i) => el('div', {
-        class: `combo-item ${i === this.active ? 'active' : ''}`,
+        class: `combo-item ${i === this.active ? 'active' : ''}${i === this.pinnedCount - 1 && shown.length > this.pinnedCount ? ' combo-pinned-last' : ''}`,
         role: 'option',
         'aria-selected': i === this.active ? 'true' : 'false',
         onmouseenter: () => { this.active = i; this.markActive(); },

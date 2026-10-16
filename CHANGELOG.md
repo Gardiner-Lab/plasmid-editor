@@ -6,6 +6,12 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-10-16
+
+### Changed
+- **The plasmids open in the editor come first** in the Sequencing page's reference list, the active
+  one at the top, marked "open in the editor"; the rest follow as before.
+
 ## [0.4.2] - 2026-10-16
 
 ### Fixed
