@@ -367,30 +367,60 @@ const Sequencing = {
    */
   askGlycerolStock(clone, onConfirm) {
     const seq = this.reference;
+    // With Lab Stocks, a new glycerol stock gets the lab's next number there;
+    // a number from before (or another scheme) can still be typed.
+    const stocks = Stocks.enabled();
     modal({
       title: onConfirm ? 'Alignment sufficient: confirm the plasmid' : 'Confirm this plasmid as sequenced',
       build: (body) => {
+        const choice = (value, label, checked) => el('label', { class: 'checkbox' },
+          el('input', { type: 'radio', name: 'glyHow', value, checked }), el('span', {}, label));
         body.append(
           el('p', {}, onConfirm ? 'Judging this alignment sufficient confirms ' : 'The alignment is good, so ',
             el('b', { text: seq.name }),
-            onConfirm ? ' as sequenced. Give the glycerol stock the clone is kept as.'
+            onConfirm ? ' as sequenced. Record the glycerol stock the clone is kept as.'
                       : ' can be marked as confirmed and sequenced.'),
           el('div', { class: 'field' },
-            el('label', { for: 'glyStock' }, 'Glycerol stock number'),
-            el('input', { type: 'text', id: 'glyStock', placeholder: 'e.g. GS-2026-041',
-              value: seq.glycerol_stock || '' }),
-            el('span', { class: 'hint' }, 'Recorded with the plasmid so the stock can be found later.')),
-          el('div', { class: 'field' },
             el('label', { for: 'glyClone' }, 'Confirmed clone'),
-            el('input', { type: 'text', id: 'glyClone', value: clone || seq.confirmed_clone || '' })));
-        setTimeout(() => body.querySelector('#glyStock')?.focus(), 0);
+            el('input', { type: 'text', id: 'glyClone', value: clone || seq.confirmed_clone || '' })),
+          stocks ? el('div', { class: 'field' },
+            choice('new', 'A new glycerol stock in Lab Stocks, with the lab\'s next number', !seq.glycerol_stock),
+            el('div', { class: 'field-row', id: 'glyNew', style: 'margin:.3rem 0 .3rem 1.6rem' },
+              el('div', { class: 'field' }, el('label', { for: 'glyHost' }, 'Strain'),
+                el('input', { type: 'text', id: 'glyHost', placeholder: 'e.g. DH5α, GV3101' })),
+              el('div', { class: 'field' }, el('label', { for: 'glyPlace' }, 'Kept in'),
+                el('input', { type: 'text', id: 'glyPlace', placeholder: 'e.g. −80 °C / box 3 / B4' }))),
+            choice('existing', 'A glycerol stock that already has a number', !!seq.glycerol_stock)) : null,
+          el('div', { class: 'field', id: 'glyExisting' },
+            el('label', { for: 'glyStock' }, 'Glycerol stock number'),
+            el('input', { type: 'text', id: 'glyStock', placeholder: 'e.g. GL-G-0012, or GS-2026-041',
+              value: seq.glycerol_stock || '' }),
+            el('span', { class: 'hint' }, 'Recorded with the plasmid so the stock can be found later.')));
+        const sync = () => {
+          const fresh = stocks && body.querySelector('input[name=glyHow]:checked')?.value === 'new';
+          body.querySelector('#glyExisting').hidden = fresh;
+          if (body.querySelector('#glyNew')) body.querySelector('#glyNew').hidden = !fresh;
+        };
+        for (const r of body.querySelectorAll('input[name=glyHow]')) r.addEventListener('change', sync);
+        sync();
+        setTimeout(() => body.querySelector('#glyHost:not([hidden]), #glyStock')?.focus(), 0);
       },
       buttons: [
         { label: onConfirm ? 'Cancel' : 'Not yet', kind: 'secondary' },
         {
           label: onConfirm ? 'Mark sufficient and confirm' : 'Confirm plasmid',
           onClick: async ({ body }) => {
-            const stock = body.querySelector('#glyStock').value.trim();
+            let stock = body.querySelector('#glyStock').value.trim();
+            if (stocks && body.querySelector('input[name=glyHow]:checked')?.value === 'new') {
+              const { record } = await Stocks.call('POST', '/glycerol', {
+                plasmid_id: seq.id, plasmid_name: seq.name, source: 'sequencing',
+                clone: body.querySelector('#glyClone').value.trim(),
+                host: body.querySelector('#glyHost').value.trim(),
+                location: body.querySelector('#glyPlace').value.trim(),
+              });
+              stock = record.code;
+              toast(`Glycerol stock ${stock} made in Lab Stocks`, 'success', 6000);
+            }
             if (!stock) {
               toast('A glycerol stock number is required', 'error');
               body.querySelector('#glyStock').focus();
@@ -450,7 +480,7 @@ const Sequencing = {
     const parts = [];
     if (seq.confirmed) {
       parts.push(el('div', {},
-        el('b', {}, 'Glycerol stock: '), seq.glycerol_stock || '—',
+        el('b', {}, 'Glycerol stock: '), Stocks.render(seq.glycerol_stock),
         seq.confirmed_clone ? ` · clone ${seq.confirmed_clone}` : '',
         seq.confirmed_by ? ` · confirmed by ${seq.confirmed_by}` : '',
         seq.confirmed_at ? ` on ${String(seq.confirmed_at).slice(0, 16)}` : ''));

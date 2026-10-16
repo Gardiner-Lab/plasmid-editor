@@ -348,6 +348,10 @@ const Tools = {
                   class: 'btn btn-sm btn-secondary',
                   onclick: () => Editor.copy(`${res.forward.full || res.forward.sequence}\n${res.reverse.full || res.reverse.sequence}`),
                 }, 'Copy both'),
+                Stocks.enabled() ? el('button', {
+                  class: 'btn btn-sm', title: 'Add both to the lab\'s primers in Lab Stocks, numbered there',
+                  onclick: (e) => this.savePrimers(e.currentTarget, doc, res),
+                }, 'Save to primer stock') : null,
                 el('button', {
                   class: 'btn btn-sm btn-secondary',
                   onclick: () => {
@@ -370,6 +374,114 @@ const Tools = {
         };
       },
       buttons: [{ label: 'Close', kind: 'secondary' }],
+    });
+  },
+
+  /** Save a designed pair to Lab Stocks, named after the plasmid. */
+  async savePrimers(button, doc, res) {
+    const base = (doc.name || 'primer').slice(0, 60);
+    const target = `${doc.name || ''} ${fmt(Editor.view.selection.start + 1)}–${fmt(Editor.view.selection.end)}`;
+    button.disabled = true;
+    try {
+      const { primers } = await Stocks.call('POST', '/primers/many', { primers: [
+        { name: `${base}-F`, sequence: res.forward.full || res.forward.sequence, direction: 'forward', target, purpose: 'PCR' },
+        { name: `${base}-R`, sequence: res.reverse.full || res.reverse.sequence, direction: 'reverse', target, purpose: 'PCR' }] });
+      button.replaceWith(el('span', { class: 'hint' }, 'Saved as ',
+        primers.map((p, i) => [i ? ' and ' : '', el('a', { href: Stocks.link(p.code), target: '_blank', rel: 'noopener' }, `${p.code} ${p.name}`)]),
+        ' — rename them, and say where the tubes are, in Lab Stocks.'));
+    } catch (err) {
+      button.disabled = false;
+      toast(err.message, 'error', 6000);
+    }
+  },
+
+  /**
+   * The lab's primers (from Lab Stocks) that bind this sequence: the 3' end of
+   * each (its last 15 nt) must match exactly, on either strand; the rest may
+   * differ (a tail), and the mismatches there are counted.
+   */
+  bindingSites(sequence, circular, primers) {
+    const IUPAC = { A: 'A', C: 'C', G: 'G', T: 'T', R: '[AG]', Y: '[CT]', S: '[CG]', W: '[AT]', K: '[GT]', M: '[AC]',
+      B: '[CGT]', D: '[AGT]', H: '[ACT]', V: '[ACG]', N: '[ACGT]' };
+    const matches = (p, s) => p === 'N' || p === s || (IUPAC[p] || '').includes(s);
+    const seq = sequence.toUpperCase();
+    const n = seq.length;
+    const CORE = 15;
+    const sites = [];
+    for (const p of primers) {
+      const primer = p.sequence.toUpperCase();
+      if (primer.length < 12) continue;
+      const core = primer.slice(-Math.min(CORE, primer.length));
+      const coreRe = new RegExp([...core].map((c) => IUPAC[c] || c).join(''), 'g');
+      for (const strand of [1, -1]) {
+        // The strand the primer anneals to: forward primers read along the top strand.
+        const target = strand === 1 ? seq : DNA.revComp(seq);
+        const hay = circular ? target + target.slice(0, primer.length) : target;
+        coreRe.lastIndex = 0;
+        let m;
+        while ((m = coreRe.exec(hay)) !== null) {
+          coreRe.lastIndex = m.index + 1;
+          const end = m.index + core.length;                 // just past the 3' end, on this strand
+          if (end > (circular ? n + core.length : n)) continue;
+          if (circular && m.index >= n) continue;          // already found in the first copy
+          let mismatches = 0;
+          let unbound = 0;
+          for (let k = primer.length - core.length - 1, j = m.index - 1; k >= 0; k--, j--) {
+            const s = j >= 0 ? hay[j] : (circular ? hay[n + j] : undefined);
+            if (s === undefined) { unbound++; continue; }
+            if (!matches(primer[k], s)) mismatches++;
+          }
+          const startOnStrand = m.index - (primer.length - core.length);
+          // Positions on the top strand, 0-based [start, end).
+          let start;
+          let stop;
+          if (strand === 1) { start = ((startOnStrand % n) + n) % n; stop = end % n || n; } else {
+            start = ((n - end) % n + n) % n; stop = ((n - startOnStrand) % n) || n;
+          }
+          sites.push({ ...p, strand, start, end: stop, mismatches, unbound });
+        }
+      }
+    }
+    return sites.sort((a, b) => a.mismatches + a.unbound - (b.mismatches + b.unbound) || a.start - b.start);
+  },
+
+  async labPrimers() {
+    const doc = this.doc();
+    if (!doc?.sequence) return;
+    let primers;
+    try {
+      ({ primers } = await Stocks.call('GET', '/primers/sequences'));
+    } catch (err) { toast(err.message, 'error'); return; }
+    const sites = this.bindingSites(doc.sequence, doc.circular, primers);
+    modal({
+      title: `The lab's primers on ${doc.name || 'this sequence'}`, wide: true,
+      build: (body) => {
+        body.append(el('p', { class: 'hint' },
+          `${primers.length} primer${primers.length === 1 ? '' : 's'} in stock in Lab Stocks; `,
+          'a primer binds where its last 15 nt match exactly. Mismatches further from the 3′ end (a tail, a site added) are counted. ',
+          'Click a row to select where it binds.'));
+        if (!sites.length) { body.append(el('p', { class: 'empty' }, 'None of the lab\'s primers bind this sequence.')); return; }
+        body.append(el('table', {},
+          el('thead', {}, el('tr', {}, ['Primer', 'Name', 'Strand', 'Binds', 'Fit', 'Tm', 'Kept in', ''].map((h) => el('th', {}, h)))),
+          el('tbody', {}, sites.map((s) => el('tr', {
+            class: 'clickable',
+            onclick: () => { Editor.selectRange({ start: s.start, end: s.end }); Editor.scrollToPosition(s.start); },
+          },
+          el('td', {}, el('a', { href: Stocks.link(s.code), target: '_blank', rel: 'noopener', onclick: (e) => e.stopPropagation() }, s.code)),
+          el('td', {}, s.name), el('td', {}, s.strand === 1 ? '→ forward' : '← reverse'),
+          el('td', {}, `${fmt(s.start + 1)}–${fmt(s.end)}`),
+          el('td', {}, s.mismatches || s.unbound ? `${s.mismatches} mismatch${s.mismatches === 1 ? '' : 'es'}${s.unbound ? `, ${s.unbound} nt overhang` : ''} at the 5′ end` : 'perfect'),
+          el('td', {}, s.tm !== null && s.tm !== undefined ? `${s.tm} °C` : ''), el('td', {}, s.location || ''),
+          el('td', {}, el('button', { class: 'btn btn-sm btn-secondary', title: 'Add it as a primer_bind feature', onclick: (e) => {
+            e.stopPropagation();
+            Editor.pushUndo();
+            Editor.doc.features.push({ id: `lp${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`, name: `${s.code} ${s.name}`,
+              type: 'primer_bind', start: s.start, end: s.end, strand: s.strand, color: FEATURE_COLORS.primer_bind,
+              qualifiers: { note: `Lab Stocks ${s.code}` } });
+            Editor.markDirty();
+            toast(`${s.code} annotated`, 'success');
+          } }, 'Annotate')))))));
+      },
     });
   },
 

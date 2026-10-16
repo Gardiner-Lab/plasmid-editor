@@ -250,6 +250,7 @@ const Editor = {
     const moclo = document.getElementById('badgeMoclo');
     moclo.hidden = !(doc?.moclo_part_id || doc?.moclo_link);
     moclo.textContent = doc?.moclo_link ? 'Linked to MoClo' : 'In MoClo library';
+    this.showStocks(doc);
     const confirmed = document.getElementById('badgeConfirmed');
     const unsequenced = document.getElementById('badgeUnsequenced');
     if (unsequenced) unsequenced.hidden = !doc?.sequence || !!doc?.confirmed;
@@ -563,6 +564,25 @@ const Editor = {
         { label: 'Open the saved version', kind: 'secondary', onClick: go },
         { label: 'Save and open', onClick: async () => { if (await this.save()) go(); } }],
     });
+  },
+
+  /** The plasmid's glycerol stocks in Lab Stocks, as links beside its badges. */
+  async showStocks(doc) {
+    const box = document.getElementById('stockChips');
+    if (!box || !Stocks.enabled()) return;
+    if (!doc?.id) { box.replaceChildren(); return; }
+    if (this._stocksFor === doc.id) return;          // already shown for this plasmid
+    this._stocksFor = doc.id;
+    try {
+      const { glycerol } = await Stocks.call('GET', `/glycerol?plasmid=${encodeURIComponent(doc.id)}`);
+      if (this._stocksFor !== doc.id) return;
+      box.replaceChildren(...glycerol.map((g) => el('a', {
+        class: `badge badge-stock ${g.status !== 'in stock' ? 'faded' : ''}`, href: Stocks.link(g.code), target: '_blank', rel: 'noopener',
+        title: `Glycerol stock${g.clone ? `, clone ${g.clone}` : ''}${g.host ? ` in ${g.host}` : ''}${g.location ? `, kept in ${g.location}` : ''} · ${g.status}`,
+      }, `🧫 ${g.code}`)));
+    } catch (err) {
+      box.replaceChildren();          // Lab Stocks not reachable: nothing to show
+    }
   },
 
   /** Offer a way out when the same record was edited in both tools. */
@@ -1555,6 +1575,10 @@ const Editor = {
     document.getElementById('btnPrimer').addEventListener('click', () => Tools.designPrimers());
     document.getElementById('btnPcr').addEventListener('click', () => Tools.pcr());
     document.getElementById('btnBlast').addEventListener('click', () => this.blast());
+    if (Stocks.enabled()) {
+      document.getElementById('btnLabPrimers').hidden = false;
+      document.getElementById('btnLabPrimers').addEventListener('click', () => Tools.labPrimers());
+    }
   },
 
   async runFind() {

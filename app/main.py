@@ -11,7 +11,7 @@ from datetime import timedelta
 
 from flask import Flask, redirect, render_template, request, session, url_for
 
-APP_VERSION = '0.3.5'
+APP_VERSION = '0.4.0'
 
 _DEFAULT_SECRET = 'dev-secret-key-change-in-production'
 
@@ -96,6 +96,9 @@ def create_app() -> Flask:
         return {
             'app_version': APP_VERSION,
             'suite_home': suite_home,
+            # Lab Stocks (glycerol stocks and primers): "/stocks" in the suite;
+            # unset, the editor's links and buttons for it are hidden.
+            'stocks_url': os.environ.get('STOCKS_URL', '').strip().rstrip('/'),
             # Inside the suite, its dashboard has every account and admin control.
             'suite_dashboard': suite_auth.dashboard_url() if suite_auth.enabled() else '',
             'moclo': {
