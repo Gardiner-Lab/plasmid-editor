@@ -6,6 +6,13 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-10-16
+
+### Fixed
+- **Save to primer stock** failed with "Failed to execute 'appendChild' on 'Node'" after the primers
+  were saved, so the button came back and a second click saved them again. The message naming the
+  new primers now shows.
+
 ## [0.4.0] - 2026-10-16
 
 ### Added

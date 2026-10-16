@@ -100,9 +100,10 @@ const el = (tag, attrs = {}, ...children) => {
     else if (k.startsWith('on') && typeof v === 'function') node.addEventListener(k.slice(2), v);
     else node.setAttribute(k, v === true ? '' : v);
   }
-  for (const c of children.flat()) {
+  // Children may be nested lists (from .map) and numbers as well as nodes and text.
+  for (const c of children.flat(Infinity)) {
     if (c === undefined || c === null || c === false) continue;
-    node.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
+    node.appendChild(c instanceof Node ? c : document.createTextNode(String(c)));
   }
   return node;
 };
