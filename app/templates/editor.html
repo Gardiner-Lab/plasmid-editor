@@ -87,6 +87,8 @@
                     <button class="btn btn-sm btn-secondary" id="btnSilent">Silent sites</button>
                     <button class="btn btn-sm btn-secondary" id="btnPrimer">Design primers</button>
                     <button class="btn btn-sm btn-secondary" id="btnPcr">Simulate PCR</button>
+                    <button class="btn btn-sm btn-secondary" id="btnLabPrimers" hidden
+                            title="The lab's primers (in Lab Stocks) that bind this sequence">Lab primers</button>
                     <button class="btn btn-sm btn-secondary" id="btnBlast"
                             title="BLAST the selection at NCBI, or the whole sequence when nothing is selected">BLAST ↗</button>
                 </div>
@@ -110,6 +112,8 @@
                     <button type="button" class="badge badge-unsequenced badge-link" id="badgeUnsequenced" hidden
                             title="Not confirmed by sequencing yet: open the Sequencing page to add reads">Not sequenced</button>
                     <span class="badge badge-unsaved" id="badgeUnsaved" hidden>Unsaved changes</span>
+                    <!-- Its glycerol stocks in Lab Stocks, each a link there. -->
+                    <span id="stockChips"></span>
                 </div>
             </div>
             <label class="checkbox" title="Mark this plasmid as Golden Gate / MoClo compatible">

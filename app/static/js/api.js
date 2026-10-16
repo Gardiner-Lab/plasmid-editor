@@ -8,6 +8,38 @@
 const BASE = (document.body?.dataset.base || '').replace(/\/$/, '');
 const url = (path) => (path.startsWith('/') ? BASE + path : path);
 
+/*
+ * Lab Stocks, the suite's glycerol stocks and primers, when it is part of the
+ * suite (STOCKS_URL); otherwise the features that use it are hidden.
+ */
+const STOCKS = (document.body?.dataset.stocks || '').replace(/\/$/, '');
+const Stocks = {
+  enabled: () => !!STOCKS,
+  async call(method, path, body) {
+    const res = await fetch(`${STOCKS}/api${path}`, {
+      method, credentials: 'same-origin',
+      headers: body === undefined ? {} : { 'Content-Type': 'application/json' },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    let data = {};
+    try { data = await res.json(); } catch (e) { /* not JSON */ }
+    if (!res.ok) throw new Error(data.error || `Lab Stocks: ${res.status}`);
+    return data;
+  },
+  /** A glycerol stock or primer code (GL-G-0042, GL-O-0007), or null for a number typed by hand. */
+  kind(code) {
+    const m = /^[A-Z][A-Z0-9]{0,5}-([GO])-\d+$/.exec(String(code || '').trim().toUpperCase());
+    return m ? (m[1] === 'G' ? 'glycerol' : 'primer') : null;
+  },
+  link(code) { return `${STOCKS}/#${this.kind(code)}=${encodeURIComponent(String(code).trim().toUpperCase())}`; },
+  /** A stock's number as a link to it in Lab Stocks when it is one of its codes; else just the text. */
+  render(code) {
+    if (!code) return '—';
+    if (!STOCKS || !this.kind(code)) return String(code);
+    return el('a', { href: this.link(code), target: '_blank', rel: 'noopener', title: 'Open in Lab Stocks' }, `🧫 ${code}`);
+  },
+};
+
 const API = {
   async request(method, path, body, opts = {}) {
     path = url(path);
@@ -68,9 +100,10 @@ const el = (tag, attrs = {}, ...children) => {
     else if (k.startsWith('on') && typeof v === 'function') node.addEventListener(k.slice(2), v);
     else node.setAttribute(k, v === true ? '' : v);
   }
-  for (const c of children.flat()) {
+  // Children may be nested lists (from .map) and numbers as well as nodes and text.
+  for (const c of children.flat(Infinity)) {
     if (c === undefined || c === null || c === false) continue;
-    node.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
+    node.appendChild(c instanceof Node ? c : document.createTextNode(String(c)));
   }
   return node;
 };

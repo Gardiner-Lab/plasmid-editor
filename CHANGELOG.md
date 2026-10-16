@@ -6,6 +6,26 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-10-16
+
+### Fixed
+- **Save to primer stock** failed with "Failed to execute 'appendChild' on 'Node'" after the primers
+  were saved, so the button came back and a second click saved them again. The message naming the
+  new primers now shows.
+
+## [0.4.0] - 2026-10-16
+
+### Added
+- **Lab Stocks**, the suite's glycerol stocks and primers, when the editor runs in the suite
+  (`STOCKS_URL`, `/stocks` there; unset, all of this is hidden).
+  - Confirming a plasmid by sequencing can make its glycerol stock in Lab Stocks, with the lab's
+    next number (GL-G-0042), the clone, the strain and where it is kept. A number from before can
+    still be typed.
+  - A plasmid's glycerol stocks show beside its tags, each a link to it in Lab Stocks.
+  - **Save to primer stock** in Design primers adds the pair to the lab's primers, numbered there.
+  - **Lab primers** lists the lab's primers that bind the sequence (the last 15 nt matching exactly,
+    on either strand), selects where each binds, and adds it as a primer_bind feature.
+
 ## [0.3.5] - 2026-10-15
 
 ### Added

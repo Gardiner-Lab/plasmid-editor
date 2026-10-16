@@ -286,6 +286,10 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 @media (prefers-reduced-motion: reduce) { .seq-caret { animation: none; } }
 
 .badge-unsaved { background: #fffbeb; color: #92400e; border-color: #fde68a; }
+tr.clickable { cursor: pointer; }
+tr.clickable:hover td { background: var(--bg-color); }
+.badge-stock { background: #ccfbf1; color: #115e59; border-color: #99f6e4; text-decoration: none; margin-left: .2rem; }
+.badge-stock.faded { opacity: .55; }
 .badge-confirmed { background: #ecfdf5; color: #047857; border-color: #a7f3d0; }
 .badge-unsequenced { background: #fff7ed; color: #9a3412; border-color: #fed7aa; }
 /* A tag that opens something: the sequencing of a plasmid. */
