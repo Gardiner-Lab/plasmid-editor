@@ -336,6 +336,10 @@ const Tools = {
               forward_tail: document.getElementById('pFTail').value,
               reverse_tail: document.getElementById('pRTail').value,
             });
+            // Where the pair binds; each gets its Lab Stocks code once saved.
+            const sites = [
+              { strand: 1, start: sel.start, end: sel.start + res.forward.length, label: 'Forward primer' },
+              { strand: -1, start: sel.end - res.reverse.length, end: sel.end, label: 'Reverse primer' }];
             const row = (label, p) => !p || !p.sequence ? null : el('div', { class: 'field' },
               el('label', {}, `${label} — ${p.length} nt, Tm ${p.tm} °C, GC ${p.gc}%`),
               el('input', { type: 'text', class: 'mono', readonly: true, value: p.full || p.sequence }));
@@ -349,21 +353,19 @@ const Tools = {
                   onclick: () => Editor.copy(`${res.forward.full || res.forward.sequence}\n${res.reverse.full || res.reverse.sequence}`),
                 }, 'Copy both'),
                 Stocks.enabled() ? el('button', {
-                  class: 'btn btn-sm', title: 'Add both to the lab\'s primers in Lab Stocks, numbered there',
-                  onclick: (e) => this.savePrimers(e.currentTarget, doc, res),
+                  class: 'btn btn-sm', title: 'Add both to the lab\'s primers in Lab Stocks, numbered there; their binding sites take the codes',
+                  onclick: (e) => this.savePrimers(e.currentTarget, doc, res, sites),
                 }, 'Save to primer stock') : null,
                 el('button', {
                   class: 'btn btn-sm btn-secondary',
                   onclick: () => {
                     const doc2 = Editor.doc;
                     Editor.pushUndo();
-                    doc2.features.push(
-                      { id: `pf${Date.now().toString(36)}`, name: 'Forward primer', type: 'primer_bind',
-                        start: sel.start, end: sel.start + res.forward.length, strand: 1,
-                        color: FEATURE_COLORS.primer_bind, qualifiers: {} },
-                      { id: `pr${Date.now().toString(36)}`, name: 'Reverse primer', type: 'primer_bind',
-                        start: sel.end - res.reverse.length, end: sel.end, strand: -1,
-                        color: FEATURE_COLORS.primer_bind, qualifiers: {} });
+                    // Named by their Lab Stocks codes once saved there; until then, renamed on saving.
+                    doc2.features.push(...sites.map((site) => ({
+                      id: `p${site.strand === 1 ? 'f' : 'r'}${Date.now().toString(36)}`, type: 'primer_bind',
+                      start: site.start, end: site.end, strand: site.strand, color: FEATURE_COLORS.primer_bind,
+                      ...this.primerNaming(site) })));
                     Editor.markDirty();
                     toast('Primer binding sites annotated', 'success');
                   },
@@ -377,18 +379,42 @@ const Tools = {
     });
   },
 
-  /** Save a designed pair to Lab Stocks, named after the plasmid. */
-  async savePrimers(button, doc, res) {
+  /** A designed primer's feature name: its Lab Stocks code once saved there, else Forward / Reverse primer. */
+  primerNaming(site) {
+    return site.stock
+      ? { name: site.stock.code, qualifiers: { note: `Lab Stocks ${site.stock.code} (${site.stock.name})` } }
+      : { name: site.label, qualifiers: {} };
+  },
+
+  /**
+   * Save a designed pair to Lab Stocks, named after the plasmid. Their binding
+   * sites, when annotated, are renamed to the codes Lab Stocks gives them.
+   */
+  async savePrimers(button, doc, res, sites) {
     const base = (doc.name || 'primer').slice(0, 60);
-    const target = `${doc.name || ''} ${fmt(Editor.view.selection.start + 1)}–${fmt(Editor.view.selection.end)}`;
+    const target = `${doc.name || ''} ${fmt(sites[0].start + 1)}–${fmt(sites[1].end)}`;
     button.disabled = true;
     try {
       const { primers } = await Stocks.call('POST', '/primers/many', { primers: [
         { name: `${base}-F`, sequence: res.forward.full || res.forward.sequence, direction: 'forward', target, purpose: 'PCR' },
         { name: `${base}-R`, sequence: res.reverse.full || res.reverse.sequence, direction: 'reverse', target, purpose: 'PCR' }] });
+      sites.forEach((site, i) => { site.stock = primers[i]; });
+      // The binding sites already annotated on this sequence: named after their codes now.
+      const named = Editor.doc === doc ? doc.features.filter((f) => f.type === 'primer_bind'
+        && sites.some((site) => site.strand === f.strand && site.start === f.start && site.end === f.end
+          && ['Forward primer', 'Reverse primer'].includes(f.name))) : [];
+      if (named.length) {
+        Editor.pushUndo();
+        for (const f of named) {
+          const site = sites.find((x) => x.strand === f.strand && x.start === f.start && x.end === f.end);
+          Object.assign(f, this.primerNaming(site));
+        }
+        Editor.markDirty();
+      }
       button.replaceWith(el('span', { class: 'hint' }, 'Saved as ',
         primers.map((p, i) => [i ? ' and ' : '', el('a', { href: Stocks.link(p.code), target: '_blank', rel: 'noopener' }, `${p.code} ${p.name}`)]),
-        ' — rename them, and say where the tubes are, in Lab Stocks.'));
+        named.length ? '; the binding sites are named after them.' : '; annotate the binding sites to mark them with these codes.',
+        ' Say where the tubes are in Lab Stocks.'));
     } catch (err) {
       button.disabled = false;
       toast(err.message, 'error', 6000);
@@ -485,6 +511,39 @@ const Tools = {
     });
   },
 
+  /**
+   * The primers on this sequence: its primer_bind features, and the lab's primers
+   * in Lab Stocks that bind it (their whole sequence, tail and all). Where both
+   * mark the same primer (the same 3' end), the lab's is kept.
+   */
+  async primersOnSequence(doc) {
+    const seq = doc.sequence || '';
+    const n = seq.length;
+    const region = (start, end) => (end > start ? seq.slice(start, end) : seq.slice(start) + seq.slice(0, end));
+    const threePrime = (p) => `${p.strand}:${p.strand === 1 ? p.end : p.start}`;
+    const found = new Map();
+    if (Stocks.enabled() && n) {
+      try {
+        const { primers } = await Stocks.call('GET', '/primers/sequences');
+        for (const s of this.bindingSites(seq, doc.circular, primers)) {
+          const key = threePrime(s);
+          if (found.has(key)) continue;
+          found.set(key, { name: `${s.code} ${s.name}`, code: s.code, strand: s.strand, start: s.start, end: s.end,
+            sequence: s.sequence.toUpperCase(), fit: s.mismatches || s.unbound ? `${s.mismatches + s.unbound} nt unmatched at the 5′ end` : 'perfect' });
+        }
+      } catch (err) { /* Lab Stocks unreachable: the features alone */ }
+    }
+    for (const f of doc.features || []) {
+      if (!['primer_bind', 'primer'].includes(f.type) || !(f.strand === 1 || f.strand === -1) || !n) continue;
+      const key = threePrime(f);
+      if (found.has(key)) continue;
+      const top = region(f.start, f.end).toUpperCase();
+      found.set(key, { name: f.name || 'primer', strand: f.strand, start: f.start, end: f.end,
+        sequence: f.strand === 1 ? top : DNA.revComp(top), fit: 'annotated' });
+    }
+    return [...found.values()].sort((a, b) => a.start - b.start);
+  },
+
   async pcr() {
     const doc = this.doc();
     if (!doc) return;
@@ -492,7 +551,35 @@ const Tools = {
       title: 'Simulate PCR',
       wide: true,
       build: (body) => {
+        // The primers already on the sequence: a click puts one in the forward or reverse box.
+        const onSeq = el('div', { class: 'pcr-primers' }, el('span', { class: 'spin' }));
+        const use = (p) => {
+          const box = document.getElementById(p.strand === 1 ? 'pcrF' : 'pcrR');
+          box.value = p.sequence;
+          box.title = p.name;
+          toast(`${p.name} as the ${p.strand === 1 ? 'forward' : 'reverse'} primer`, 'success', 1500);
+        };
+        this.primersOnSequence(doc).then((found) => {
+          if (!found.length) {
+            onSeq.replaceChildren(el('p', { class: 'hint' }, 'No primers on this sequence: annotate primer_bind features, '
+              + (Stocks.enabled() ? 'or none of the lab\'s primers in Lab Stocks bind it. ' : '') + 'Or paste primers below.'));
+            return;
+          }
+          onSeq.replaceChildren(
+            el('p', { class: 'hint' }, 'Primers on this sequence', Stocks.enabled() ? ' (annotated, and the lab\'s from Lab Stocks that bind)' : ' (annotated)',
+              ': click one to use it.'),
+            el('div', { class: 'pcr-primer-list' }, el('table', {},
+              el('thead', {}, el('tr', {}, ['', 'Primer', 'At', 'nt', 'Fit', ''].map((h) => el('th', {}, h)))),
+              el('tbody', {}, found.map((p) => el('tr', { class: 'clickable', title: p.sequence, onclick: () => use(p) },
+                el('td', {}, p.strand === 1 ? '→' : '←'),
+                el('td', {}, p.code ? el('a', { href: Stocks.link(p.code), target: '_blank', rel: 'noopener', onclick: (e) => e.stopPropagation() }, p.code) : null,
+                  p.code ? ` ${p.name.slice(p.code.length + 1)}` : p.name),
+                el('td', {}, `${fmt(p.start + 1)}–${fmt(p.end)}`), el('td', {}, p.sequence.length), el('td', {}, p.fit),
+                el('td', {}, el('button', { class: 'btn btn-sm btn-secondary', onclick: (e) => { e.stopPropagation(); use(p); } },
+                  p.strand === 1 ? 'Use as forward' : 'Use as reverse'))))))));
+        });
         body.append(
+          onSeq,
           el('div', { class: 'field' },
             el('label', { for: 'pcrF' }, 'Forward primer'),
             el('input', { type: 'text', id: 'pcrF', class: 'mono', placeholder: 'ACGT…' })),

@@ -6,6 +6,14 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- **Designed primers take their Lab Stocks codes.** Saving a designed pair to the primer stock
+  renames their annotated binding sites to the codes Lab Stocks gives them (`GL-O-0042`, with the
+  primer's name in a note); binding sites annotated after saving get the codes straight away.
+- **Simulate PCR lists the primers on the sequence**: its annotated primer binding sites, and the
+  lab's primers in Lab Stocks that bind it (with their tails). A click puts one in the forward or
+  reverse box, by the strand it binds.
+
 ## [0.5.2] - 2026-10-19
 
 ### Fixed

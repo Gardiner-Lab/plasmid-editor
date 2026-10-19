@@ -413,3 +413,6 @@ tr.clickable:hover td { background: var(--bg-color); }
     .toolbar { position: static; }
     .editor-side { position: static; max-height: none; overflow: visible; }
 }
+
+/* Simulate PCR: the primers on the sequence */
+.pcr-primer-list { max-height: 14rem; overflow-y: auto; margin-bottom: .75rem; }
