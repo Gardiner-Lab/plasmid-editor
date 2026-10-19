@@ -6,6 +6,10 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- A circular map with many stacked features or long labels grows to take them in, rather than
+  cutting them off at the edge (the MoClo Library Tool draws its maps the same way).
+
 ## [0.5.0] - 2026-10-19
 
 ### Added

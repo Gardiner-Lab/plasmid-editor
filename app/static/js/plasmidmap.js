@@ -19,6 +19,13 @@ function svgEl(tag, attrs = {}, text) {
   return node;
 }
 
+/** Roughly where a label's text lies (an average glyph is ~0.6 of the font size wide). */
+function textBox(x, y, text, size, anchor) {
+  const w = text.length * size * 0.6;
+  const left = anchor === 'middle' ? x - w / 2 : anchor === 'end' ? x - w : x;
+  return [left, y - size, left + w, y + size];
+}
+
 class PlasmidMap {
   constructor(container) {
     this.container = container;
@@ -105,6 +112,8 @@ class PlasmidMap {
     const n = doc.sequence.length;
     const svg = svgEl('svg', { viewBox: `0 0 ${size} ${size}`, width: size, height: size,
       role: 'img', 'aria-label': `Circular map of ${doc.name}` });
+    // Everything drawn outside the backbone, so the view can grow to take it in.
+    const boxes = [];
 
     const angle = (pos) => (pos / n) * 2 * Math.PI - Math.PI / 2;
     const point = (pos, radius) => [cx + radius * Math.cos(angle(pos)), cy + radius * Math.sin(angle(pos))];
@@ -162,6 +171,7 @@ class PlasmidMap {
         while (placed.some((p) => p.ring === ring && p.start < fe && fs < p.end)) ring++;
         placed.push({ ring, start: fs, end: fe });
         const radius = r + 14 + ring * 13;
+        boxes.push([cx - radius - 8, cy - radius - 8, cx + radius + 8, cy + radius + 8]);
         const path = svgEl('path', {
           d: arcPath(fs, fe % n, radius),
           fill: 'none', stroke: featureColor(f), 'stroke-width': 9,
@@ -195,11 +205,13 @@ class PlasmidMap {
       const [x2, y2] = point(mid, labelR);
       const right = Math.cos(angle(mid)) >= 0;
       svg.appendChild(svgEl('line', { x1, y1, x2, y2, stroke: '#cbd5e1', 'stroke-width': 1 }));
+      const name = f.name.length > 22 ? `${f.name.slice(0, 21)}…` : f.name;
+      boxes.push(textBox(x2 + (right ? 4 : -4), y2, name, 10, right ? 'start' : 'end'));
       const text = svgEl('text', {
         x: x2 + (right ? 4 : -4), y: y2,
         'text-anchor': right ? 'start' : 'end', 'dominant-baseline': 'middle',
         'font-size': 10, fill: '#1f2937',
-      }, f.name.length > 22 ? `${f.name.slice(0, 21)}…` : f.name);
+      }, name);
       svg.appendChild(this._attach(text, f));
     });
 
@@ -238,6 +250,18 @@ class PlasmidMap {
     svg.appendChild(svgEl('text', {
       x: cx, y: cy + 12, 'text-anchor': 'middle', 'font-size': 12, fill: '#6b7280',
     }, `${fmt(n)} bp`));
+
+    // Many stacked features or long labels reach past the square: widen the
+    // view, evenly on every side, so nothing is cut off.
+    let lo = Math.min(0, ...boxes.map((b) => Math.min(b[0], b[1]) - 8));
+    const hi = Math.max(size, ...boxes.map((b) => Math.max(b[2], b[3]) + 8));
+    lo = Math.min(lo, size - hi);
+    if (lo < 0) {
+      const side = size - 2 * lo;
+      svg.setAttribute('viewBox', `${lo} ${lo} ${side} ${side}`);
+      svg.setAttribute('width', side);
+      svg.setAttribute('height', side);
+    }
     return svg;
   }
 
