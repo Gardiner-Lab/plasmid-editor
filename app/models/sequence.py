@@ -146,7 +146,7 @@ class StoredSequence:
     @staticmethod
     def create(doc: Dict[str, Any], owner_id: str, golden_gate: bool = False,
                golden_gate_enzyme: Optional[str] = None, origin: Optional[str] = None,
-               shared: bool = True, moclo_link: Optional[str] = None,
+               shared: bool = False, moclo_link: Optional[str] = None,
                moclo_synced_hash: Optional[str] = None,
                created_by: Optional[str] = None,
                revision_kind: str = 'created') -> Dict[str, Any]:
@@ -179,9 +179,16 @@ class StoredSequence:
             return StoredSequence._to_document(row) if row else None
 
     @staticmethod
-    def list_visible(user_id: str, search: str = '', golden_gate_only: bool = False,
+    def list_visible(user, search: str = '', golden_gate_only: bool = False,
                      mine_only: bool = False,
                      with_sequenced: bool = False) -> List[Dict[str, Any]]:
+        """
+        The plasmids this person may see (User.can_see_sequence): their own,
+        those shared in their labs, their lab members' if they lead the lab;
+        with_sequenced, also private ones of their labs that have reads.
+        """
+        from app.models.user import User
+        user_id = user.id
         sql = ('SELECT id, name, length(sequence) AS length, circular, description, golden_gate, '
                'golden_gate_enzyme, moclo_part_id, moclo_link, owner_id, shared, origin, '
                'created_at, updated_at, confirmed_at, confirmed_by, confirmed_clone, '
@@ -193,11 +200,8 @@ class StoredSequence:
                " AND reads.verdict = 'insufficient') AS reads_bad, "
                '(SELECT MAX(created_at) FROM reads WHERE reads.sequence_id = sequences.id) '
                '  AS last_sequenced_at '
-               'FROM sequences WHERE (shared = 1 OR owner_id = ?'
-               + (' OR EXISTS (SELECT 1 FROM reads WHERE reads.sequence_id = sequences.id)'
-                  if with_sequenced else '')
-               + ')')
-        args: List[Any] = [user_id]
+               'FROM sequences WHERE 1 = 1')
+        args: List[Any] = []
         if mine_only:
             sql += ' AND owner_id = ?'
             args.append(user_id)
@@ -207,10 +211,13 @@ class StoredSequence:
         if golden_gate_only:
             sql += ' AND golden_gate = 1'
         sql += ' ORDER BY updated_at DESC, name'
+        owners = {u.id: u for u in User.get_all()}
         with get_connection() as conn:
             return [dict(r, circular=bool(r['circular']), golden_gate=bool(r['golden_gate']),
                          shared=bool(r['shared']), confirmed=bool(r['confirmed_at']))
-                    for r in conn.execute(sql, args)]
+                    for r in conn.execute(sql, args)
+                    if user.can_see_sequence(r['owner_id'], bool(r['shared'])
+                                             or bool(with_sequenced and r['read_count']), owners)]
 
     @staticmethod
     def update(sequence_id: str, doc: Optional[Dict[str, Any]] = None,

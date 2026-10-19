@@ -26,9 +26,10 @@ def _path() -> str:
 
 def memberships() -> Dict[str, dict]:
     """
-    username -> {'lab': name or None, 'role': 'lab_lead' or 'member'}. Read
-    again only when the suite's database has changed since, so looking people
-    up stays cheap.
+    username -> {'lab': their first lab's name or None, 'role': their role
+    there ('lab_lead' or 'member'), 'labs': [(name, role), ...] all their
+    labs}. A lab admin counts as a lab lead here. Read again only when the
+    suite's database has changed since, so looking people up stays cheap.
     """
     global _cache
     try:
@@ -42,14 +43,21 @@ def memberships() -> Dict[str, dict]:
         try:
             conn = sqlite3.connect(f'file:{_path()}?mode=ro', uri=True, timeout=5)
             try:
+                tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+                # Several labs each (lab_members), or, from an older suite, one (members).
                 rows = conn.execute(
-                    'SELECT members.username, labs.name, members.role FROM members '
-                    'LEFT JOIN labs ON labs.id = members.lab_id').fetchall()
+                    'SELECT m.username, labs.name, m.role FROM '
+                    + ('lab_members' if 'lab_members' in tables else 'members')
+                    + ' m JOIN labs ON labs.id = m.lab_id ORDER BY m.joined_at, m.rowid').fetchall()
             finally:
                 conn.close()
         except sqlite3.Error:
             return _cache[1]
-        _cache = (stamp, {u: {'lab': lab, 'role': role} for u, lab, role in rows})
+        found: Dict[str, dict] = {}
+        for username, lab, role in rows:
+            entry = found.setdefault(username, {'lab': lab, 'role': role, 'labs': []})
+            entry['labs'].append((lab, role))
+        _cache = (stamp, found)
         return _cache[1]
 
 
@@ -57,4 +65,4 @@ def membership(username: str) -> Optional[dict]:
     """The suite's record for this person, or None outside the suite."""
     if not enabled():
         return None
-    return memberships().get(username) or {'lab': None, 'role': 'member'}
+    return memberships().get(username) or {'lab': None, 'role': 'member', 'labs': []}

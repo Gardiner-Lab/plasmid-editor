@@ -22,23 +22,25 @@ def _owned_or_404(sequence_id, user, for_write=False):
         return None, (jsonify({'error': 'Sequence not found'}), 404)
     if for_write and doc['owner_id'] != user.id and not user.oversees(doc['owner_id']):
         return None, (jsonify({'error': 'Only the owner can change this sequence'}), 403)
-    if not doc['shared'] and doc['owner_id'] != user.id and not user.oversees(doc['owner_id']):
-        return None, (jsonify({'error': 'This sequence is private'}), 403)
+    if not user.can_see_sequence(doc['owner_id'], doc['shared']):
+        return None, (jsonify({'error': 'This sequence is private' if not doc['shared']
+                               else 'This sequence is shared with its owner\'s labs only'}), 403)
     return doc, None
 
 
 def _sequencing_viewable_or_404(sequence_id, user):
     """
-    Sequencing results (reads and their alignments) are open to every
-    signed-in user, private plasmids included, so anyone in the lab can check
-    a construct. Changing them stays with the owner.
+    Sequencing results (reads and their alignments) are open to the owner's
+    labs, private plasmids included, so anyone in the lab can check a
+    construct. Changing them stays with the owner.
     """
     doc = StoredSequence.get(sequence_id)
     if doc is None:
         return None, (jsonify({'error': 'Sequence not found'}), 404)
     # A private plasmid with no reads has no alignment to show, so it stays
     # private here too.
-    if not doc['shared'] and not _can_change(doc, user) and not Read.list_for(sequence_id):
+    has_reads = bool(Read.list_for(sequence_id))
+    if not user.can_see_sequence(doc['owner_id'], doc['shared'] or has_reads):
         return None, (jsonify({'error': 'This sequence is private'}), 403)
     return doc, None
 
@@ -49,7 +51,7 @@ def _can_change(doc, user) -> bool:
 
 
 def _can_add_reads(doc, user) -> bool:
-    return doc['shared'] or _can_change(doc, user)
+    return _can_change(doc, user) or (doc['shared'] and user.can_see_sequence(doc['owner_id'], True))
 
 
 @sequences_bp.route('/parse', methods=['POST'])
@@ -80,12 +82,12 @@ def parse_upload(user):
 @require_auth
 def list_sequences(user):
     return jsonify({'sequences': StoredSequence.list_visible(
-        user.id,
+        user,
         search=request.args.get('search', ''),
         golden_gate_only=request.args.get('golden_gate') == 'true',
         mine_only=request.args.get('mine') == 'true',
-        # The sequencing page also lists other people's private plasmids that
-        # have reads, since their alignments are open to everyone.
+        # The sequencing page also lists the private plasmids of people in
+        # one's labs that have reads, since their alignments are open to the lab.
         with_sequenced=request.args.get('sequencing') == 'true')}), 200
 
 
@@ -99,7 +101,8 @@ def create_sequence(user):
                                       golden_gate=bool(data.get('golden_gate')),
                                       golden_gate_enzyme=data.get('golden_gate_enzyme'),
                                       origin=data.get('origin'),
-                                      shared=data.get('shared', True) is not False,
+                                      # Private unless the editor's "Shared with my labs" is ticked.
+                                      shared=data.get('shared') is True,
                                       created_by=user.username)
     except ValueError as exc:
         return jsonify({'error': str(exc)}), 400
@@ -113,6 +116,7 @@ def get_sequence(user, sequence_id):
     if err:
         return err
     doc['reads'] = Read.list_for(sequence_id)
+    doc['can_change'] = _can_change(doc, user)
     return jsonify({'sequence': doc}), 200
 
 

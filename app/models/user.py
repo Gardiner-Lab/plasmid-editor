@@ -22,14 +22,17 @@ MIN_PASSWORD_LENGTH = 8
 #   admin     everything, including the labs, their registration codes and roles
 #   lab_lead  an administrator for their own lab's members and plasmids, and can
 #             see (not change) their lab's registration code
-#   member    their own work, and whatever others share
+#   member    their own work, and what the people in their labs share
+#
+# Inside the lab suite someone may be in several labs, with a role in each
+# (labs); a lead oversees the members of the labs they lead.
 ROLES = ('admin', 'lab_lead', 'member')
 
 
 class User:
     def __init__(self, id: str, username: str, password_hash: str, lab_source: Optional[str],
                  is_admin: bool = False, created_at: Optional[str] = None,
-                 lab_role: Optional[str] = None):
+                 lab_role: Optional[str] = None, labs: Optional[List[tuple]] = None):
         self.id = id
         self.username = username
         self.password_hash = password_hash
@@ -37,12 +40,15 @@ class User:
         self.is_admin = is_admin
         self.created_at = created_at
         self.lab_role = lab_role
+        # Every lab they are in, with their role there: (name, 'lab_lead' or 'member').
+        self.labs = labs if labs is not None else ([(lab_source, lab_role or 'member')] if lab_source else [])
 
     @property
     def role(self) -> str:
         if self.is_admin:
             return 'admin'
-        return 'lab_lead' if self.lab_role == 'lab_lead' else 'member'
+        return 'lab_lead' if any(role == 'lab_lead' for _, role in self.labs) or self.lab_role == 'lab_lead' \
+            else 'member'
 
     @property
     def is_lab_lead(self) -> bool:
@@ -53,17 +59,40 @@ class User:
         """Admins and lab leads: who may open the Admin page."""
         return self.role in ('admin', 'lab_lead')
 
+    def lab_names(self, led_only: bool = False) -> set:
+        return {name.casefold() for name, role in self.labs if name and (not led_only or role == 'lab_lead')}
+
     def same_lab(self, other: Optional['User']) -> bool:
-        return bool(other is not None and self.lab_source and other.lab_source
-                    and self.lab_source.casefold() == other.lab_source.casefold())
+        """In a lab together: any of one's labs is one of the other's."""
+        return bool(other is not None and self.lab_names() & other.lab_names())
 
     def oversees(self, owner_id: str) -> bool:
-        """May act for this owner: an admin for anyone, a lab lead for their lab."""
+        """May act for this owner: an admin for anyone, a lab lead for the members of the labs they lead."""
         if self.is_admin:
             return True
-        if not self.is_lab_lead:
+        led = self.lab_names(led_only=True)
+        if not led:
             return False
-        return self.same_lab(User.get_by_id(owner_id))
+        other = User.get_by_id(owner_id)
+        return bool(other is not None and led & other.lab_names())
+
+    def can_see_sequence(self, owner_id: str, shared: bool, owners: Optional[Dict[str, 'User']] = None) -> bool:
+        """
+        A plasmid: its owner's; an admin's; a lead's of the owner's labs; and,
+        when it is shared, anyone's in a lab with the owner. Outside the lab
+        suite there are no labs to keep it to, so shared is everyone's.
+        """
+        if owner_id == self.id or self.is_admin:
+            return True
+        other = (owners or {}).get(owner_id) if owners is not None else User.get_by_id(owner_id)
+        if other is None:
+            return False
+        mine = self.lab_names()
+        if self.lab_names(led_only=True) & other.lab_names():
+            return True
+        if not shared:
+            return False
+        return bool(mine & other.lab_names()) if suite_labs.enabled() else True
 
     def to_dict(self) -> Dict[str, Any]:
         return {'id': self.id, 'username': self.username, 'lab_source': self.lab_source,
@@ -81,10 +110,11 @@ class User:
         lab_source, lab_role = row['lab_source'], row['role'] if 'role' in keys else None
         # Inside the lab suite, its record of labs and lab leads is the one that counts.
         suite = suite_labs.membership(row['username'])
+        labs = None
         if suite is not None:
-            lab_source, lab_role = suite['lab'], suite['role']
+            lab_source, lab_role, labs = suite['lab'], suite['role'], suite.get('labs')
         return User(row['id'], row['username'], row['password_hash'], lab_source,
-                    bool(row['is_admin']), row['created_at'], lab_role)
+                    bool(row['is_admin']), row['created_at'], lab_role, labs)
 
     @staticmethod
     def hash_password(password: str) -> str:

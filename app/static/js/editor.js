@@ -176,6 +176,7 @@ const Editor = {
     const doc = this.doc;
     document.getElementById('docName').value = doc?.name || '';
     document.getElementById('chkGoldenGate').checked = !!doc?.golden_gate;
+    this.showShared(doc);
     this.view.setDocument(doc || { sequence: '', features: [] });
     this.renderDocList();
     this.renderFeatures();
@@ -354,6 +355,25 @@ const Editor = {
     document.getElementById('docName').addEventListener('change', (e) => {
       if (this.doc) { this.doc.name = e.target.value.trim() || 'Untitled'; this.markDirty(); }
     });
+    document.getElementById('chkShared').addEventListener('change', async (e) => {
+      if (!this.doc) return;
+      const checked = e.target.checked;
+      this.doc.shared = checked;
+      // Like Golden Gate: a property of the plasmid, saved at once once it is saved.
+      if (this.doc.id) {
+        try {
+          await API.patch(`/api/sequences/${this.doc.id}`, { shared: checked, sync: false });
+          toast(checked ? 'Shared with your labs' : 'Private: only you, your lab leads and administrators see it', 'success', 2500);
+        } catch (err) {
+          toast(`Could not change who sees it: ${err.message}`, 'error');
+          this.doc.shared = !checked;
+          e.target.checked = !checked;
+        }
+      } else {
+        this.markDirty();
+      }
+      this.showShared(this.doc);
+    });
     document.getElementById('chkGoldenGate').addEventListener('change', async (e) => {
       if (!this.doc) return;
       const checked = e.target.checked;
@@ -429,12 +449,25 @@ const Editor = {
     document.getElementById('fileInput').value = '';
   },
 
+  /** The "Shared with my labs" tick: this plasmid's setting, and whether this person may change it. */
+  showShared(doc) {
+    const box = document.getElementById('chkShared');
+    if (!box) return;
+    box.checked = !!doc?.shared;
+    const locked = !!(doc?.id && doc.can_change === false);
+    box.disabled = locked;
+    document.getElementById('sharedHint').textContent = locked
+      ? 'Only its owner, their lab leads and administrators change who sees it.'
+      : 'Unticked, it is private: only you, your lab leads and administrators see it.';
+  },
+
   async save({ force = false, overwrite = false } = {}) {
     const doc = this.doc;
     if (!doc || !doc.sequence) { toast('Nothing to save', 'error'); return; }
     const payload = {
       document: this.payloadDoc(),
       golden_gate: !!doc.golden_gate,
+      shared: !!doc.shared,
       ...(force ? { force: true } : {}),
       // The version this was opened at, so a newer one saved meanwhile (by
       // someone else, or a correction to a read) is not overwritten unseen.
@@ -521,7 +554,7 @@ const Editor = {
     if (i >= 0 && i !== this.index) this.setActive(i);
     if (i >= 0) this.pushUndo();
     for (const key of ['name', 'sequence', 'circular', 'description', 'features', 'translations',
-                       'revision', 'moclo_link', 'golden_gate']) {
+                       'revision', 'moclo_link', 'golden_gate', 'shared', 'can_change']) {
       if (sequence[key] !== undefined) doc[key] = sequence[key];
     }
     doc.features = doc.features || [];
@@ -744,6 +777,7 @@ const Editor = {
               document: payload,
               golden_gate: !!doc.golden_gate,
               golden_gate_enzyme: doc.golden_gate_enzyme,
+              shared: !!doc.shared,
             });
             // Work on the copy from here, leaving the original entry untouched.
             doc.id = saved.sequence.id;
