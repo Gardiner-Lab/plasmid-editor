@@ -22,26 +22,22 @@ def _owned_or_404(sequence_id, user, for_write=False):
         return None, (jsonify({'error': 'Sequence not found'}), 404)
     if for_write and doc['owner_id'] != user.id and not user.oversees(doc['owner_id']):
         return None, (jsonify({'error': 'Only the owner can change this sequence'}), 403)
-    if not user.can_see_sequence(doc['owner_id'], doc['shared']):
-        return None, (jsonify({'error': 'This sequence is private' if not doc['shared']
-                               else 'This sequence is shared with its owner\'s labs only'}), 403)
+    if not user.can_see_sequence(doc['owner_id'], doc.get('public', False)):
+        return None, (jsonify({'error': 'This plasmid belongs to another lab'}), 403)
     return doc, None
 
 
 def _sequencing_viewable_or_404(sequence_id, user):
     """
-    Sequencing results (reads and their alignments) are open to the owner's
-    labs, private plasmids included, so anyone in the lab can check a
-    construct. Changing them stays with the owner.
+    Sequencing results (reads and their alignments) are seen by whoever sees
+    the plasmid: its owner's labs, or every lab when it is public. Changing
+    them stays with the owner.
     """
     doc = StoredSequence.get(sequence_id)
     if doc is None:
         return None, (jsonify({'error': 'Sequence not found'}), 404)
-    # A private plasmid with no reads has no alignment to show, so it stays
-    # private here too.
-    has_reads = bool(Read.list_for(sequence_id))
-    if not user.can_see_sequence(doc['owner_id'], doc['shared'] or has_reads):
-        return None, (jsonify({'error': 'This sequence is private'}), 403)
+    if not user.can_see_sequence(doc['owner_id'], doc.get('public', False)):
+        return None, (jsonify({'error': 'This plasmid belongs to another lab'}), 403)
     return doc, None
 
 
@@ -51,7 +47,8 @@ def _can_change(doc, user) -> bool:
 
 
 def _can_add_reads(doc, user) -> bool:
-    return _can_change(doc, user) or (doc['shared'] and user.can_see_sequence(doc['owner_id'], True))
+    # The owner's labs add reads; a public plasmid's other viewers look.
+    return _can_change(doc, user) or user.can_see_sequence(doc['owner_id'], False)
 
 
 @sequences_bp.route('/parse', methods=['POST'])
@@ -86,8 +83,7 @@ def list_sequences(user):
         search=request.args.get('search', ''),
         golden_gate_only=request.args.get('golden_gate') == 'true',
         mine_only=request.args.get('mine') == 'true',
-        # The sequencing page also lists the private plasmids of people in
-        # one's labs that have reads, since their alignments are open to the lab.
+        # Kept for older pages: a lab's plasmids are always seen within it.
         with_sequenced=request.args.get('sequencing') == 'true')}), 200
 
 
@@ -101,8 +97,8 @@ def create_sequence(user):
                                       golden_gate=bool(data.get('golden_gate')),
                                       golden_gate_enzyme=data.get('golden_gate_enzyme'),
                                       origin=data.get('origin'),
-                                      # Private unless the editor's "Shared with my labs" is ticked.
-                                      shared=data.get('shared') is True,
+                                      # Seen by the owner's labs; by every lab once "Public" is ticked.
+                                      public=data.get('public') is True,
                                       created_by=user.username)
     except ValueError as exc:
         return jsonify({'error': str(exc)}), 400
@@ -160,6 +156,7 @@ def update_sequence(user, sequence_id):
             golden_gate=data.get('golden_gate'),
             golden_gate_enzyme=data.get('golden_gate_enzyme'),
             shared=data.get('shared'),
+            public=data.get('public'),
             changed_by=user.username, revision_kind=kind,
             revision_note=str(revision.get('note') or '')[:500] or None)
     except ValueError as exc:

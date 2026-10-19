@@ -75,7 +75,7 @@ const Library = {
             }, 'not sequenced'),
         s.golden_gate ? el('span', { class: 'badge badge-gg', text: 'Golden Gate' }) : null,
         s.moclo_part_id ? el('span', { class: 'badge badge-moclo', text: 'in MoClo' }) : null,
-        !s.shared ? el('span', { class: 'badge', text: 'private' }) : null),
+        s.public ? el('span', { class: 'badge', text: 'public', title: 'Every lab can open it' }) : null),
       el('td', { class: 'item-meta nowrap', text: (s.updated_at || '').slice(0, 16) }),
       el('td', { class: 'nowrap' },
         el('button', { class: 'tool-btn', title: 'Download GenBank (.gb)',

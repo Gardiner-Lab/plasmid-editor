@@ -185,6 +185,9 @@ _ADDED_COLUMNS = {
         ('enzyme_choice', 'TEXT'),
     ],
     'sequences': [
+        # Seen by every lab, not only its owner's labs (who always see it).
+        # Off for every plasmid until ticked; the older 'shared' is no longer read.
+        ('public', 'INTEGER NOT NULL DEFAULT 0'),
         ('moclo_link', 'TEXT'),
         ('moclo_synced_hash', 'TEXT'),
         ('moclo_synced_at', 'TIMESTAMP'),

@@ -17,8 +17,8 @@ def _doc(name, seq, features=()):
 
 
 def _save(user_client, doc):
-    # Shared, so others may look at its history (plasmids are private unless shared).
-    r = user_client.post('/api/sequences', json={'document': doc, 'shared': True})
+    # Public, so anyone may look at its history (a plasmid is otherwise its owner's labs').
+    r = user_client.post('/api/sequences', json={'document': doc, 'public': True})
     assert r.status_code == 201, r.get_json()
     return r.get_json()['sequence']
 

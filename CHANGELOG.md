@@ -7,14 +7,13 @@ and the project uses [semantic versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Changed
-- **New plasmids are private**, and a **"Shared with my labs"** tick in the editor shares one with the
-  people in its owner's labs. Inside the lab suite, shared means shared within the owner's labs:
-  people in other labs no longer see it (before, shared was everyone's). Existing plasmids keep
-  their setting.
-- Inside the suite, someone can be in several labs: they see what is shared in any of them, and a
-  lab lead oversees the members of the labs they lead. Sequencing results of a private plasmid are
-  open to its owner's labs, not everyone.
-- The library and the Sequencing page list a lab lead's members' private plasmids too.
+- **A plasmid is always seen by its owner's labs** (everyone in them), and by nobody else, until its
+  owner ticks **Public**, in the editor under Golden Gate ready, which lets every lab see it. Public is
+  off for new plasmids and for every plasmid made before (the older "shared" setting is no longer
+  read). Its sequencing is seen by whoever sees it; the library marks public plasmids.
+- Inside the suite, someone can be in several labs: they see all of them, and a lab lead oversees
+  the members of the labs they lead. Changing a plasmid stays with its owner, their lab leads and
+  administrators.
 
 ## [0.4.3] - 2026-10-16
 

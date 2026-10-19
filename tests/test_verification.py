@@ -275,11 +275,11 @@ def test_older_unsupported_confirmations_are_cleared_on_start(user_client, rand_
     assert doc['confirmed'] is False and doc['glycerol_stock'] == 'GS-OLD'
 
 
-def _private_with_a_read(user_client, client, rand_dna):
-    """tester owns a private plasmid with a judged read; 'other' is signed in on `client`."""
+def _private_with_a_read(user_client, client, rand_dna, public=False):
+    """tester owns a plasmid (its lab's; public if asked) with a judged read; 'other', of no lab of tester's, is signed in on `client`."""
     seq = rand_dna(900)
     r = user_client.post('/api/sequences', json={
-        'document': model.make_document('pSecret', seq, True), 'shared': False})
+        'document': model.make_document('pSecret', seq, True), 'public': public})
     sid = r.get_json()['sequence']['id']
     read = _add_read(user_client, sid, 'read1', seq[100:600], clone='5')
     _judge(user_client, read['id'], 'sufficient')
@@ -288,8 +288,15 @@ def _private_with_a_read(user_client, client, rand_dna):
     return sid, read, seq
 
 
-def test_anyone_signed_in_can_view_alignments_of_a_private_plasmid(user_client, client, rand_dna):
-    sid, read, seq = _private_with_a_read(user_client, client, rand_dna)
+def test_another_labs_alignments_stay_in_that_lab(user_client, client, rand_dna):
+    sid, read, _ = _private_with_a_read(user_client, client, rand_dna)
+    assert client.get(f'/api/sequences/{sid}/sequencing').status_code == 403
+    assert client.get(f'/api/sequences/{sid}/reads').status_code == 403
+    assert client.get('/api/sequences?sequencing=true').get_json()['sequences'] == []
+
+
+def test_anyone_signed_in_can_view_alignments_of_a_public_plasmid(user_client, client, rand_dna):
+    sid, read, seq = _private_with_a_read(user_client, client, rand_dna, public=True)
 
     history = client.get(f'/api/sequences/{sid}/sequencing')
     assert history.status_code == 200
@@ -302,11 +309,8 @@ def test_anyone_signed_in_can_view_alignments_of_a_private_plasmid(user_client, 
 
     assert client.get(f'/api/sequences/{sid}/reads').status_code == 200
     assert client.get(f"/api/sequences/reads/{read['id']}?trace=true").status_code == 200
-
-    # It is offered in the sequencing picker, but stays out of the plasmid list.
     listed = client.get('/api/sequences?sequencing=true').get_json()['sequences']
     assert [s['id'] for s in listed] == [sid]
-    assert client.get('/api/sequences').get_json()['sequences'] == []
 
 
 def test_viewing_does_not_open_the_plasmid_itself(user_client, client, rand_dna):

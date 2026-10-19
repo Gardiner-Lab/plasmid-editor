@@ -22,7 +22,7 @@ MIN_PASSWORD_LENGTH = 8
 #   admin     everything, including the labs, their registration codes and roles
 #   lab_lead  an administrator for their own lab's members and plasmids, and can
 #             see (not change) their lab's registration code
-#   member    their own work, and what the people in their labs share
+#   member    their own work, their lab mates' plasmids, and public plasmids
 #
 # Inside the lab suite someone may be in several labs, with a role in each
 # (labs); a lead oversees the members of the labs they lead.
@@ -76,23 +76,15 @@ class User:
         other = User.get_by_id(owner_id)
         return bool(other is not None and led & other.lab_names())
 
-    def can_see_sequence(self, owner_id: str, shared: bool, owners: Optional[Dict[str, 'User']] = None) -> bool:
+    def can_see_sequence(self, owner_id: str, public: bool, owners: Optional[Dict[str, 'User']] = None) -> bool:
         """
-        A plasmid: its owner's; an admin's; a lead's of the owner's labs; and,
-        when it is shared, anyone's in a lab with the owner. Outside the lab
-        suite there are no labs to keep it to, so shared is everyone's.
+        A plasmid: always its owner's labs' (the owner, their lab mates, and so
+        their leads); an admin's; and, when it is public, every lab's.
         """
-        if owner_id == self.id or self.is_admin:
+        if owner_id == self.id or self.is_admin or public:
             return True
         other = (owners or {}).get(owner_id) if owners is not None else User.get_by_id(owner_id)
-        if other is None:
-            return False
-        mine = self.lab_names()
-        if self.lab_names(led_only=True) & other.lab_names():
-            return True
-        if not shared:
-            return False
-        return bool(mine & other.lab_names()) if suite_labs.enabled() else True
+        return bool(other is not None and self.lab_names() & other.lab_names())
 
     def to_dict(self) -> Dict[str, Any]:
         return {'id': self.id, 'username': self.username, 'lab_source': self.lab_source,

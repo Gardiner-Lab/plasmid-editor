@@ -1,7 +1,7 @@
 """
-Who sees a plasmid, inside the lab suite: private by default (its owner, the
-leads of the owner's labs, administrators); shared, everyone in a lab with the
-owner, and nobody in other labs. Someone may be in several labs.
+Who sees a plasmid, inside the lab suite: always everyone in its owner's labs
+(and administrators); every lab once it is public. Someone may be in several
+labs.
 """
 
 import io
@@ -41,35 +41,38 @@ def who(name):
     return {'X-Suite-User': name}
 
 
-def test_plasmids_are_private_until_shared_and_then_only_within_the_owners_labs(labs, client):
+def test_a_plasmid_is_its_labs_and_everyones_once_public(labs, client):
     made = client.post('/api/sequences', headers=who('ana'), json={'document': {
-        'name': 'pPrivate', 'sequence': 'ACGT' * 100, 'circular': True}})
-    assert made.status_code == 201 and made.get_json()['sequence']['shared'] is False
+        'name': 'pGard', 'sequence': 'ACGT' * 100, 'circular': True}})
+    assert made.status_code == 201 and made.get_json()['sequence']['public'] is False
     pid = made.get_json()['sequence']['id']
     status = lambda name: client.get(f'/api/sequences/{pid}', headers=who(name)).status_code
-    # Private: its owner, her lab's lead, administrators.
-    assert [status(n) for n in ('ana', 'ben', 'lead', 'zoe', 'max', 'boss')] == [200, 403, 200, 403, 403, 200]
-    assert client.get(f'/api/sequences/{pid}', headers=who('lead')).get_json()['sequence']['can_change'] is True
-
-    # Shared with her labs: everyone in Gardiner Lab, Max too (he is in it as well), not Smith Lab's Zoe.
-    assert client.patch(f'/api/sequences/{pid}', headers=who('ana'), json={'shared': True, 'sync': False}).status_code == 200
+    # Not public: all of Gardiner Lab (Max too, who is in it as well), not Smith Lab's Zoe.
     assert [status(n) for n in ('ana', 'ben', 'lead', 'zoe', 'max', 'boss')] == [200, 200, 200, 403, 200, 200]
+    listed = lambda name: {s['name'] for s in client.get('/api/sequences', headers=who(name)).get_json()['sequences']}
+    assert 'pGard' in listed('ben') and 'pGard' not in listed('zoe')
+    # Only its owner, her lead and administrators change it, and make it public.
     assert client.get(f'/api/sequences/{pid}', headers=who('ben')).get_json()['sequence']['can_change'] is False
-    assert client.patch(f'/api/sequences/{pid}', headers=who('ben'), json={'shared': False}).status_code == 403
+    assert client.get(f'/api/sequences/{pid}', headers=who('lead')).get_json()['sequence']['can_change'] is True
+    assert client.patch(f'/api/sequences/{pid}', headers=who('ben'), json={'public': True}).status_code == 403
 
-    listed = lambda name: {s['name'] for s in client.get('/api/sequences', headers=who(name)).get_json()['sequences']}
-    assert 'pPrivate' in listed('ben') and 'pPrivate' in listed('max') and 'pPrivate' not in listed('zoe')
-
-
-def test_a_lead_sees_their_members_private_plasmids_in_the_list(labs, client):
-    client.post('/api/sequences', headers=who('ben'), json={'document': {
-        'name': 'pBens', 'sequence': 'ACGT' * 100, 'circular': True}})
-    listed = lambda name: {s['name'] for s in client.get('/api/sequences', headers=who(name)).get_json()['sequences']}
-    assert 'pBens' in listed('lead') and 'pBens' in listed('boss')
-    assert 'pBens' not in listed('ana') and 'pBens' not in listed('zoe')
+    # Public: every lab sees it; still only its owner's side changes it.
+    assert client.patch(f'/api/sequences/{pid}', headers=who('ana'), json={'public': True, 'sync': False}).status_code == 200
+    assert status('zoe') == 200 and 'pGard' in listed('zoe')
+    assert client.get(f'/api/sequences/{pid}', headers=who('zoe')).get_json()['sequence']['can_change'] is False
+    # Back to its labs only.
+    assert client.patch(f'/api/sequences/{pid}', headers=who('ana'), json={'public': False, 'sync': False}).status_code == 200
+    assert status('zoe') == 403
 
 
-def test_sequencing_of_a_private_plasmid_is_open_to_its_labs_only(labs, client):
+def test_the_old_shared_setting_does_not_make_a_plasmid_public(labs, client):
+    made = client.post('/api/sequences', headers=who('ana'), json={'document': {
+        'name': 'pOld', 'sequence': 'ACGT' * 100, 'circular': True}, 'shared': True}).get_json()['sequence']
+    assert made['public'] is False
+    assert client.get(f"/api/sequences/{made['id']}", headers=who('zoe')).status_code == 403
+
+
+def test_sequencing_is_seen_by_whoever_sees_the_plasmid(labs, client):
     made = client.post('/api/sequences', headers=who('ana'), json={'document': {
         'name': 'pSeq', 'sequence': 'ACGT' * 100, 'circular': True}}).get_json()['sequence']
     r = client.post(f"/api/sequences/{made['id']}/reads", headers=who('ana'),
