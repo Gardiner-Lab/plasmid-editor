@@ -6,6 +6,16 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- **New plasmids are private**, and a **"Shared with my labs"** tick in the editor shares one with the
+  people in its owner's labs. Inside the lab suite, shared means shared within the owner's labs:
+  people in other labs no longer see it (before, shared was everyone's). Existing plasmids keep
+  their setting.
+- Inside the suite, someone can be in several labs: they see what is shared in any of them, and a
+  lab lead oversees the members of the labs they lead. Sequencing results of a private plasmid are
+  open to its owner's labs, not everyone.
+- The library and the Sequencing page list a lab lead's members' private plasmids too.
+
 ## [0.4.3] - 2026-10-16
 
 ### Changed
