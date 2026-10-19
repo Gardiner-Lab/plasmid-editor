@@ -6,6 +6,8 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-19
+
 ### Added
 - **Enzymes cutting at most N times**: in the Enzymes panel, "Cutting at most [1] time(s)" (formerly
   "Unique cutters only") shows only the enzymes that cut the sequence that many times or fewer, in the
