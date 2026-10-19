@@ -177,7 +177,12 @@
                 <div class="field">
                     <input type="search" id="enzymeFilter" placeholder="Filter enzymes">
                 </div>
-                <label class="checkbox"><input type="checkbox" id="chkUniqueOnly"> <span>Unique cutters only</span></label>
+                <label class="checkbox" title="Show only the enzymes that cut this sequence this many times or fewer (1: unique cutters)">
+                    <input type="checkbox" id="chkMaxCuts">
+                    <span>Cutting at most
+                        <input type="number" id="maxCuts" min="1" max="99" value="1" class="input-inline"
+                               aria-label="Most cuts an enzyme may make"> time(s)</span>
+                </label>
                 <label class="checkbox"><input type="checkbox" id="chkNonCutters"> <span>Show non-cutters</span></label>
             </div>
             <div class="panel-scroll panel-body-flush">

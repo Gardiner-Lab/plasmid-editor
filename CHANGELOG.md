@@ -6,6 +6,11 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **Enzymes cutting at most N times**: in the Enzymes panel, "Cutting at most [1] time(s)" (formerly
+  "Unique cutters only") shows only the enzymes that cut the sequence that many times or fewer, in the
+  list, the sequence view and the map. Typing a number turns it on. The sites API takes `max_cuts`.
+
 ### Changed
 - **A plasmid is always seen by its owner's labs** (everyone in them), and by nobody else, until its
   owner ticks **Public**, in the editor under Golden Gate ready, which lets every lab see it. Public is

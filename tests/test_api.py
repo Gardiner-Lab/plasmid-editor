@@ -584,3 +584,19 @@ def test_snapgene_export_and_import(user_client, rand_dna):
                               content_type='multipart/form-data').get_json()
     back = parsed['documents'][0]
     assert back['sequence'] == doc['sequence'] and [f['name'] for f in back['features']] == ['ori']
+
+
+def test_sites_of_enzymes_cutting_at_most_n_times(user_client):
+    # EcoRI (GAATTC) three times, BamHI (GGATCC) once, in a linear sequence.
+    seq = 'AAAA'.join(['GAATTC', 'GAATTC', 'GGATCC', 'GAATTC']) + 'AAAA'
+    doc = {'name': 'cuts', 'sequence': seq, 'circular': False}
+    ask = lambda **kw: user_client.post('/api/tools/sites', json={'document': doc, 'enzymes': ['EcoRI', 'BamHI'], **kw})
+    assert ask().get_json()['counts'] == {'EcoRI': 3, 'BamHI': 1}
+    assert ask(max_cuts=1).get_json()['counts'] == {'BamHI': 1}
+    assert ask(unique_only=True).get_json()['counts'] == {'BamHI': 1}
+    body = ask(max_cuts=3).get_json()
+    assert body['counts'] == {'EcoRI': 3, 'BamHI': 1} and len(body['sites']) == 4
+    assert {s['enzyme'] for s in ask(max_cuts=2).get_json()['sites']} == {'BamHI'}
+    # Cutting more often is still a cutter, not a non-cutter.
+    assert ask(max_cuts=2).get_json()['non_cutters'] == []
+    assert ask(max_cuts=0).status_code == 400 and ask(max_cuts='a few').status_code == 400

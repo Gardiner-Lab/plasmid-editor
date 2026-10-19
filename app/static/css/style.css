@@ -107,6 +107,7 @@ textarea.mono, input.mono { font-family: var(--mono); font-size: .85rem; letter-
 .field-row > .field { flex: 1; min-width: 7rem; }
 .checkbox { display: flex; align-items: flex-start; gap: .5rem; font-size: .9rem; font-weight: 400; color: var(--text-color); cursor: pointer; }
 .checkbox input { width: auto; margin-top: .3rem; flex-shrink: 0; }
+.checkbox input.input-inline { width: 3.2rem; margin: 0 .2rem; padding: .05rem .25rem; display: inline-block; font-size: .85rem; }
 .hint { font-size: .8125rem; color: var(--text-secondary); font-weight: 400; }
 
 .alert { padding: .7rem .9rem; border-radius: .375rem; margin-bottom: 1rem; font-size: .9rem; border: 1px solid transparent; }

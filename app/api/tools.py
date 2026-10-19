@@ -109,10 +109,20 @@ def sites(user):
     counts = {}
     for h in hits:
         counts[h['enzyme']] = counts.get(h['enzyme'], 0) + 1
-    if data.get('unique_only'):
-        hits = [h for h in hits if counts[h['enzyme']] == 1]
+    non_cutters = sorted(e for e in (data.get('enzymes') or []) if e not in counts)
+    # Only the enzymes that cut at most max_cuts times (unique_only: once).
+    max_cuts = 1 if data.get('unique_only') else data.get('max_cuts')
+    if max_cuts is not None:
+        try:
+            max_cuts = int(max_cuts)
+        except (TypeError, ValueError):
+            return _bad(ValueError('max_cuts must be a whole number'))
+        if max_cuts < 1:
+            return _bad(ValueError('max_cuts must be at least 1'))
+        hits = [h for h in hits if counts[h['enzyme']] <= max_cuts]
+        counts = {e: n for e, n in counts.items() if n <= max_cuts}
     return jsonify({'sites': hits, 'counts': counts,
-                    'non_cutters': sorted(e for e in (data.get('enzymes') or []) if e not in counts)}), 200
+                    'non_cutters': non_cutters}), 200
 
 
 @tools_bp.route('/digest', methods=['POST'])

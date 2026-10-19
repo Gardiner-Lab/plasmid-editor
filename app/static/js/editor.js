@@ -1314,7 +1314,7 @@ const Editor = {
       const body = await API.post('/api/tools/sites', {
         document: this.payloadDoc(),
         enzymes,
-        unique_only: document.getElementById('chkUniqueOnly').checked,
+        ...(this.maxCuts() ? { max_cuts: this.maxCuts() } : {}),
       });
       if (ticket !== this._sitesTicket) return;
       this.sites = body.sites;
@@ -1486,6 +1486,13 @@ const Editor = {
     });
   },
 
+  /** The most cuts an enzyme may make to be shown, or null to show every cutter. */
+  maxCuts() {
+    if (!document.getElementById('chkMaxCuts').checked) return null;
+    const n = parseInt(document.getElementById('maxCuts').value, 10);
+    return Number.isFinite(n) && n >= 1 ? n : 1;
+  },
+
   renderEnzymeTable(counts, nonCutters) {
     const filter = document.getElementById('enzymeFilter').value.trim().toLowerCase();
     const showNon = document.getElementById('chkNonCutters').checked;
@@ -1599,7 +1606,13 @@ const Editor = {
     document.getElementById('enzymeFilter').addEventListener('input',
       () => this.renderEnzymeTable({}, this.lastNonCutters || []));
     document.getElementById('chkNonCutters').addEventListener('change', () => this.refreshSites());
-    document.getElementById('chkUniqueOnly').addEventListener('change', () => this.refreshSites());
+    document.getElementById('chkMaxCuts').addEventListener('change', () => this.refreshSites());
+    // Changing the number turns the limit on: that is what typing it means.
+    document.getElementById('maxCuts').addEventListener('input', () => {
+      document.getElementById('chkMaxCuts').checked = true;
+      clearTimeout(this._maxCutsTimer);
+      this._maxCutsTimer = setTimeout(() => this.refreshSites(), 250);
+    });
 
     document.getElementById('btnOrfs').addEventListener('click', () => Tools.orfs());
     document.getElementById('btnAnnotate').addEventListener('click', () => Tools.annotate());
