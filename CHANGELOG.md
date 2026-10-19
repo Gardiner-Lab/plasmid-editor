@@ -6,6 +6,8 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.5.3] - 2026-10-19
+
 ### Changed
 - **Designed primers take their Lab Stocks codes.** Saving a designed pair to the primer stock
   renames their annotated binding sites to the codes Lab Stocks gives them (`GL-O-0042`, with the
