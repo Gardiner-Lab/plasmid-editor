@@ -353,7 +353,9 @@ tr.clickable:hover td { background: var(--bg-color); }
 
 /* Gel -------------------------------------------------------------------- */
 .gel { background: #111827; border-radius: .5rem; padding: 1rem; overflow-x: auto; }
-.gel-lanes { display: flex; gap: 1.25rem; align-items: flex-end; min-height: 20rem; }
+/* Room inside the gel for the ladder's sizes (left of the first lane) and the lane names (below), which
+   would otherwise be cut off at its edges. */
+.gel-lanes { display: flex; gap: 1.25rem; align-items: flex-end; min-height: 20rem; padding: 0 0 1.9rem 3.6rem; width: max-content; }
 .gel-lane { position: relative; width: 4.5rem; height: 20rem; border-left: 1px solid #374151; }
 .gel-lane-label { position: absolute; bottom: -1.6rem; left: 0; right: 0; text-align: center; font-size: .7rem; color: #d1d5db; }
 .gel-band { position: absolute; left: .2rem; right: .2rem; height: 3px; background: #e5e7eb; border-radius: 2px; box-shadow: 0 0 4px rgba(255,255,255,.5); }

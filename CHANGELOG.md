@@ -6,6 +6,10 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- The virtual gel's ladder sizes (and the lane names under the lanes) were cut off at the picture's
+  edges; the gel now leaves room for them.
+
 ## [0.5.3] - 2026-10-19
 
 ### Changed
