@@ -139,6 +139,28 @@ const Tools = {
 
   /* --- digest and gel --------------------------------------------------- */
 
+  // The digests run, kept as lanes of the gel, so banding patterns can be seen side by side: each
+  // open tab's, until that tab is closed (a newer digest of a tab with the same enzymes replaces it).
+  gelLanes: [],
+  MAX_LANES: 16,
+
+  /** The kept lanes of the tabs still open. */
+  openLanes() {
+    this.gelLanes = this.gelLanes.filter((l) => Editor.docs.includes(l.doc));
+    return this.gelLanes;
+  },
+
+  /** A tab closed: its lanes go with it. */
+  forgetLanes(doc) {
+    this.gelLanes = this.gelLanes.filter((l) => l.doc !== doc);
+  },
+
+  /** A tab's sequence as the API takes it (any open tab, not only the active one). */
+  payloadOf(d) {
+    return { name: d.name, sequence: d.sequence, circular: d.circular, description: d.description || '',
+             features: d.features, translations: d.translations || [] };
+  },
+
   async digest() {
     const doc = this.doc();
     if (!doc) return;
@@ -165,22 +187,50 @@ const Tools = {
             el('button', { class: 'btn btn-sm', onclick: () => run() }, 'Run digest')),
           el('div', { id: 'digestOut', style: 'margin-top:.75rem' }));
 
+        // The gel: the ladder, then the kept lanes of the open tabs, this digest among them.
+        const gelBox = el('div');
+        const drawGel = async () => {
+          const lanes = this.openLanes();
+          if (!lanes.length) { gelBox.replaceChildren(); return; }
+          const res = await API.post('/api/tools/gel', {
+            lanes: lanes.map((l) => ({ document: this.payloadOf(l.doc), enzymes: l.enzymes,
+              label: `${l.doc.name || 'Untitled'}\n${l.enzymes.join('+')}` })),
+            ladder: document.getElementById('ladder').value,
+          });
+          const others = lanes.filter((l) => l.doc !== doc).length;
+          gelBox.replaceChildren(
+            this.gelView(res),
+            el('div', { class: 'gel-kept' },
+              el('span', { class: 'hint' }, lanes.length > 1
+                ? `Lanes stay on the gel until their tab is closed${others ? ` (${others} from other open tabs)` : ''}: `
+                : 'Run a digest in another open tab and it joins this gel, lane by lane, until its tab is closed. '),
+              ...lanes.map((l) => el('span', { class: 'gel-kept-lane' }, `${l.doc.name || 'Untitled'}: ${l.enzymes.join('+')}`,
+                el('button', { class: 'chip-x', type: 'button', title: 'Take this lane off the gel', onclick: async () => {
+                  this.gelLanes = this.gelLanes.filter((x) => x !== l);
+                  await drawGel();
+                } }, '×'))),
+              lanes.length > 1 ? el('button', { class: 'btn btn-sm btn-secondary', type: 'button', onclick: async () => {
+                this.gelLanes = this.gelLanes.slice(-1);
+                await drawGel();
+              } }, 'Keep only the last') : null));
+        };
+
         const run = async () => {
           const enzymes = [...document.getElementById('digestEnzymes').selectedOptions].map((o) => o.value);
           const out = document.getElementById('digestOut');
           if (!enzymes.length) { toast('Select at least one enzyme', 'error'); return; }
           out.replaceChildren(el('span', { class: 'spin' }));
           try {
-            const [digestRes, gelRes] = await Promise.all([
+            const key = enzymes.join('+');
+            this.gelLanes = [...this.openLanes().filter((l) => !(l.doc === doc && l.enzymes.join('+') === key)),
+              { doc, enzymes }].slice(-this.MAX_LANES);
+            const [digestRes] = await Promise.all([
               API.post('/api/tools/digest', { document: Editor.payloadDoc(), enzymes }),
-              API.post('/api/tools/gel', {
-                lanes: [{ document: Editor.payloadDoc(), enzymes, label: enzymes.join('+') }],
-                ladder: document.getElementById('ladder').value,
-              }),
+              drawGel(),
             ]);
             out.replaceChildren(
-              this.gelView(gelRes),
-              el('h4', { style: 'margin:.75rem 0 .35rem;font-size:.9rem' }, 'Fragments'),
+              gelBox,
+              el('h4', { style: 'margin:.75rem 0 .35rem;font-size:.9rem' }, `Fragments: ${doc.name || 'Untitled'}, ${key}`),
               this.resultTable(
                 [{ label: 'Length', num: true }, 'Start', 'End', "5' end", "3' end"],
                 digestRes.fragments.map((f) => [

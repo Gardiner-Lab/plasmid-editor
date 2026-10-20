@@ -143,6 +143,8 @@ const Editor = {
       return;
     }
     this.docs.splice(i, 1);
+    // Its digests leave the virtual gel with it.
+    if (typeof Tools !== 'undefined') Tools.forgetLanes(doc);
     // Undo history follows its own tab; the tabs after this one move up a place.
     for (const stack of [this.undoStack, this.redoStack]) {
       for (let k = stack.length - 1; k >= 0; k--) {

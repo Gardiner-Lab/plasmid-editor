@@ -355,9 +355,15 @@ tr.clickable:hover td { background: var(--bg-color); }
 .gel { background: #111827; border-radius: .5rem; padding: 1rem; overflow-x: auto; }
 /* Room inside the gel for the ladder's sizes (left of the first lane) and the lane names (below), which
    would otherwise be cut off at its edges. */
-.gel-lanes { display: flex; gap: 1.25rem; align-items: flex-end; min-height: 20rem; padding: 0 0 1.9rem 3.6rem; width: max-content; }
+.gel-lanes { display: flex; gap: 1.25rem; align-items: flex-end; min-height: 20rem; padding: 0 0 2.9rem 3.6rem; width: max-content; }
 .gel-lane { position: relative; width: 4.5rem; height: 20rem; border-left: 1px solid #374151; }
-.gel-lane-label { position: absolute; bottom: -1.6rem; left: 0; right: 0; text-align: center; font-size: .7rem; color: #d1d5db; }
+.gel-lane-label { position: absolute; top: calc(100% + .35rem); left: -.5rem; right: -.5rem; text-align: center; font-size: .68rem;
+                   line-height: 1.15; color: #d1d5db; white-space: pre-line; overflow-wrap: anywhere; }
+.gel-kept { display: flex; flex-wrap: wrap; gap: .35rem; align-items: center; margin-top: .5rem; font-size: .8rem; }
+.gel-kept-lane .chip-x { border: 0; background: none; cursor: pointer; font-size: .9rem; line-height: 1; padding: 0 .1rem; color: inherit; opacity: .6; }
+.gel-kept-lane .chip-x:hover { opacity: 1; }
+.gel-kept-lane { display: inline-flex; align-items: center; gap: .2rem; padding: .1rem .45rem; border-radius: .8rem;
+                 background: var(--card-bg); border: 1px solid var(--border-color); }
 .gel-band { position: absolute; left: .2rem; right: .2rem; height: 3px; background: #e5e7eb; border-radius: 2px; box-shadow: 0 0 4px rgba(255,255,255,.5); }
 .gel-band-label { position: absolute; right: calc(100% + .3rem); top: -.55rem; font-size: .65rem; color: #9ca3af; white-space: nowrap; }
 
