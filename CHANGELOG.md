@@ -6,6 +6,8 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.5.4] - 2026-10-20
+
 ### Added
 - Digests are kept as lanes of the virtual gel, beside the next one, for each open tab until it is
   closed, so banding patterns of several plasmids (or enzymes) can be compared side by side. A lane
