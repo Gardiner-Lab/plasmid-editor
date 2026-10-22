@@ -378,6 +378,31 @@ def test_map_read_finds_a_large_insertion_between_two_matching_flanks():
     assert align.coverage(1000, [r]) == [[100, 700]]
 
 
+def test_map_read_identity_counts_inserted_and_deleted_bases():
+    """
+    The identity reported counts every base the read has extra or lacks, so
+    a read with a large insertion no longer reads as 100% identical; whether
+    it maps rests on the bases that pair up, so it still does.
+    """
+    ref = rand_dna(1000)
+    clean = align.map_read(ref, ref[100:700])
+    assert clean['identity'] == clean['base_identity'] == 100.0 and clean['indel_bases'] == 0
+
+    r = align.map_read(ref, ref[100:400] + rand_dna(60) + ref[400:700])
+    assert r['mapped']
+    assert r['base_identity'] >= 99.0                     # the bases that pair up all agree
+    assert 50 <= r['indel_bases'] <= 70                   # the insertion, give or take its edges
+    assert r['identity'] == round(100.0 * (len(r['top']) - r['indel_bases']
+                                           - sum(d['type'] == 'mismatch' for d in r['differences']))
+                                  / len(r['top']), 1)
+    assert r['identity'] < 92.0
+
+    # A 300 bp insertion between 300 bp flanks still maps, though most of its
+    # columns are not a match.
+    big = align.map_read(ref, ref[100:400] + rand_dna(300) + ref[400:700])
+    assert big['mapped'] and big['identity'] < 70.0 and big['base_identity'] >= 99.0
+
+
 def test_map_read_segments_report_their_span_in_the_physical_read():
     """
     Each segment's read_start/read_end locates it in the read as uploaded -
