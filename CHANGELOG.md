@@ -6,6 +6,8 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.5.5] - 2026-10-22
+
 ### Added
 - A read's alignment shows its own "Read extent": the read's full length, left to right as it was
   sequenced, with what was trimmed for low quality, what aligned, and - unlike the reference-coordinate
