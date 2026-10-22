@@ -240,21 +240,137 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
     overflow: hidden; white-space: nowrap; text-align: center; line-height: .85em;
 }
 .aln-feat > span { font-size: .68rem; color: #111827; }
-/* Differences in an alignment, the list of them and the way between them. */
-.aln-diff { border-radius: 2px; cursor: pointer; }
-.aln-mismatch { background: #fecaca; }
-.aln-insertion { background: #fde68a; }
-.aln-deletion { background: #fed7aa; }
-.aln-focus { outline: 2px solid #dc2626; outline-offset: -1px; background: #fca5a5; }
-.diff-list { display: flex; flex-wrap: wrap; gap: .3rem; margin-top: .45rem; }
-.diff-chip {
-    font: inherit; font-size: .75rem; padding: .1rem .45rem; border-radius: .3rem; cursor: pointer;
-    border: 1px solid var(--border-color); background: var(--card-bg); color: var(--text-color);
+/* Sequencing: one colour per kind of difference, the same on the read map,
+   in the alignment, on its chips and on the chromatogram. */
+:root {
+    --aln-ok: #4ade80; --aln-ok-soft: #bbf7d0;
+    --aln-mismatch: #dc2626; --aln-insertion: #7c3aed; --aln-deletion: #ea580c;
 }
-.diff-chip:hover { border-color: #dc2626; }
-.diff-chip.active { background: #fee2e2; border-color: #dc2626; font-weight: 600; }
+/* Differences in an alignment, the list of them and the way between them. */
+.aln-diff { border-radius: 2px; cursor: pointer; font-weight: 700; }
+.aln-read .aln-mismatch { background: var(--aln-mismatch); color: #fff; }
+.aln-read .aln-insertion { background: var(--aln-insertion); color: #fff; }
+.aln-read .aln-deletion { background: var(--aln-deletion); color: #fff; }
+.aln-ref .aln-mismatch { background: #fee2e2; color: #991b1b; }
+.aln-ref .aln-insertion { background: #ede9fe; color: #5b21b6; }
+.aln-ref .aln-deletion { background: #ffedd5; color: #9a3412; }
+/* A difference on a low-quality call: likely the sequencer, not the plasmid. */
+.aln-read .aln-diff.lowq {
+    background-image: repeating-linear-gradient(135deg, rgba(255,255,255,.45) 0 2px, transparent 2px 4px);
+}
+/* The difference shown: a dark band over and under its bases, one band for a run. */
+.aln-focus { box-shadow: inset 0 2px #111827, inset 0 -2px #111827; border-radius: 0; }
+.aln-block { grid-template-columns: 7rem 1fr; margin-bottom: .7rem; }
+.aln-labels .seqmap-row { display: flex; justify-content: flex-end; gap: .4rem; }
+.aln-who { color: #9ca3af; font-size: .68rem; text-transform: uppercase; letter-spacing: .04em; }
+.aln-ref, .aln-read { cursor: pointer; }
+.aln-read { color: #111827; }
+.aln-ref { color: #4b5563; }
+.seqmap-row.aln-strip-row { height: .45em; margin: .12em 0 .18em; }
+.aln-strip { position: absolute; top: 0; bottom: 0; }
+.s-ok { background: var(--aln-ok); }
+.s-low { background: repeating-linear-gradient(135deg, var(--aln-ok-soft) 0 3px, #e5e7eb 3px 6px); }
+.s-mismatch { background: var(--aln-mismatch); }
+.s-insertion { background: var(--aln-insertion); }
+.s-deletion { background: var(--aln-deletion); }
+.aln-skip {
+    text-align: center; color: var(--text-secondary); font-size: .72rem; margin: -.2rem 0 .7rem 7rem;
+    border-top: 1px dashed var(--border-color); padding-top: .2rem;
+}
+.aln-headline { font-weight: 600; font-size: .95rem; margin-bottom: .15rem; }
+.aln-facts { margin-top: .2rem; color: inherit; opacity: .8; }
+.diff-list { display: flex; flex-wrap: wrap; gap: .3rem; margin-top: .55rem; }
+.diff-chip {
+    font: inherit; font-size: .75rem; padding: .12rem .5rem .12rem .4rem; border-radius: .3rem; cursor: pointer;
+    border: 1px solid var(--border-color); border-left-width: 4px; background: var(--card-bg); color: var(--text-color);
+}
+.diff-chip.diff-mismatch { border-left-color: var(--aln-mismatch); }
+.diff-chip.diff-insertion { border-left-color: var(--aln-insertion); }
+.diff-chip.diff-deletion { border-left-color: var(--aln-deletion); }
+.diff-chip.lowq { border-style: dashed; border-left-style: dashed; color: var(--text-secondary); }
+.diff-chip:hover { border-color: #111827; }
+.diff-chip.active { background: #f3f4f6; outline: 2px solid #111827; outline-offset: 1px; font-weight: 600; }
+.diff-where { color: var(--text-secondary); }
+.diff-q { color: var(--text-secondary); font-variant-numeric: tabular-nums; }
 .diff-nav { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; margin: 0 0 .5rem; }
 .diff-nav-fix { display: inline-flex; gap: .4rem; margin-left: auto; }
+.diff-only { margin: 0 0 0 .5rem; font-size: .8125rem; }
+.read-extent { display: grid; grid-template-columns: 7rem 1fr; gap: .75rem; align-items: start; margin: .25rem 0 .9rem; }
+.read-extent-label { font-size: .8125rem; font-weight: 600; color: var(--text-secondary); text-align: right; line-height: .6rem; }
+.badge-diff { background: #fef2f2; color: #991b1b; border-color: #fecaca; }
+.badge-lowq { background: #f9fafb; color: #6b7280; border-style: dashed; }
+.badge-unmapped { background: #f3f4f6; color: #6b7280; }
+
+/* The read map: every read along the plasmid, one lane each. */
+.aln-legend { display: flex; flex-wrap: wrap; gap: .3rem .8rem; font-size: .75rem; color: var(--text-secondary); margin-right: .5rem; }
+.aln-legend span { display: inline-flex; align-items: center; gap: .3rem; }
+.aln-legend i { display: inline-block; width: .9rem; height: .55rem; border-radius: 2px; }
+.aln-legend .lg-read { background: var(--aln-ok); }
+.aln-legend .lg-mismatch { background: var(--aln-mismatch); width: 3px; height: .9rem; }
+.aln-legend .lg-insertion { background: var(--aln-insertion); width: 3px; height: .9rem; }
+.aln-legend .lg-deletion { background: var(--aln-deletion); width: 3px; height: .9rem; }
+.aln-legend .lg-lowq { width: .45rem; height: .7rem; border: 2px solid #6b7280; background: #fff; }
+.rmap { display: grid; grid-template-columns: minmax(9rem, 17rem) 1fr; column-gap: .75rem; row-gap: 3px; align-items: center; }
+.rmap-label {
+    display: flex; align-items: center; gap: .35rem; min-width: 0; font-size: .8125rem;
+    white-space: nowrap; padding: 0 .35rem; border-radius: .3rem; height: 1.5rem;
+}
+.rmap-axis { color: var(--text-secondary); font-size: .75rem; overflow: hidden; text-overflow: ellipsis; display: block; line-height: 1.5rem; text-align: right; }
+.rmap-read { cursor: pointer; }
+.rmap-read:hover, .rmap-read.active { background: #eff6ff; }
+.rmap-read.active { box-shadow: inset 3px 0 var(--primary-color); font-weight: 600; }
+.rmap-name { overflow: hidden; text-overflow: ellipsis; flex: 1 1 auto; min-width: 0; }
+.rmap-read .badge { flex: none; }
+.rmap-remove { padding: .05rem .25rem; flex: none; }
+.rmap-track { position: relative; height: 1.5rem; }
+.rmap-lane, .rmap-none { background: #f3f4f6; border-radius: .3rem; cursor: pointer; }
+.rmap-lane:hover, .rmap-lane.active, .rmap-none.active { box-shadow: inset 0 0 0 2px #93c5fd; }
+.rmap-none {
+    font-size: .75rem; font-style: italic; color: var(--text-secondary); line-height: 1.5rem; padding-left: .6rem;
+    overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+    background: repeating-linear-gradient(135deg, #f3f4f6 0 6px, #e5e7eb 6px 8px);
+}
+.rmap-ruler { height: 1.1rem; border-bottom: 1px solid #9ca3af; }
+.rmap-tick {
+    position: absolute; bottom: 0; height: .9rem; border-left: 1px solid #9ca3af;
+    padding-left: 3px; font-size: .68rem; line-height: .8rem; color: var(--text-secondary); white-space: nowrap;
+}
+.rmap-features { height: 1rem; }
+.rmap-feat {
+    position: absolute; top: .1rem; height: .8rem; border-radius: 2px; padding: 0 3px; opacity: .85;
+    font-size: .62rem; line-height: .8rem; color: #111827; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+}
+/* Read that did not align, reaching out from the aligned part. */
+.rmap-overhang { position: absolute; top: .55rem; height: .4rem; border-radius: 1px;
+    background: repeating-linear-gradient(135deg, #ef4444 0 3px, #fecaca 3px 6px); }
+.aln-legend .lg-overhang { height: .4rem; background: repeating-linear-gradient(135deg, #ef4444 0 3px, #fecaca 3px 6px); }
+.rmap-bar { position: absolute; top: .45rem; height: .6rem; background: var(--aln-ok); border-radius: 2px; }
+.rmap-bar.tip-r { clip-path: polygon(0 0, calc(100% - 7px) 0, 100% 50%, calc(100% - 7px) 100%, 0 100%); border-radius: 2px 0 0 2px; }
+.rmap-bar.tip-l { clip-path: polygon(7px 0, 100% 0, 100% 100%, 7px 100%, 0 50%); border-radius: 0 2px 2px 0; }
+.rmap-mark {
+    position: absolute; top: .15rem; height: 1.2rem; width: 3px; margin-left: -1px; padding: 0;
+    border: 0; border-radius: 1px; cursor: pointer;
+}
+.rmap-mark::before { content: ''; position: absolute; inset: 0 -4px; }   /* an easier target */
+.rmap-mark:hover { transform: scaleX(1.7); }
+.rmap-mark.mark-mismatch { background: var(--aln-mismatch); }
+.rmap-mark.mark-insertion { background: var(--aln-insertion); }
+.rmap-mark.mark-deletion { background: var(--aln-deletion); }
+.rmap-mark.lowq { width: 7px; margin-left: -3px; top: .3rem; height: .9rem; background: #fff; border: 2px solid; }
+.rmap-mark.lowq.mark-mismatch { border-color: var(--aln-mismatch); }
+.rmap-mark.lowq.mark-insertion { border-color: var(--aln-insertion); }
+.rmap-mark.lowq.mark-deletion { border-color: var(--aln-deletion); }
+.rmap-sep { grid-column: 1 / -1; border-top: 1px dashed var(--border-color); margin: .3rem 0 .15rem; }
+.rmap-total { height: .75rem; background: #f3f4f6; border-radius: .3rem; overflow: hidden; }
+.rmap-covered { position: absolute; top: 0; bottom: 0; background: var(--aln-ok); }
+.rmap-gap { position: absolute; top: 0; bottom: 0; background: repeating-linear-gradient(135deg, #fecaca 0 4px, #fee2e2 4px 8px); }
+.rmap-summary { grid-column: 2; font-size: .8125rem; color: var(--text-secondary); margin-top: .35rem; display: grid; gap: .15rem; }
+.rmap-summary b { color: var(--text-color); }
+@media (max-width: 700px) {
+    .rmap-summary { grid-column: 1 / -1; }
+    .rmap { grid-template-columns: 8.5rem 1fr; }
+    .rmap-read .badge { display: none; }
+}
 .fix-list { margin: .3rem 0 .6rem 1.2rem; font-size: .85rem; }
 .history-scroll { max-height: 60vh; overflow: auto; }
 .history-table { width: 100%; font-size: .85rem; }

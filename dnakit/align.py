@@ -256,7 +256,13 @@ def map_read(reference: str, read: str, circular: bool = False, quality: Optiona
             diffs.append({'position': ref_pos % n, 'type': 'deletion', 'ref': top[run_start:i],
                          'read': '-', 'length': i - run_start})
             ref_pos += i - run_start
-    identity = round(100.0 * matches / cols, 1) if cols else 0.0
+    # Two measures of agreement. Where bases pair up, how many match: what
+    # decides whether the read is this plasmid at all, so a read with a large
+    # insertion still maps. And over every column, each inserted or deleted
+    # base counting against it: the identity reported, so a 60 bp insertion
+    # does not read as "100% identity".
+    base_identity = round(100.0 * matches / cols, 1) if cols else 0.0
+    identity = round(100.0 * matches / length, 1) if length else 0.0
     # The reference spans the read actually covers, for an accurate coverage bar
     # (one span, unless a deletion between flanks splits it into several), each
     # with where in the physical read - as uploaded, not the quality-trimmed,
@@ -269,9 +275,10 @@ def map_read(reference: str, read: str, circular: bool = False, quality: Optiona
                               'read_start': read_start, 'read_end': read_end})
     out_segments.sort(key=lambda s: s['read_start'])
     return {
-        'name': name, 'mapped': cols >= 20 and identity >= 80.0,
+        'name': name, 'mapped': cols >= 20 and base_identity >= 80.0,
         'strand': -1 if rev else 1, 'ref_start': start % n, 'ref_end': ref_pos % n or n,
-        'aligned_length': cols, 'identity': identity, 'differences': diffs,
+        'aligned_length': cols, 'identity': identity, 'base_identity': base_identity,
+        'indel_bases': length - cols, 'differences': diffs,
         # How much of the uploaded read this is: the whole file, not just the
         # part kept after quality-trimming, so a read mostly trimmed away or
         # mostly unaligned still shows as such.

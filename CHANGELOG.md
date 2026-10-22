@@ -6,6 +6,36 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- **Sequencing alignments are easier to read.** Every read is drawn on one map of the plasmid,
+  under its features: where it landed, which way it reads, and a mark at each difference (red
+  mismatch, violet insertion, orange deletion; hollow when the read's call there is low quality).
+  Below the reads, what they cover together, the stretches none of them covers, and the features
+  no read covers completely. Clicking a read, or one of its marks, opens its alignment. This
+  replaces the list of reads and the coverage bar.
+- A read's alignment opens with what it says in a sentence ("Matches the reference exactly from
+  201–1,016", or how many differences of which kind), and each difference names the feature it is
+  in and the read's quality there. Differences on low-quality bases are flagged as likely
+  sequencing errors to check on the trace.
+- In the alignment, the reference and read rows are labelled with where each line starts in both,
+  and a strip between them is green where they agree and coloured where they don't, in place of
+  the column of `|`s. "Only lines with differences" folds away the lines that match.
+- The chromatogram follows the alignment: choosing a difference, or clicking any base, scrolls
+  the trace to that base and outlines it. Every difference is marked on the trace, and the ends
+  trimmed for low quality are shaded.
+- A read that is mostly not the reference says so first: "Most of this read is not in the
+  reference: 803 of its 1,100 bp", whether it runs past the ends of a linear reference (expected
+  when the reference is only an insert or a PCR product), and only then its differences where it
+  does align. On the map, the parts of a read that did not align reach out from either end of it,
+  hatched red, so such a read no longer passes for a neat fit.
+
+### Fixed
+- A read's identity ignored the bases it has extra or lacks, so a read with a 60 bp insertion was
+  reported as "100% identity". Identity now counts every inserted or deleted base against the read
+  ("91.9% identity, 100% where the bases pair up, 60 bp inserted or deleted"). Whether a read maps
+  still rests on the bases that pair up, so a read with a large insertion is still found. Reads
+  aligned before this keep the old figure until **Re-align all**.
+
 ## [0.5.5] - 2026-10-22
 
 ### Added

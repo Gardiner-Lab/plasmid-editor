@@ -29,14 +29,6 @@
             </label>
             <div id="uploadStatus" style="margin-top:.5rem"></div>
         </div>
-
-        <div class="card">
-            <div class="card-header">
-                <div class="card-title">Reads</div>
-                <button class="btn btn-sm btn-secondary" id="btnRealign" title="Re-align every read to the current reference">Re-align all</button>
-            </div>
-            <ul class="item-list" id="readList"></ul>
-        </div>
     </div>
 
     <div>
@@ -47,40 +39,59 @@
             </div>
             <div id="verificationSummary" class="hint">Choose a reference sequence.</div>
         </div>
+    </div>
+</div>
 
-        <div class="card">
-            <div class="card-title" id="coverageTitle" style="margin-bottom:.5rem">Coverage</div>
-            <div class="coverage-bar" id="coverage"></div>
-            <div class="hint" id="coverageText" style="margin-top:.35rem"></div>
-            <div id="readExtentBlock" style="margin-top:.75rem" hidden>
-                <div class="card-title" style="font-size:.85rem;margin-bottom:.35rem">Read extent</div>
-                <div class="coverage-bar" id="readExtent"></div>
-                <div class="hint" id="readExtentText" style="margin-top:.35rem"></div>
+<div class="card">
+    <div class="card-header">
+        <div class="card-title" id="readsTitle">Reads</div>
+        <div class="btn-group">
+            <div class="aln-legend" aria-label="Legend">
+                <span><i class="lg-read"></i>aligned</span>
+                <span><i class="lg-mismatch"></i>mismatch</span>
+                <span><i class="lg-insertion"></i>insertion</span>
+                <span><i class="lg-deletion"></i>deletion</span>
+                <span><i class="lg-lowq"></i>low-quality base</span>
+                <span><i class="lg-overhang"></i>read not in reference</span>
             </div>
+            <button class="btn btn-sm btn-secondary" id="btnRealign" title="Re-align every read to the current reference">Re-align all</button>
         </div>
+    </div>
+    <div id="readMap"><div class="empty">Choose a reference sequence.</div></div>
+</div>
 
-        <div class="card">
-            <div class="card-title" style="margin-bottom:.5rem">Alignment</div>
-            <div id="alignment"><div class="empty">Select a read to see its alignment.</div></div>
+<div class="card" id="readCard" hidden>
+    <div class="card-header">
+        <div class="card-title" id="readTitle">Alignment</div>
+        <div id="readBadges" class="btn-group"></div>
+    </div>
+    <div id="readSummary"></div>
+    <div id="readExtentBlock" class="read-extent" hidden>
+        <div class="read-extent-label">Read extent</div>
+        <div>
+            <div class="coverage-bar" id="readExtent"></div>
+            <div class="hint" id="readExtentText" style="margin-top:.35rem"></div>
         </div>
+    </div>
+    <div id="alignment"></div>
+</div>
 
-        <div class="card" id="traceCard" hidden>
-            <div class="card-header">
-                <div class="card-title">Chromatogram</div>
-                <div class="btn-group">
-                    <button class="btn btn-sm btn-secondary" id="traceZoomOut">−</button>
-                    <button class="btn btn-sm btn-secondary" id="traceZoomIn">+</button>
-                </div>
-            </div>
-            <div class="trace-wrap"><canvas id="traceCanvas" height="170"></canvas></div>
-            <div class="hint" style="margin-top:.35rem">
-                <span style="color:var(--base-a)">A</span>
-                <span style="color:var(--base-c)">C</span>
-                <span style="color:var(--base-g)">G</span>
-                <span style="color:var(--base-t)">T</span>
-                — base calls below the trace; grey bars are Phred quality.
-            </div>
+<div class="card" id="traceCard" hidden>
+    <div class="card-header">
+        <div class="card-title">Chromatogram <span class="hint" id="traceWhere"></span></div>
+        <div class="btn-group">
+            <button class="btn btn-sm btn-secondary" id="traceZoomOut" title="Zoom out">−</button>
+            <button class="btn btn-sm btn-secondary" id="traceZoomIn" title="Zoom in">+</button>
         </div>
+    </div>
+    <div class="trace-wrap" id="traceWrap"><canvas id="traceCanvas" height="190"></canvas></div>
+    <div class="hint" style="margin-top:.35rem">
+        <span style="color:var(--base-a)">A</span>
+        <span style="color:var(--base-c)">C</span>
+        <span style="color:var(--base-g)">G</span>
+        <span style="color:var(--base-t)">T</span>
+        — base calls below the trace, grey bars are Phred quality. Differences from the reference are marked;
+        the one chosen in the alignment is outlined. Shaded ends were trimmed for low quality.
     </div>
 </div>
 {% endblock %}
