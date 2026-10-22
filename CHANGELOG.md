@@ -6,6 +6,8 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-22
+
 ### Changed
 - **Sequencing alignments are easier to read.** Every read is drawn on one map of the plasmid,
   under its features: where it landed, which way it reads, and a mark at each difference (red
