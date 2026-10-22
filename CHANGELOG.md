@@ -6,6 +6,13 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-10-22
+
+### Fixed
+- Opening another read and picking one of its differences before its chromatogram had loaded drew
+  that difference on the previous read's chromatogram until the right one arrived. The previous
+  read's trace is now put away as soon as another read is opened.
+
 ## [0.6.0] - 2026-10-22
 
 ### Changed

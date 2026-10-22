@@ -608,6 +608,12 @@ const Sequencing = {
   async showRead(read, pick = null) {
     const fresh = this.activeRead?.id !== read.id;
     this.activeRead = read;
+    // The last read's trace must not stand in for this one's while it loads:
+    // a difference picked meanwhile would be drawn on the wrong chromatogram.
+    if (fresh) {
+      this.trace = null;
+      document.getElementById('traceCard').hidden = true;
+    }
     this.renderMap();
     const card = document.getElementById('readCard');
     const wasHidden = card.hidden;
