@@ -6,6 +6,19 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- A read's alignment shows its own "Read extent": the read's full length, left to right as it was
+  sequenced, with what was trimmed for low quality, what aligned, and - unlike the reference-coordinate
+  coverage bar - which stretches simply weren't found in the reference anywhere, a sign of a large
+  insertion or a reference that's wrong there.
+
+### Fixed
+- A sequencing read with a large, unexpected insertion only showed the flank either side of it that
+  aligned better, with the other flank and the insertion itself silently dropped. Both flanks are now
+  found and stitched together, with the insertion held in the alignment as read bases the reference
+  does not have, so you can see where it does and does not match. A run of inserted or deleted bases
+  is one difference, with its length, not one listed per base.
+
 ## [0.5.4] - 2026-10-20
 
 ### Added

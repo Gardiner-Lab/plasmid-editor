@@ -9,9 +9,9 @@ from dnakit import align, assembly, features, model, primers, restriction, seqio
 random.seed(1)
 
 
-def rand_dna(n, avoid=('GAATTC', 'GGTCTC', 'GAGACC', 'GGATCC')):
+def rand_dna(n, avoid=('GAATTC', 'GGTCTC', 'GAGACC', 'GGATCC'), rng=random):
     while True:
-        s = ''.join(random.choice('ACGT') for _ in range(n))
+        s = ''.join(rng.choice('ACGT') for _ in range(n))
         if not any(a in s for a in avoid):
             return s
 
@@ -315,6 +315,25 @@ def test_map_read_finds_mismatch_on_reverse_strand():
     assert [d['position'] for d in r['differences']] == [300]
 
 
+def test_map_read_reports_the_fraction_of_the_read_that_aligned():
+    # Its own Random, not the module's shared one: whether 100 bp of random
+    # junk happens to clear the flank thresholds depends on exactly which
+    # bases it is, which would otherwise vary with how much of the shared
+    # sequence other tests had already consumed before this one ran.
+    rng = random.Random(1)
+    ref = rand_dna(800, rng=rng)
+    read = ref[200:600]                                      # the whole read matches, nothing trimmed off
+    r = align.map_read(ref, read)
+    assert r['read_length'] == 400 and r['aligned_fraction'] == 100.0
+
+    with_junk = ref[200:500] + rand_dna(100, rng=rng)         # the last 100 bp of 400 is unrelated junk
+    r = align.map_read(ref, with_junk)
+    assert r['read_length'] == 400 and r['aligned_fraction'] == 75.0
+
+    too_short = align.map_read(ref, rand_dna(10, rng=rng))
+    assert too_short['mapped'] is False and too_short['read_length'] == 10 and too_short['aligned_fraction'] == 0.0
+
+
 def test_map_read_across_origin():
     ref = rand_dna(600)
     read = ref[500:] + ref[:150]
@@ -327,3 +346,105 @@ def test_pairwise_identity():
     a = rand_dna(300)
     res = align.pairwise(a, model.reverse_complement(a[50:250]))
     assert res['reverse_complemented'] and res['identity'] == 100.0
+
+
+def test_map_read_finds_a_large_insertion_between_two_matching_flanks():
+    """
+    A read with an unexpected 300 bp insert in the middle: a single local
+    alignment would only keep the better-scoring flank and silently drop the
+    other and the insert itself. Both flanks should come back, stitched
+    together with the insert held as read bases the reference lacks.
+    """
+    ref = rand_dna(1000)
+    insert = rand_dna(300)
+    read = ref[100:400] + insert + ref[400:700]
+    r = align.map_read(ref, read)
+    assert r['mapped'] and r['strand'] == 1
+    assert (r['ref_start'], r['ref_end']) == (100, 700)
+    assert r['aligned_length'] >= 580          # both 300 bp flanks, allowing a little edge noise
+    # The exact junction base can fall either side of 400 by chance (a base
+    # there can coincidentally extend whichever flank reaches it first); what
+    # matters is that both flanks were found, neither overlapping, close to it.
+    assert len(r['segments']) == 2
+    first, second = r['segments']
+    assert first['ref_start'] == 100 and second['ref_end'] == 700
+    assert first['ref_end'] <= second['ref_start']
+    assert abs(first['ref_end'] - 400) <= 5 and abs(second['ref_start'] - 400) <= 5
+    # The whole insert is one entry, with its length, not one entry per base.
+    ins = [d for d in r['differences'] if d['type'] == 'insertion']
+    assert len(ins) == 1 and ins[0]['length'] >= 280 and len(ins[0]['read']) == ins[0]['length']
+    assert not [d for d in r['differences'] if d['type'] == 'deletion']
+    # Touching segments (nothing of the reference was skipped) merge into one span.
+    assert align.coverage(1000, [r]) == [[100, 700]]
+
+
+def test_map_read_segments_report_their_span_in_the_physical_read():
+    """
+    Each segment's read_start/read_end locates it in the read as uploaded -
+    not the quality-trimmed, and for a reverse-strand read not the
+    reverse-complemented, core used internally for alignment - which is what
+    the UI needs to show which stretch of the physical read did or did not
+    make it into the alignment.
+    """
+    ref = rand_dna(1000)
+    insert = rand_dna(300)
+    read = ref[100:400] + insert + ref[400:700]
+
+    r = align.map_read(ref, read)
+    assert r['strand'] == 1
+    first, second = r['segments']
+    assert first['read_start'] == 0 and abs(first['read_end'] - 300) <= 5
+    assert abs(second['read_start'] - 600) <= 5 and second['read_end'] == 900
+
+    # Reverse-complementing the physical read flips which end holds which
+    # flank: the segment that matches reference 400-700 now comes first.
+    r = align.map_read(ref, model.reverse_complement(read))
+    assert r['strand'] == -1
+    first, second = r['segments']
+    assert first['read_start'] == 0 and abs(first['read_end'] - 300) <= 5
+    assert abs(second['read_start'] - 600) <= 5 and second['read_end'] == 900
+    assert abs(first['ref_start'] - 400) <= 5 and first['ref_end'] == 700
+    assert second['ref_start'] == 100 and abs(second['ref_end'] - 400) <= 5
+
+
+def test_map_read_groups_a_run_of_indel_bases_into_one_difference():
+    """A stretch of inserted or deleted bases is one difference with a length, not one per base."""
+    ref = rand_dna(500)
+    inserted = ref[:200] + 'ACGTACGTAC' + ref[200:]          # a 10 bp insertion
+    r = align.map_read(ref, inserted)
+    # An equally-scoring alignment can place the gap a base or two either
+    # side when the insert happens to share bases with what is next to it;
+    # what matters is one entry, with the insertion's own length.
+    assert len(r['differences']) == 1
+    d = r['differences'][0]
+    assert d['type'] == 'insertion' and abs(d['position'] - 200) <= 3 and d['length'] == 10 and len(d['read']) == 10
+
+    deleted = ref[:200] + ref[210:]                          # a 10 bp deletion
+    r = align.map_read(ref, deleted)
+    assert len(r['differences']) == 1
+    d = r['differences'][0]
+    assert d['type'] == 'deletion' and abs(d['position'] - 200) <= 3 and d['length'] == 10 and len(d['ref']) == 10
+
+    # A lone mismatch next to a run of insertions stays its own entry.
+    mixed = list(ref)
+    mismatch_at = 50
+    mixed[mismatch_at] = 'A' if mixed[mismatch_at] != 'A' else 'C'
+    mixed = ''.join(mixed[:200]) + 'TTTTT' + ''.join(mixed[200:])
+    r = align.map_read(ref, mixed)
+    assert len(r['differences']) == 2
+    kinds = {(d['type'], d['length']) for d in r['differences']}
+    assert kinds == {('mismatch', 1), ('insertion', 5)}
+    positions = {d['type']: d['position'] for d in r['differences']}
+    assert positions['mismatch'] == mismatch_at and abs(positions['insertion'] - 200) <= 3
+
+
+def test_map_read_keeps_today_s_single_flank_when_the_rest_is_junk():
+    """A short, unrelated tail that does not itself align anywhere is left alone."""
+    ref = rand_dna(1000)
+    read = ref[100:500] + rand_dna(15)
+    r = align.map_read(ref, read)
+    assert r['mapped'] and len(r['segments']) == 1
+    # The junk tail is too short to ever pass the flank thresholds, but the
+    # main hit's own boundary can still land a base or two into it by chance.
+    seg = r['segments'][0]
+    assert seg['ref_start'] == 100 and abs(seg['ref_end'] - 500) <= 5

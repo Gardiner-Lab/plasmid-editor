@@ -178,9 +178,12 @@ const Sequencing = {
         el('span', { class: 'item-name' },
           r.clone_number ? el('span', { class: 'badge', text: `clone ${r.clone_number}` }) : null,
           ` ${r.name}`,
-          el('span', { class: 'item-meta' },
-            bad ? ' · not mapped'
-              : ` · ${fmt(a.ref_start + 1)}–${fmt(a.ref_end)} ${a.strand === -1 ? '←' : '→'} ${a.identity}%`),
+          el('span', {
+            class: 'item-meta',
+            title: !bad && a.aligned_fraction !== undefined
+              ? `${a.aligned_fraction}% of the ${fmt(a.read_length)} bp read aligned` : null,
+          }, bad ? ' · not mapped'
+            : ` · ${fmt(a.ref_start + 1)}–${fmt(a.ref_end)} ${a.strand === -1 ? '←' : '→'} ${a.identity}%`),
           r.verdict ? el('span', {
             class: r.verdict === 'sufficient' ? 'verdict-ok' : 'verdict-bad',
             text: r.verdict === 'sufficient' ? ' ✓ sufficient' : ' ✗ not sufficient',
@@ -212,6 +215,7 @@ const Sequencing = {
     if (!this.reference) {
       bar.replaceChildren();
       text.textContent = '';
+      this.renderReadExtent(null);
       return;
     }
     const read = this.activeRead;
@@ -220,19 +224,22 @@ const Sequencing = {
       text.textContent = this.reads.length
         ? 'Select a read to see what it covers.'
         : 'No reads to show coverage for.';
+      this.renderReadExtent(null);
       return;
     }
     const a = read.alignment;
     if (!a?.mapped) {
       bar.replaceChildren();
       text.textContent = `${read.name} did not align, so it covers nothing.`;
+      this.renderReadExtent(null);
       return;
     }
     const n = this.reference.sequence.length;
-    // A read that runs through the origin is drawn as its two pieces.
-    const spans = a.ref_end > a.ref_start
-      ? [[a.ref_start, a.ref_end]]
-      : [[a.ref_start, n], [0, a.ref_end]];
+    // The read's own segments are what it actually covers (more than one when
+    // a deletion splits it, or it runs through the origin); older stored
+    // alignments have none, so fall back to its overall span.
+    const spans = (a.segments || [{ ref_start: a.ref_start, ref_end: a.ref_end }])
+      .flatMap(({ ref_start, ref_end }) => (ref_end > ref_start ? [[ref_start, ref_end]] : [[ref_start, n], [0, ref_end]]));
     bar.replaceChildren(...spans.map(([from, to]) => el('div', {
       class: 'coverage-seg',
       style: `left:${(from / n) * 100}%;width:${((to - from) / n) * 100}%`,
@@ -246,6 +253,53 @@ const Sequencing = {
       + `${a.strand === -1 ? 'reverse' : 'forward'} strand — ${fmt(covered)} bp, `
       + `${((covered / n) * 100).toFixed(1)}% of the plasmid`
       + (a.ref_end > a.ref_start ? '' : ', across the origin');
+    this.renderReadExtent(a);
+  },
+
+  /**
+   * The read itself, full length, left to right as it was sequenced: which
+   * stretches made it into the alignment (green), which were cut for low
+   * quality (hatched), and - the thing a merged-into-reference coverage bar
+   * can't show - which stretches the reference simply doesn't have (red): a
+   * large insertion, contamination, or a reference that's wrong there.
+   */
+  renderReadExtent(a) {
+    const block = document.getElementById('readExtentBlock');
+    const bar = document.getElementById('readExtent');
+    const text = document.getElementById('readExtentText');
+    // Segments carry their own read_start/read_end only once a read has been
+    // aligned since this was added; an older stored alignment has none, and
+    // there is nothing useful to draw until it is re-aligned.
+    const segs = a?.segments?.filter((s) => s.read_start !== undefined);
+    if (!a || !segs?.length) {
+      block.hidden = true;
+      return;
+    }
+    block.hidden = false;
+    const total = a.read_length;
+    const [t0, t1] = a.trim || [0, total];
+    const blocks = [];
+    if (t0 > 0) blocks.push([0, t0, 'read-trimmed', `${fmt(t0)} bp trimmed for low quality`]);
+    let cursor = t0;
+    for (const s of segs) {
+      if (s.read_start > cursor) {
+        blocks.push([cursor, s.read_start, 'read-unaligned', `${fmt(s.read_start - cursor)} bp not found in the reference`]);
+      }
+      blocks.push([s.read_start, s.read_end, '', `${fmt(s.read_end - s.read_start)} bp aligned to ${fmt(s.ref_start + 1)}–${fmt(s.ref_end)}`]);
+      cursor = Math.max(cursor, s.read_end);
+    }
+    if (cursor < t1) blocks.push([cursor, t1, 'read-unaligned', `${fmt(t1 - cursor)} bp not found in the reference`]);
+    if (t1 < total) blocks.push([t1, total, 'read-trimmed', `${fmt(total - t1)} bp trimmed for low quality`]);
+    bar.replaceChildren(...blocks.map(([from, to, cls, title]) => el('div', {
+      class: `coverage-seg ${cls}`,
+      style: `left:${(from / total) * 100}%;width:${((to - from) / total) * 100}%`,
+      title,
+    })));
+    const unaligned = blocks.filter(([, , cls]) => cls === 'read-unaligned').reduce((sum, [from, to]) => sum + (to - from), 0);
+    text.textContent = unaligned
+      ? `${fmt(unaligned)} bp of this ${fmt(total)} bp read (${((unaligned / total) * 100).toFixed(1)}%) `
+        + `did not match the reference anywhere.`
+      : `The whole ${fmt(total)} bp read matched the reference` + (t0 > 0 || t1 < total ? ', aside from the trimmed ends.' : '.');
   },
 
   /** Say so when the last sufficient verdict went and took the confirmation with it. */
@@ -288,6 +342,7 @@ const Sequencing = {
     } else {
       nodes.push(el('div', { class: `alert ${a.differences.length ? 'alert-warning' : 'alert-success'}` },
         el('div', {}, el('b', {}, `${a.identity}% identity over ${fmt(a.aligned_length)} bp`),
+          a.aligned_fraction !== undefined ? ` (${a.aligned_fraction}% of the ${fmt(a.read_length)} bp read)` : '',
           ` — reference ${fmt(a.ref_start + 1)}–${fmt(a.ref_end)}, `,
           a.strand === -1 ? 'reverse strand' : 'forward strand'),
         a.differences.length
@@ -533,31 +588,35 @@ const Sequencing = {
   },
 
   /**
-   * The column of the alignment each of its differences is in, in the order the
-   * server lists them (by reference position; an insertion of several bases is
-   * listed once per base, at the same position).
+   * The columns of the alignment each of its differences covers (a run of
+   * insertion or deletion is one difference but several columns, one per
+   * base), in the order the server lists them.
    */
   differenceColumns(a) {
     const n = this.reference.sequence.length;
-    const found = new Map();          // "type:position" -> columns, in order
+    const found = new Map();          // "type:position" -> runs of columns, in order
     let pos = a.ref_start;
-    for (let c = 0; c < a.top.length; c++) {
+    let c = 0;
+    while (c < a.top.length) {
       const t = a.top[c];
       const b = a.bottom[c];
-      if (t !== b) {
-        const type = t === '-' ? 'insertion' : b === '-' ? 'deletion' : 'mismatch';
-        const key = `${type}:${pos % n}`;
-        if (!found.has(key)) found.set(key, []);
-        found.get(key).push(c);
-      }
-      if (t !== '-') pos += 1;
+      if (t === b) { if (t !== '-') pos += 1; c += 1; continue; }
+      const type = t === '-' ? 'insertion' : b === '-' ? 'deletion' : 'mismatch';
+      const key = `${type}:${pos % n}`;
+      if (!found.has(key)) found.set(key, []);
+      if (type === 'mismatch') { found.get(key).push([c]); pos += 1; c += 1; continue; }
+      const runStart = c;
+      if (type === 'insertion') { while (c < a.top.length && a.top[c] === '-') c += 1; } else { while (c < a.top.length && a.bottom[c] === '-') c += 1; }
+      found.get(key).push(Array.from({ length: c - runStart }, (_, j) => runStart + j));
+      if (type === 'deletion') pos += c - runStart;
     }
     return a.differences.map((d) => found.get(`${d.type}:${d.position}`)?.shift() ?? null);
   },
 
   /** Each difference as a button that goes to it in the alignment. */
   differenceList(a, go) {
-    const label = (d) => `${d.type === 'mismatch' ? `${d.ref}→${d.read}` : d.type} @ ${fmt(d.position + 1)}`;
+    const label = (d) => `${d.type === 'mismatch' ? `${d.ref}→${d.read}`
+      : d.length > 1 ? `${d.type} of ${fmt(d.length)} bp` : d.type} @ ${fmt(d.position + 1)}`;
     const shown = a.differences.slice(0, 60);
     return el('div', { class: 'diff-list' },
       ...shown.map((d, k) => el('button', {
@@ -621,7 +680,7 @@ const Sequencing = {
     for (const c of ordered) {
       const p = c.position;
       const [start, end, text] = c.type === 'mismatch' ? [p, p + 1, c.read]
-        : c.type === 'deletion' ? [p, p + 1, ''] : [p, p, c.read];   // an insertion goes before p
+        : c.type === 'deletion' ? [p, p + (c.length || 1), ''] : [p, p, c.read];   // an insertion goes before p
       d = { ...d, ...applyEdit(d, start, end, text) };
     }
     return d;
@@ -633,8 +692,8 @@ const Sequencing = {
     const chosen = indexes.map((k) => ({ ...a.differences[k], k }));
     if (!chosen.length) return;
     const describe = (d) => (d.type === 'mismatch' ? `${d.ref} → ${d.read} at ${fmt(d.position + 1)}`
-      : d.type === 'deletion' ? `remove ${d.ref} at ${fmt(d.position + 1)}`
-      : `insert ${d.read} before ${fmt(d.position + 1)}`);
+      : d.type === 'deletion' ? `remove ${d.length > 1 ? `${fmt(d.length)} bp` : d.ref} at ${fmt(d.position + 1)}`
+      : `insert ${d.length > 1 ? `${fmt(d.length)} bp` : d.read} before ${fmt(d.position + 1)}`);
     const seq = this.reference;
     modal({
       title: chosen.length === 1 ? 'Correct the plasmid to this read' : `Correct ${fmt(chosen.length)} differences to this read`,
@@ -694,8 +753,8 @@ const Sequencing = {
     if (mocloNote) toast(`MoClo was not updated: ${mocloNote} Open the plasmid in the editor and save it to resolve this.`, 'error', 12000);
   },
 
-  /** One row of bases, with the bases that differ marked (and the one shown outlined). */
-  alignedRow(text, offset, diffAt, focusColumn) {
+  /** One row of bases, with the bases that differ marked (and the ones shown outlined). */
+  alignedRow(text, offset, diffAt, focusColumns) {
     const row = el('div', { class: 'seqmap-row' });
     let plain = '';
     for (let j = 0; j < text.length; j++) {
@@ -703,7 +762,7 @@ const Sequencing = {
       if (!diff) { plain += text[j]; continue; }
       if (plain) { row.append(plain); plain = ''; }
       row.append(el('span', {
-        class: `aln-diff aln-${diff.type}${offset + j === focusColumn ? ' aln-focus' : ''}`,
+        class: `aln-diff aln-${diff.type}${focusColumns?.has(offset + j) ? ' aln-focus' : ''}`,
         'data-diff': String(diff.index), title: diff.label,
       }, text[j]));
     }
@@ -722,14 +781,17 @@ const Sequencing = {
     const wrap = el('div', { class: 'seqmap', style: 'max-height:24rem;overflow:auto' });
     let width = 60;          // until the box is on the page and can be measured
     const columns = this.differenceColumns(a);
-    const diffAt = new Map();         // column -> the (first) difference there
-    columns.forEach((c, k) => {
-      if (c === null || diffAt.has(c)) return;
+    const diffAt = new Map();         // column -> the difference covering it
+    columns.forEach((cols, k) => {
+      if (!cols) return;
       const d = a.differences[k];
-      diffAt.set(c, { index: k, type: d.type,
-                      label: `${d.type === 'mismatch' ? `${d.ref}→${d.read}` : d.type} at ${fmt(d.position + 1)}` });
+      const label = `${d.type === 'mismatch' ? `${d.ref}→${d.read}`
+        : d.length > 1 ? `${d.type} of ${fmt(d.length)} bp` : d.type} at ${fmt(d.position + 1)}`;
+      for (const c of cols) {
+        if (!diffAt.has(c)) diffAt.set(c, { index: k, type: d.type, label });
+      }
     });
-    let focus = null;                 // the column of the difference shown
+    let focus = null;                 // the columns of the difference shown
     const draw = () => {
       const blocks = [];
       for (let i = 0; i < a.top.length; i += width) {
@@ -756,8 +818,8 @@ const Sequencing = {
     });
     /** Outline the k-th difference and scroll it into the middle of the box. */
     wrap.goTo = (k) => {
-      focus = columns[k];
-      if (focus === null || focus === undefined) return;
+      focus = columns[k] ? new Set(columns[k]) : null;
+      if (!focus) return;
       draw();
       const target = wrap.querySelector('.aln-focus');
       if (!target) return;

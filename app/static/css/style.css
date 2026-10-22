@@ -371,6 +371,8 @@ tr.clickable:hover td { background: var(--bg-color); }
 .trace-wrap { overflow-x: auto; background: var(--card-bg); border: 1px solid var(--border-color); border-radius: .5rem; }
 .coverage-bar { height: .5rem; background: var(--border-color); border-radius: .25rem; position: relative; overflow: hidden; }
 .coverage-seg { position: absolute; top: 0; bottom: 0; background: var(--success-color); }
+.coverage-seg.read-unaligned { background: var(--error-color); }
+.coverage-seg.read-trimmed { background: repeating-linear-gradient(45deg, #9ca3af, #9ca3af 3px, transparent 3px, transparent 6px); }
 
 /* Modal ------------------------------------------------------------------ */
 .modal-backdrop {
