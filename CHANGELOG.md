@@ -6,6 +6,8 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-23
+
 ### Added
 - **A virtual digest goes into the Lab Notebook.** In the suite, 📓 Add to notebook, under the virtual
   gel, puts the gel and its fragments into a day's page of your Lab Notebook - today's, or another
