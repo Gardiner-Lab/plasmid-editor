@@ -35,7 +35,8 @@ re-implemented independently; see [Attribution](#attribution).
 ### Analysis
 - Restriction site finding over REBASE enzyme sets (default, Golden Gate Type IIS,
   commercially available, or all ~1000 enzymes), including sites that span the origin
-- Digests with sticky-end tracking, and a **virtual gel** against standard ladders
+- Digests with sticky-end tracking, and a **virtual gel** against standard ladders; in the suite, the
+  gel and its fragments go into a day's page of the Lab Notebook (📓 Add to notebook)
 - **Diagnostic digest finder**: enzyme combinations that give readable, distinguishable band patterns
 - **Silent restriction sites**: introduce a site into a reading frame without changing the protein
 - ORF finder on both strands, translation, reverse translation, protein mass

@@ -198,8 +198,15 @@ const Tools = {
             ladder: document.getElementById('ladder').value,
           });
           const others = lanes.filter((l) => l.doc !== doc).length;
+          const ladder = document.getElementById('ladder').value;
           gelBox.replaceChildren(
             this.gelView(res),
+            NOTEBOOK ? el('div', { class: 'gel-notebook' },
+              el('button', {
+                class: 'btn btn-sm btn-secondary', type: 'button',
+                title: "Put this gel and its fragments into a day's page of your Lab Notebook",
+                onclick: () => this.toNotebook(res, [...lanes], ladder),
+              }, '📓 Add to notebook')) : null,
             el('div', { class: 'gel-kept' },
               el('span', { class: 'hint' }, lanes.length > 1
                 ? `Lanes stay on the gel until their tab is closed${others ? ` (${others} from other open tabs)` : ''}: `
@@ -266,6 +273,162 @@ const Tools = {
       el('div', { class: 'gel-lanes' },
         lane(gel.ladder.label, gel.ladder.bands, true),
         ...gel.lanes.map((l) => lane(l.label, l.bands, false))));
+  },
+
+  /**
+   * The gel as a picture, drawn as gelView draws it, and where each well is
+   * on it (as fractions of its width and height): the ladder's first, then
+   * each lane's. Resolves to { blob, wells }.
+   */
+  gelPicture(gel) {
+    const all = [...gel.ladder.bands, ...gel.lanes.flatMap((l) => l.bands)].map((b) => b.size);
+    const max = Math.max(...all, 1000);
+    const min = Math.max(50, Math.min(...all, 500));
+    const scale = 2;                          // drawn at twice the size, to stay sharp when zoomed
+    const laneW = 72, gap = 20, left = 64, top = 30, gelH = 320, bottom = 52;
+    const lanes = [{ label: gel.ladder.label, bands: gel.ladder.bands, ladder: true },
+      ...gel.lanes.map((l) => ({ label: l.label, bands: l.bands, ladder: false }))];
+    const W = left + lanes.length * (laneW + gap) + 16;
+    const H = top + gelH + bottom;
+    const canvas = document.createElement('canvas');
+    canvas.width = W * scale;
+    canvas.height = H * scale;
+    const ctx = canvas.getContext('2d');
+    ctx.scale(scale, scale);
+    ctx.fillStyle = '#111827';
+    ctx.fillRect(0, 0, W, H);
+    const y = (size) => {
+      const t = (Math.log10(max) - Math.log10(Math.max(size, min))) / (Math.log10(max) - Math.log10(min) || 1);
+      return top + (0.06 + t * 0.86) * gelH;
+    };
+    const wells = [];
+    lanes.forEach((lane, i) => {
+      const x0 = left + i * (laneW + gap);
+      // The well the sample went into, and the lane it ran down.
+      ctx.fillStyle = '#1f2937';
+      ctx.fillRect(x0, top, laneW, gelH);
+      ctx.strokeStyle = '#4b5563';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x0 + 6, top + 4, laneW - 12, 7);
+      wells.push({ x: (x0 + laneW / 2) / W, y: (top + 8) / H });
+      for (const b of lane.bands) {
+        const by = y(b.size);
+        ctx.shadowColor = 'rgba(255,255,255,.55)';
+        ctx.shadowBlur = 5;
+        ctx.fillStyle = '#e5e7eb';
+        ctx.fillRect(x0 + 5, by - (b.count > 1 ? 2.5 : 1.5), laneW - 10, b.count > 1 ? 5 : 3);
+        ctx.shadowBlur = 0;
+        if (lane.ladder) {
+          ctx.fillStyle = '#9ca3af';
+          ctx.font = '10px system-ui, sans-serif';
+          ctx.textAlign = 'right';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(fmt(b.size), x0 - 6, by);
+        }
+      }
+      ctx.fillStyle = '#d1d5db';
+      ctx.font = '10px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      String(lane.label).split('\n').slice(0, 3).forEach((line, k) => {
+        const text = line.length > 16 ? `${line.slice(0, 15)}…` : line;
+        ctx.fillText(text, x0 + laneW / 2, top + gelH + 6 + k * 13);
+      });
+    });
+    return new Promise((resolve) => canvas.toBlob((blob) => resolve({ blob, wells }), 'image/png'));
+  },
+
+  /**
+   * Put a virtual digest into a day's page of the Lab Notebook: the gel as a
+   * picture with its wells numbered and named (the ladder first), and a table
+   * of every lane's fragments, with a column to tick off the bands seen on the
+   * real gel. Asks which day first; today, unless another is chosen.
+   */
+  toNotebook(gel, lanes, ladder) {
+    const pad = (n) => String(n).padStart(2, '0');
+    const now = new Date();
+    const today = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+    const fragmentCount = gel.lanes.reduce((sum, l) => sum + l.bands.reduce((s, b) => s + (b.count || 1), 0), 0);
+    modal({
+      title: 'Add to the Lab Notebook',
+      build: (body) => body.append(
+        el('p', {}, `The gel (${lanes.length} lane${lanes.length > 1 ? 's' : ''} and the ${ladder}) and its `,
+          `${fmt(fragmentCount)} fragment${fragmentCount === 1 ? '' : 's'} go at the end of the day's page, `,
+          'with the wells numbered and named, and a column to tick off the bands seen on the real gel.'),
+        el('div', { class: 'field' },
+          el('label', { for: 'nbDay' }, 'Day'),
+          el('input', { type: 'date', id: 'nbDay', value: today, style: 'max-width:12rem' }),
+          el('span', { class: 'hint' }, 'Started in your notebook if it is not there yet.'))),
+      buttons: [
+        { label: 'Cancel', kind: 'secondary' },
+        {
+          label: 'Add to notebook',
+          onClick: async ({ body }) => {
+            const day = body.querySelector('#nbDay').value || today;
+            const fragments = await Promise.all(lanes.map((l) =>
+              API.post('/api/tools/digest', { document: this.payloadOf(l.doc), enzymes: l.enzymes })));
+            const { blob, wells } = await this.gelPicture(gel);
+            const section = this.digestSection(gel, lanes, ladder, fragments.map((f) => f.fragments), wells);
+            const form = new FormData();
+            form.append('section', JSON.stringify(section));
+            form.append('date', day);
+            form.append('picture', blob, 'virtual-gel.png');
+            const res = await fetch(`${NOTEBOOK}/api/days/import`, { method: 'POST', credentials: 'same-origin', body: form });
+            let data = {};
+            try { data = await res.json(); } catch { /* not JSON */ }
+            if (!res.ok) throw new Error(data.error || `Lab Notebook: ${res.status}`);
+            const where = `${NOTEBOOK}/#note=${encodeURIComponent(data.note.id)}`;
+            toast(`Added to ${data.note.title} in your Lab Notebook`, 'success', 6000);
+            for (const box of document.querySelectorAll('.gel-notebook')) {
+              box.querySelector('.gel-notebook-done')?.remove();
+              box.append(el('span', { class: 'gel-notebook-done hint' }, ' Added to ',
+                el('a', { href: where, target: '_blank', rel: 'noopener' }, `${data.note.title} ↗`)));
+            }
+            return true;
+          },
+        },
+      ],
+    });
+  },
+
+  /** A virtual digest as a notebook section: what was cut with what, the gel, and the fragments. */
+  digestSection(gel, lanes, ladder, fragmentsPerLane, wells) {
+    const esc = (s) => String(s).replace(/[&<>"]/g, (ch) => `&#${ch.charCodeAt(0)};`);
+    const name = (d) => d.name || 'Untitled';
+    // A saved plasmid is linked, so the day shows on it in the notebook; an unsaved one is named.
+    const plasmid = (d) => (d.id ? `<a data-plasmid="${esc(d.id)}">${esc(name(d))}</a>` : `<b>${esc(name(d))}</b>`);
+    const cuts = lanes.map((l) => `${plasmid(l.doc)} with ${esc(l.enzymes.join(' + '))}`);
+    const expected = (bands) => bands.map((b) => `${fmt(b.size)}${b.count > 1 ? ` ×${b.count}` : ''}`).join(' + ');
+    const end = (e) => (e ? `${e.enzyme} ${e.overhang || 'blunt'}` : '—');
+    const rows = [];
+    lanes.forEach((l, i) => {
+      // Largest first, as the bands run down the gel.
+      for (const f of [...fragmentsPerLane[i]].sort((a, b) => b.length - a.length)) {
+        rows.push({ cells: [String(i + 2), name(l.doc), l.enzymes.join('+'), String(f.length),
+          String(f.start + 1), String(f.end), end(f.left), end(f.right), null] });
+      }
+    });
+    return {
+      type: 'section',
+      title: lanes.length === 1 ? `Virtual digest: ${name(lanes[0].doc)} (${lanes[0].enzymes.join('+')})`
+        : `Virtual digest: ${lanes.length} lanes`,
+      source: { kind: 'virtual-digest', id: lanes.length === 1 && lanes[0].doc.id ? lanes[0].doc.id : '',
+                name: lanes.map((l) => name(l.doc)).filter((v, i, all) => all.indexOf(v) === i).join(', ') },
+      blocks: [
+        { type: 'text', html: `<p>Virtual digest from the Plasmid Editor: ${cuts.join('; ')}, beside the ${esc(ladder)}.</p>` },
+        { type: 'gel', title: 'Virtual gel', attachment: 'picture', order: 'rows',
+          lanes: [
+            { ...wells[0], label: `Ladder: ${ladder}`, note: `${expected(gel.ladder.bands)} bp` },
+            ...gel.lanes.map((l, i) => ({ ...wells[i + 1], label: `${name(lanes[i].doc)} · ${lanes[i].enzymes.join('+')}`,
+              note: `Expected: ${expected(l.bands)} bp` })),
+          ] },
+        { type: 'table', title: 'Fragments', scale: null,
+          columns: [{ name: 'Lane', kind: 'text' }, { name: 'Plasmid', kind: 'text' }, { name: 'Enzymes', kind: 'text' },
+            { name: 'Length', kind: 'number', unit: 'bp' }, { name: 'Start', kind: 'number' }, { name: 'End', kind: 'number' },
+            { name: "5' end", kind: 'text' }, { name: "3' end", kind: 'text' }, { name: 'Seen on the gel', kind: 'check' }],
+          rows },
+      ],
+    };
   },
 
   /* --- silent sites ----------------------------------------------------- */

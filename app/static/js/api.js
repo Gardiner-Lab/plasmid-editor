@@ -13,6 +13,9 @@ const url = (path) => (path.startsWith('/') ? BASE + path : path);
  * suite (STOCKS_URL); otherwise the features that use it are hidden.
  */
 const STOCKS = (document.body?.dataset.stocks || '').replace(/\/$/, '');
+// The Lab Notebook, beside the editor in the suite (NOTEBOOK_URL): a virtual digest can go into a
+// day's page there. Unset, that button is hidden.
+const NOTEBOOK = (document.body?.dataset.notebook || '').replace(/\/$/, '');
 const Stocks = {
   enabled: () => !!STOCKS,
   async call(method, path, body) {

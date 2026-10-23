@@ -7,7 +7,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v={{ app_version }}">
     {% block extra_css %}{% endblock %}
 </head>
-<body data-base="{{ request.script_root }}" data-stocks="{{ stocks_url }}" data-username="{{ session.get('username', '') }}" data-is-admin="{{ 'true' if session.get('is_admin') else 'false' }}">
+<body data-base="{{ request.script_root }}" data-stocks="{{ stocks_url }}" data-notebook="{{ notebook_url }}" data-username="{{ session.get('username', '') }}" data-is-admin="{{ 'true' if session.get('is_admin') else 'false' }}">
 <nav class="navbar">
     <div class="container container-wide">
         <div class="navbar-brand">
