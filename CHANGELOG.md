@@ -6,6 +6,8 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-10-23
+
 ### Added
 - **More of what the editor makes goes into the Lab Notebook.** 📓 Add to notebook - asking which
   day, today unless another is chosen - is on:
