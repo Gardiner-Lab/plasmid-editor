@@ -140,6 +140,21 @@ CREATE TABLE IF NOT EXISTS enzyme_lists (
 
 CREATE INDEX IF NOT EXISTS idx_enzyme_lists_owner ON enzyme_lists(owner_id);
 
+-- DNA ladders people make for the virtual gel, used by everyone in their
+-- maker's chair group (app/models/ladder.py). bands: JSON [{size, strong}].
+CREATE TABLE IF NOT EXISTS ladders (
+    id TEXT PRIMARY KEY,
+    owner_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    bands TEXT NOT NULL,
+    description TEXT,
+    created_by TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_ladders_owner ON ladders(owner_id);
+
 -- Every saved version of a sequence's content (bases, topology, name,
 -- description, features, translations), who saved it and how, so a change can
 -- be traced and rolled back. Numbered from 1 per sequence; sequences.revision

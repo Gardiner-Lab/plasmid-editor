@@ -499,6 +499,18 @@ tr.clickable:hover td { background: var(--bg-color); }
 .gel-kept-lane { display: inline-flex; align-items: center; gap: .2rem; padding: .1rem .45rem; border-radius: .8rem;
                  background: var(--card-bg); border: 1px solid var(--border-color); }
 .gel-band { position: absolute; left: .2rem; right: .2rem; height: 3px; background: #e5e7eb; border-radius: 2px; box-shadow: 0 0 4px rgba(255,255,255,.5); }
+.gel-band.strong { height: 5px; background: #ffffff; box-shadow: 0 0 6px rgba(255,255,255,.75); }
+/* Ladders: the choice in the digest dialog, and the window to make and change them. */
+.ladder-choice { display: flex; gap: .4rem; align-items: center; }
+.ladder-choice select { flex: 1 1 auto; }
+.ladder-form { display: grid; grid-template-columns: minmax(0, 1fr) 14rem; gap: 1rem; margin-top: 1rem;
+               padding-top: .75rem; border-top: 1px solid var(--border-color); }
+.ladder-form-title { margin: 0 0 .5rem; font-size: .95rem; }
+.ladder-form textarea { width: 100%; }
+.ladder-preview .gel-lanes { min-height: 16rem; padding-bottom: 2.4rem; }
+.ladder-preview .gel-lane { height: 16rem; }
+.ladder-bands { font-size: .75rem; max-width: 26rem; white-space: normal; word-break: break-word; }
+@media (max-width: 700px) { .ladder-form { grid-template-columns: 1fr; } }
 .gel-band-label { position: absolute; right: calc(100% + .3rem); top: -.55rem; font-size: .65rem; color: #9ca3af; white-space: nowrap; }
 
 /* Chromatogram ----------------------------------------------------------- */

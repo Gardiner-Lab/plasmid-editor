@@ -169,6 +169,12 @@ const Tools = {
       title: 'Digest and virtual gel',
       wide: true,
       build: (body) => {
+        // The ladders this person may use: the standard ones, and their chair group's.
+        const ladderSelect = el('select', { id: 'ladder', onchange: async () => {
+          Ladders.remember(ladderSelect.value);
+          if (this.openLanes().length) await drawGel();
+        } }, el('option', { value: Ladders.remembered() || 'standard:1 kb ladder', text: '…' }));
+        Ladders.fill(ladderSelect).catch((err) => toast(err.message, 'error'));
         body.append(
           el('p', { class: 'hint' },
             cutters.length
@@ -180,9 +186,14 @@ const Tools = {
               cutters.map((c) => el('option', { value: c, text: c })))),
           el('div', { class: 'field' },
             el('label', { for: 'ladder' }, 'Ladder'),
-            el('select', { id: 'ladder' },
-              ['1 kb ladder', '1 kb Plus ladder', '100 bp ladder', 'Lambda HindIII'].map((l) =>
-                el('option', { value: l, text: l })))),
+            el('div', { class: 'ladder-choice' },
+              ladderSelect,
+              el('button', { class: 'btn btn-sm btn-secondary', type: 'button', title: 'Make a ladder for your chair group, or change one you made',
+                onclick: () => Ladders.manage(async (made) => {
+                  if (made) ladderSelect.value = made.id;
+                  await Ladders.fill(ladderSelect);
+                  if (this.openLanes().length) await drawGel();
+                }) }, 'Ladders…'))),
           el('div', { class: 'btn-group' },
             el('button', { class: 'btn btn-sm', onclick: () => run() }, 'Run digest')),
           el('div', { id: 'digestOut', style: 'margin-top:.75rem' }));
@@ -195,10 +206,10 @@ const Tools = {
           const res = await API.post('/api/tools/gel', {
             lanes: lanes.map((l) => ({ document: this.payloadOf(l.doc), enzymes: l.enzymes,
               label: `${l.doc.name || 'Untitled'}\n${l.enzymes.join('+')}` })),
-            ladder: document.getElementById('ladder').value,
+            ladder_id: document.getElementById('ladder').value,
           });
           const others = lanes.filter((l) => l.doc !== doc).length;
-          const ladder = document.getElementById('ladder').value;
+          const ladder = res.ladder.label;
           gelBox.replaceChildren(
             this.gelView(res),
             NOTEBOOK ? el('div', { class: 'gel-notebook' },
@@ -265,9 +276,9 @@ const Tools = {
     const lane = (label, bands, isLadder) => el('div', { class: 'gel-lane' },
       el('div', { class: 'gel-lane-label', text: label }),
       ...bands.map((b) => el('div', {
-        class: 'gel-band',
+        class: `gel-band${b.strong ? ' strong' : ''}`,
         style: `top:${y(b.size)}%;${b.count > 1 ? 'height:5px;' : ''}`,
-        title: `${fmt(b.size)} bp${b.count > 1 ? ` ×${b.count}` : ''}`,
+        title: `${fmt(b.size)} bp${b.count > 1 ? ` ×${b.count}` : ''}${b.strong ? ', reference band' : ''}`,
       }, isLadder ? el('span', { class: 'gel-band-label', text: fmt(b.size) }) : null)));
     return el('div', { class: 'gel' },
       el('div', { class: 'gel-lanes' },
@@ -315,14 +326,16 @@ const Tools = {
         const by = y(b.size);
         ctx.shadowColor = 'rgba(255,255,255,.55)';
         ctx.shadowBlur = 5;
-        ctx.fillStyle = '#e5e7eb';
-        ctx.fillRect(x0 + 5, by - (b.count > 1 ? 2.5 : 1.5), laneW - 10, b.count > 1 ? 5 : 3);
+        ctx.fillStyle = b.strong ? '#ffffff' : '#e5e7eb';
+        const thick = b.count > 1 || b.strong ? 5 : 3;
+        ctx.fillRect(x0 + 5, by - thick / 2, laneW - 10, thick);
         ctx.shadowBlur = 0;
         if (lane.ladder) {
           ctx.fillStyle = '#9ca3af';
           ctx.font = '10px system-ui, sans-serif';
           ctx.textAlign = 'right';
           ctx.textBaseline = 'middle';
+          ctx.font = b.strong ? 'bold 10px system-ui, sans-serif' : '10px system-ui, sans-serif';
           ctx.fillText(fmt(b.size), x0 - 6, by);
         }
       }
@@ -345,50 +358,47 @@ const Tools = {
    * real gel. Asks which day first; today, unless another is chosen.
    */
   toNotebook(gel, lanes, ladder) {
-    const pad = (n) => String(n).padStart(2, '0');
-    const now = new Date();
-    const today = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
     const fragmentCount = gel.lanes.reduce((sum, l) => sum + l.bands.reduce((s, b) => s + (b.count || 1), 0), 0);
-    modal({
-      title: 'Add to the Lab Notebook',
-      build: (body) => body.append(
-        el('p', {}, `The gel (${lanes.length} lane${lanes.length > 1 ? 's' : ''} and the ${ladder}) and its `,
-          `${fmt(fragmentCount)} fragment${fragmentCount === 1 ? '' : 's'} go at the end of the day's page, `,
-          'with the wells numbered and named, and a column to tick off the bands seen on the real gel.'),
-        el('div', { class: 'field' },
-          el('label', { for: 'nbDay' }, 'Day'),
-          el('input', { type: 'date', id: 'nbDay', value: today, style: 'max-width:12rem' }),
-          el('span', { class: 'hint' }, 'Started in your notebook if it is not there yet.'))),
-      buttons: [
-        { label: 'Cancel', kind: 'secondary' },
-        {
-          label: 'Add to notebook',
-          onClick: async ({ body }) => {
-            const day = body.querySelector('#nbDay').value || today;
-            const fragments = await Promise.all(lanes.map((l) =>
-              API.post('/api/tools/digest', { document: this.payloadOf(l.doc), enzymes: l.enzymes })));
-            const { blob, wells } = await this.gelPicture(gel);
-            const section = this.digestSection(gel, lanes, ladder, fragments.map((f) => f.fragments), wells);
-            const form = new FormData();
-            form.append('section', JSON.stringify(section));
-            form.append('date', day);
-            form.append('picture', blob, 'virtual-gel.png');
-            const res = await fetch(`${NOTEBOOK}/api/days/import`, { method: 'POST', credentials: 'same-origin', body: form });
-            let data = {};
-            try { data = await res.json(); } catch { /* not JSON */ }
-            if (!res.ok) throw new Error(data.error || `Lab Notebook: ${res.status}`);
-            const where = `${NOTEBOOK}/#note=${encodeURIComponent(data.note.id)}`;
-            toast(`Added to ${data.note.title} in your Lab Notebook`, 'success', 6000);
-            for (const box of document.querySelectorAll('.gel-notebook')) {
-              box.querySelector('.gel-notebook-done')?.remove();
-              box.append(el('span', { class: 'gel-notebook-done hint' }, ' Added to ',
-                el('a', { href: where, target: '_blank', rel: 'noopener' }, `${data.note.title} ↗`)));
-            }
-            return true;
-          },
-        },
-      ],
+    Notebook.add(`The gel (${lanes.length} lane${lanes.length > 1 ? 's' : ''} and the ${ladder}) and its `
+      + `${fmt(fragmentCount)} fragment${fragmentCount === 1 ? '' : 's'}, with the wells numbered and named, `
+      + 'and a column to tick off the bands seen on the real gel.', async () => {
+      const fragments = await Promise.all(lanes.map((l) =>
+        API.post('/api/tools/digest', { document: this.payloadOf(l.doc), enzymes: l.enzymes })));
+      const { blob, wells } = await this.gelPicture(gel);
+      return { section: this.digestSection(gel, lanes, ladder, fragments.map((f) => f.fragments), wells), pictures: [blob] };
+    }, (note) => {
+      for (const box of document.querySelectorAll('.gel-notebook')) {
+        box.querySelector('.gel-notebook-done')?.remove();
+        box.append(el('span', { class: 'gel-notebook-done hint' }, ' Added to ',
+          el('a', { href: Notebook.link(note), target: '_blank', rel: 'noopener' }, `${note.title} ↗`)));
+      }
     });
+  },
+
+  /** A simulated PCR as a notebook section: the template's map with the products on it, the primers, the products. */
+  async pcrSection(doc, res) {
+    const forward = document.getElementById('pcrF').value.trim().toUpperCase();
+    const reverse = document.getElementById('pcrR').value.trim().toUpperCase();
+    const marked = { ...doc, features: [...(doc.features || []), ...res.products.map((p, i) => ({
+      name: `PCR product${res.products.length > 1 ? ` ${i + 1}` : ''} ${fmt(p.length)} bp`,
+      type: 'misc_feature', start: p.template_start, end: p.template_end, strand: 1, color: '#f59e0b' }))] };
+    return {
+      section: {
+        type: 'section', title: `PCR: ${doc.name || 'Untitled'} → ${res.products.map((p) => `${fmt(p.length)} bp`).join(', ')}`,
+        source: { kind: 'pcr', id: doc.id || '', name: doc.name || '' },
+        blocks: [
+          { type: 'text', html: `<p>PCR on ${Notebook.plasmid(doc)}, simulated in the Plasmid Editor (at least `
+            + `${Notebook.esc(document.getElementById('pcrAnneal').value)} nt of 3&#39; match, `
+            + `${Notebook.esc(document.getElementById('pcrMis').value)} mismatches allowed).</p>`
+            + Notebook.picture(0, `Where the products lie on ${doc.name || 'the template'}`) },
+          Notebook.table('Primers', [['Primer'], ["Sequence 5'→3'"], ['Length', 'number', 'nt'], ['Tm', 'number', '°C']],
+            [['Forward', forward, res.forward.length, res.forward.tm], ['Reverse', reverse, res.reverse.length, res.reverse.tm]]),
+          Notebook.table('Products', [['Product'], ['Length', 'number', 'bp'], ['From', 'number'], ['To', 'number'],
+            ['Seen on the gel', 'check']], res.products.map((p, i) => [i + 1, p.length, p.template_start + 1, p.template_end, null])),
+        ],
+      },
+      pictures: [await PlasmidMap.picture(marked, [])],
+    };
   },
 
   /** A virtual digest as a notebook section: what was cut with what, the gel, and the fragments. */
@@ -582,7 +592,22 @@ const Tools = {
                     Editor.markDirty();
                     toast('Primer binding sites annotated', 'success');
                   },
-                }, 'Annotate binding sites')));
+                }, 'Annotate binding sites'),
+                Notebook.button('The primer pair, with its sequences, tails, lengths, Tm and GC.', async () => ({
+                  section: {
+                    type: 'section', title: `Primers: ${doc.name || 'Untitled'} ${fmt(sel.start + 1)}–${fmt(sel.end)}`,
+                    source: { kind: 'primers', id: doc.id || '', name: doc.name || '' },
+                    blocks: [
+                      { type: 'text', html: `<p>Primers designed to amplify ${fmt(sel.start + 1)}–${fmt(sel.end)} of `
+                        + `${Notebook.plasmid(doc)}: a ${fmt(res.product_length)} bp product.</p>` },
+                      Notebook.table('Primers', [['Primer'], ["Sequence 5'→3'"], ["5' tail"], ['Length', 'number', 'nt'],
+                        ['Tm', 'number', '°C'], ['GC', 'number', '%'], ['Ordered', 'check']],
+                      [['Forward', res.forward, 'pFTail'], ['Reverse', res.reverse, 'pRTail']].filter(([, p]) => p?.sequence)
+                        .map(([name, p, tail]) => [name, p.full || p.sequence, document.getElementById(tail).value || '',
+                          (p.full || p.sequence).length, p.tm, p.gc, null])),
+                    ],
+                  },
+                }))));
           } catch (err) {
             out.replaceChildren(el('div', { class: 'alert alert-error', text: err.message }));
           }
@@ -837,7 +862,10 @@ const Tools = {
                   Editor.addDocument({ name: `${doc.name} PCR ${fmt(p.length)} bp`, sequence: p.sequence,
                                        circular: false, features: [] });
                   toast('PCR product opened as a new sequence', 'success');
-                } }));
+                } }),
+              el('div', { class: 'btn-group', style: 'margin-top:.5rem' },
+                Notebook.button(`The primers and the ${res.products.length} product${res.products.length > 1 ? 's' : ''}, `
+                  + 'with a map of the template showing where they lie.', () => this.pcrSection(doc, res))));
           } catch (err) {
             out.replaceChildren(el('div', { class: 'alert alert-error', text: err.message }));
           }

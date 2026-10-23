@@ -215,8 +215,13 @@ def digest(seq: str, enzymes: Iterable[str], circular: bool = False) -> List[Dic
     return frags
 
 
-def gel_lanes(lanes: List[Dict[str, Any]], ladder: str = '1 kb ladder') -> Dict[str, Any]:
-    """Band sizes for a virtual gel; bands of near-identical size are merged and counted."""
+def gel_lanes(lanes: List[Dict[str, Any]], ladder: str = '1 kb ladder',
+              ladder_bands: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
+    """
+    Band sizes for a virtual gel; bands of near-identical size are merged and
+    counted. The ladder is a standard one by name, or ladder_bands given
+    ([{size, strong}]: strong marks a brighter reference band) under its name.
+    """
     out = []
     for lane in lanes:
         sizes = sorted((f['length'] for f in lane['fragments']), reverse=True)
@@ -227,8 +232,9 @@ def gel_lanes(lanes: List[Dict[str, Any]], ladder: str = '1 kb ladder') -> Dict[
             else:
                 bands.append({'size': s, 'count': 1})
         out.append({'label': lane['label'], 'bands': bands})
-    return {'ladder': {'label': ladder, 'bands': [{'size': s, 'count': 1} for s in LADDERS[ladder]]},
-            'lanes': out}
+    bands = ([{'size': int(b['size']), 'count': 1, 'strong': bool(b.get('strong'))} for b in ladder_bands]
+             if ladder_bands is not None else [{'size': s, 'count': 1, 'strong': False} for s in LADDERS[ladder]])
+    return {'ladder': {'label': ladder, 'bands': bands}, 'lanes': out}
 
 
 # ---------------------------------------------------------------------------

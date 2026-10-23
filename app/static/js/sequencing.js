@@ -797,6 +797,8 @@ const Sequencing = {
       `${read.clone_number ? `Clone ${read.clone_number} · ` : ''}${read.name}`;
     const a = read.alignment;
     document.getElementById('readBadges').replaceChildren(...[
+      Notebook.button(`${read.name}: what it says about ${this.reference.name}, its differences, `
+        + 'and its chromatogram as shown here.', () => this.readSection(read)),
       a?.mapped ? el('span', { class: 'badge' }, a.strand === -1 ? '← reverse read' : 'forward read →') : null,
       read.has_trace ? el('span', { class: 'badge', text: 'chromatogram' }) : el('span', { class: 'badge', text: 'sequence only' }),
       this.statusBadge(read)].filter(Boolean));
@@ -876,6 +878,54 @@ const Sequencing = {
         : `Where it does align (${span}), it matches exactly.`),
       facts,
       diffs.length ? this.differenceList(diffs, go) : null);
+  },
+
+  /**
+   * A read as a section for the Lab Notebook: what it says about the plasmid (the headline
+   * as shown), its verdict, the part of its chromatogram on screen, and its differences.
+   */
+  async readSection(read) {
+    const a = read.alignment || {};
+    const ref = this.reference;
+    const headline = document.querySelector('#readSummary .alert');
+    const said = headline ? [...headline.querySelectorAll('.aln-headline, .aln-headline ~ div:not(.diff-list)')]
+      .map((d) => `<p>${Notebook.esc(d.textContent)}</p>`).join('') : '';
+    const verdict = read.verdict ? `Judged ${read.verdict === 'sufficient' ? 'sufficient' : 'not sufficient'}`
+      + `${read.verdict_by ? ` by ${read.verdict_by}` : ''}.` : 'Not judged yet.';
+    const pictures = [];
+    let shown = '';
+    const canvas = document.getElementById('traceCanvas');
+    const wrap = document.getElementById('traceWrap');
+    if (this.trace && canvas && !document.getElementById('traceCard').hidden) {
+      // What is on screen of the trace: the stretch around the chosen base, at its zoom.
+      const left = wrap.scrollLeft;
+      const width = Math.min(wrap.clientWidth, canvas.width - left);
+      const crop = document.createElement('canvas');
+      crop.width = width;
+      crop.height = canvas.height;
+      const ctx = crop.getContext('2d');
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, width, canvas.height);
+      ctx.drawImage(canvas, left, 0, width, canvas.height, 0, 0, width, canvas.height);
+      pictures.push(await new Promise((resolve) => crop.toBlob(resolve, 'image/png')));
+      const where = document.getElementById('traceWhere').textContent.replace(/^\s*·\s*/, '');
+      shown = `<p>Chromatogram${where ? `, at ${Notebook.esc(where)}` : ''}:</p>${Notebook.picture(0, `Chromatogram of ${read.name}`)}`;
+    }
+    const { diffs } = a.mapped ? this.details(read) : { diffs: [] };
+    return {
+      section: {
+        type: 'section', title: `Sequencing: ${read.clone_number ? `clone ${read.clone_number}, ` : ''}${read.name} on ${ref.name}`,
+        source: { kind: 'sequencing-read', id: ref.id || '', name: read.name },
+        blocks: [
+          { type: 'text', html: `<p>Read <b>${Notebook.esc(read.name)}</b>${read.clone_number ? ` (clone ${Notebook.esc(read.clone_number)})` : ''}`
+            + ` against <a data-plasmid="${Notebook.esc(ref.id)}">${Notebook.esc(ref.name)}</a>. ${Notebook.esc(verdict)}</p>${said}${shown}` },
+          ...(diffs.length ? [Notebook.table('Differences', [['#', 'number'], ['Type'], ['Position', 'number'], ['Reference'], ['Read'],
+            ['Feature'], ['Quality', 'number'], ['Checked on the trace', 'check']],
+          diffs.map((d, k) => [k + 1, d.type, d.position + 1, d.ref, d.read, d.features[0] || '', d.q ?? '', null]))] : []),
+        ],
+      },
+      pictures,
+    };
   },
 
   /**

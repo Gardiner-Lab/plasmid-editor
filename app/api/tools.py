@@ -39,6 +39,56 @@ def enzymes(user):
     return jsonify(body), 200
 
 
+# --- ladders for the virtual gel: the standard ones, and the chair group's -----
+
+@tools_bp.route('/ladders', methods=['GET'])
+@require_auth
+def list_ladders(user):
+    from app.models import ladder
+    return jsonify({'standard': ladder.standard(), 'made': ladder.usable(user)}), 200
+
+
+@tools_bp.route('/ladders', methods=['POST'])
+@require_auth
+def create_ladder(user):
+    from app.models import ladder
+    data = _json()
+    try:
+        made = ladder.create(user, data.get('name', ''), data.get('bands'), data.get('description', ''))
+    except ValueError as exc:
+        return _bad(exc)
+    return jsonify({'ladder': made}), 201
+
+
+@tools_bp.route('/ladders/<ladder_id>', methods=['PUT', 'PATCH'])
+@require_auth
+def update_ladder(user, ladder_id):
+    from app.models import ladder
+    data = _json()
+    try:
+        changed = ladder.update(user, ladder_id, data.get('name'), data.get('bands'), data.get('description'))
+    except ValueError as exc:
+        return _bad(exc)
+    except PermissionError as exc:
+        return jsonify({'error': str(exc)}), 403
+    except LookupError as exc:
+        return jsonify({'error': str(exc).strip("'")}), 404
+    return jsonify({'ladder': changed}), 200
+
+
+@tools_bp.route('/ladders/<ladder_id>', methods=['DELETE'])
+@require_auth
+def delete_ladder(user, ladder_id):
+    from app.models import ladder
+    try:
+        ladder.delete(user, ladder_id)
+    except PermissionError as exc:
+        return jsonify({'error': str(exc)}), 403
+    except LookupError as exc:
+        return jsonify({'error': str(exc).strip("'")}), 404
+    return jsonify({'ok': True}), 200
+
+
 # --- the person's own enzyme lists ------------------------------------------
 
 @tools_bp.route('/enzyme-lists', methods=['POST'])
@@ -151,11 +201,17 @@ def digest(user):
 @tools_bp.route('/gel', methods=['POST'])
 @require_auth
 def gel(user):
-    """Virtual gel for one or more digests of one or more sequences."""
+    """
+    Virtual gel for one or more digests of one or more sequences, beside a
+    ladder: a standard one by name, or one made in the person's chair group,
+    by its id (ladder_id).
+    """
+    from app.models import ladder as ladders
     data = _json()
-    ladder = data.get('ladder') or '1 kb ladder'
-    if ladder not in restriction.LADDERS:
-        return jsonify({'error': f'Unknown ladder: {ladder}'}), 400
+    try:
+        ladder = ladders.for_gel(user, str(data.get('ladder_id') or data.get('ladder') or '1 kb ladder'))
+    except LookupError as exc:
+        return jsonify({'error': str(exc).strip("'")}), 400
     lanes = []
     try:
         for lane in data.get('lanes') or []:
@@ -169,7 +225,7 @@ def gel(user):
         return _bad(exc)
     if not lanes:
         return jsonify({'error': 'No lanes given'}), 400
-    return jsonify(restriction.gel_lanes(lanes, ladder)), 200
+    return jsonify(restriction.gel_lanes(lanes, ladder['label'], ladder['bands'])), 200
 
 
 @tools_bp.route('/silent-sites', methods=['POST'])

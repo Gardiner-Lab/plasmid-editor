@@ -61,6 +61,46 @@ def memberships() -> Dict[str, dict]:
         return _cache[1]
 
 
+_groups_cache: Tuple[Optional[tuple], Dict[str, Optional[str]]] = (None, {})
+
+
+def chair_groups() -> Dict[str, Optional[str]]:
+    """
+    Each lab's chair group in the suite (labs that work together, set by an
+    administrator): casefolded lab name -> chair group id, None for a lab in
+    none. Empty outside the suite, or in a suite from before chair groups.
+    """
+    global _groups_cache
+    try:
+        info = os.stat(_path())
+        stamp = (info.st_mtime_ns, info.st_size)
+    except OSError:
+        return {}
+    with _lock:
+        if _groups_cache[0] == stamp:
+            return _groups_cache[1]
+        try:
+            conn = sqlite3.connect(f'file:{_path()}?mode=ro', uri=True, timeout=5)
+            try:
+                columns = {r[1] for r in conn.execute('PRAGMA table_info(labs)')}
+                rows = conn.execute('SELECT name, chair_group_id FROM labs').fetchall() \
+                    if 'chair_group_id' in columns else []
+            finally:
+                conn.close()
+        except sqlite3.Error:
+            return _groups_cache[1]
+        _groups_cache = (stamp, {name.casefold(): group for name, group in rows if name})
+        return _groups_cache[1]
+
+
+def chair_group_labs(lab_names) -> set:
+    """These labs (casefolded names) and every lab in a chair group with any of them."""
+    names = {n.casefold() for n in lab_names if n}
+    groups = chair_groups()
+    theirs = {groups.get(n) for n in names} - {None}
+    return names | {lab for lab, group in groups.items() if group in theirs}
+
+
 def membership(username: str) -> Optional[dict]:
     """The suite's record for this person, or None outside the suite."""
     if not enabled():

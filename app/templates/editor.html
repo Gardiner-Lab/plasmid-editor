@@ -11,6 +11,7 @@
     <button class="tool-btn" id="btnSave" title="Save to the lab library (Ctrl+S)">💾 Save</button>
     <button class="tool-btn" id="btnSaveAs" title="Save a copy, or download as a file (Ctrl+Shift+S)">Save as…</button>
     <button class="tool-btn" id="btnHistory" title="Every saved version of this sequence, and rolling back to one">🕘 History</button>
+    <button class="tool-btn" id="btnNotebook" title="Put this sequence's map and features into a day's page of your Lab Notebook" hidden>📓 Notebook</button>
     <div class="tool-sep"></div>
 
     <button class="tool-btn" id="btnUndo" title="Undo (Ctrl+Z)" disabled>↶ Undo</button>
@@ -199,6 +200,7 @@
 {% block extra_js %}
 <script src="{{ url_for('static', filename='js/seqview.js') }}?v={{ app_version }}"></script>
 <script src="{{ url_for('static', filename='js/plasmidmap.js') }}?v={{ app_version }}"></script>
+<script src="{{ url_for('static', filename='js/ladders.js') }}?v={{ app_version }}"></script>
 <script src="{{ url_for('static', filename='js/tools.js') }}?v={{ app_version }}"></script>
 <script src="{{ url_for('static', filename='js/editor.js') }}?v={{ app_version }}"></script>
 {% endblock %}

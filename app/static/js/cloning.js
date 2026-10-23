@@ -237,9 +237,33 @@ const Cloning = {
               if (await copyText(p.sequence)) toast('Sequence copied', 'success', 2000);
               else toast('Copying is blocked here: select the sequence in the editor and copy it', 'error');
             },
-          }, 'Copy sequence'))));
+          }, 'Copy sequence'),
+          Notebook.button(`The map of ${p.name} (${fmt(p.sequence.length)} bp), how it was made, and its features.`,
+            () => this.productSection(p, junctions, notes?.[i])))));
     });
     out.replaceChildren(...nodes);
+  },
+
+  /** A product as a section for the Lab Notebook: how it was made, its map, its parts and junctions. */
+  productSection(p, junctions, note) {
+    const method = document.querySelector(`[data-method="${this.method}"]`)?.textContent.trim() || this.method;
+    const parts = this.picked.map((x) => (x.origin_kind === 'editor' && x.id
+      ? `<a data-plasmid="${Notebook.esc(x.id)}">${Notebook.esc(x.name)}</a>` : `<b>${Notebook.esc(x.name)}</b>`));
+    const extra = [];
+    if (p.assembly) {
+      extra.push(Notebook.table('Assembly', [['Order', 'number'], ['Part'], ['Reversed'], ['Length', 'number', 'bp']],
+        p.assembly.map((a, k) => [k + 1, a.source, a.reversed ? 'yes' : 'no', a.length])));
+    }
+    if (junctions?.length) {
+      extra.push(Notebook.table('Junctions', [['Left'], ['Right'], ['Overlap', 'number', 'bp'], ['Tm', 'number', '°C'], ['Flipped']],
+        junctions.map((j) => [j.left, j.right, j.overlap, j.tm ?? '', j.flipped ? 'yes' : 'no'])));
+    }
+    return PlasmidMap.section(p, [], {
+      kind: 'cloning-product', title: `Cloning product: ${p.name}`,
+      lead: `<p>${Notebook.esc(method)} of ${parts.join(', ')}, simulated in the Plasmid Editor`
+        + `${note ? ` (${Notebook.esc(note)})` : ''}.</p>`,
+      extra,
+    });
   },
 };
 
