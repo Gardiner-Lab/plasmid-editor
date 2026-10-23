@@ -6,6 +6,8 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.6.2] - 2026-10-23
+
 ### Added
 - **The sequence a read has that the reference doesn't.** Under a read's extent, each stretch of it
   that did not align - before the aligned part, between its pieces, or after it - is listed with
