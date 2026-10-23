@@ -91,6 +91,41 @@ function coverageGaps(covered, n) {
   return gaps;
 }
 
+/**
+ * The stretches of a read that are not in its alignment, in the order they
+ * lie along the reference: the ends trimmed for low quality, and what of the
+ * rest did not align - before the aligned part, between its pieces, or after
+ * it. Each has where it is in the read as uploaded ([from, to)), and `at`, the
+ * reference position it adjoins: the bases would go in before `at`. A reverse
+ * read lies along the reference back to front, so its first bases come last.
+ * An alignment stored before reads knew where they start has none to give.
+ */
+function unalignedStretches(a) {
+  const segs = a.segments?.filter((s) => s.read_start !== undefined);
+  if (!segs?.length) return [];
+  const total = a.read_length;
+  const [t0, t1] = a.trim || [0, total];
+  const rev = a.strand === -1;
+  const out = [];
+  const add = (from, to, kind, at, side) => { if (to > from) out.push({ from, to, kind, at, side }); };
+  const [headAt, headSide] = rev ? [a.ref_end, 'after'] : [a.ref_start, 'before'];
+  const [tailAt, tailSide] = rev ? [a.ref_start, 'before'] : [a.ref_end, 'after'];
+  add(0, t0, 'trimmed', headAt, headSide);
+  add(t0, segs[0].read_start, 'unaligned', headAt, headSide);
+  for (let i = 0; i + 1 < segs.length; i++) {
+    add(segs[i].read_end, segs[i + 1].read_start, 'unaligned', rev ? segs[i].ref_start : segs[i].ref_end, 'between');
+  }
+  add(segs[segs.length - 1].read_end, t1, 'unaligned', tailAt, tailSide);
+  add(t1, total, 'trimmed', tailAt, tailSide);
+  return rev ? out.reverse() : out;
+}
+
+/** A stretch's bases as the plasmid reads them: reverse-complemented for a reverse read. */
+function stretchSequence(bases, s, strand) {
+  const piece = bases.slice(s.from, s.to).toUpperCase();
+  return strand === -1 ? DNA.revComp(piece) : piece;
+}
+
 /** A round step for ruler ticks: about `count` of them along n bases. */
 function rulerStep(n, count = 8) {
   const raw = n / count;
@@ -564,16 +599,156 @@ const Sequencing = {
     }
     if (cursor < t1) blocks.push([cursor, t1, 'read-unaligned', `${fmt(t1 - cursor)} bp not found in the reference`]);
     if (t1 < total) blocks.push([t1, total, 'read-trimmed', `${fmt(total - t1)} bp trimmed for low quality`]);
+    // A stretch not in the alignment opens its sequence, below.
+    const reveal = (from) => {
+      const item = document.getElementById(`unaligned-${from}`);
+      if (!item) return;
+      const fold = item.closest('details');
+      if (fold) fold.open = true;
+      item.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      item.classList.add('flash');
+      setTimeout(() => item.classList.remove('flash'), 1200);
+    };
     bar.replaceChildren(...blocks.map(([from, to, cls, title]) => el('div', {
       class: `coverage-seg ${cls}`,
       style: `left:${(from / total) * 100}%;width:${((to - from) / total) * 100}%`,
-      title,
+      title: cls ? `${title}: click to see its sequence` : title,
+      onclick: cls ? () => reveal(from) : null,
     })));
     const unaligned = blocks.filter(([, , cls]) => cls === 'read-unaligned').reduce((sum, [from, to]) => sum + (to - from), 0);
     text.textContent = unaligned
       ? `${fmt(unaligned)} bp of this ${fmt(total)} bp read (${((unaligned / total) * 100).toFixed(1)}%) `
         + `did not match the reference anywhere.`
       : `The whole ${fmt(total)} bp read matched the reference` + (t0 > 0 || t1 < total ? ', aside from the trimmed ends.' : '.');
+  },
+
+  /**
+   * The read's own bases that are not in the reference, a stretch at a
+   * time, to copy, BLAST, or - when they belong in the plasmid - insert into
+   * the reference where the read leaves it. Shown as the plasmid would read
+   * them (reverse-complemented for a reverse read). A read that did not align
+   * at all is one stretch, as it was read. `go(k)` shows difference k: a
+   * stretch between two aligned pieces is also an insertion in the alignment.
+   */
+  renderUnaligned(read, go) {
+    const box = document.getElementById('readUnaligned');
+    const a = read.alignment;
+    const bases = read.bases || '';
+    if (!a || !bases) {
+      box.replaceChildren();
+      return;
+    }
+    let stretches;
+    if (!a.mapped) {
+      const [t0, t1] = a.trim || [0, bases.length];
+      stretches = [{ from: t0, to: t1, kind: 'unaligned', side: 'whole', seq: bases.slice(t0, t1).toUpperCase() }];
+    } else {
+      stretches = unalignedStretches(a).map((s) => ({ ...s, seq: stretchSequence(bases, s, a.strand) }));
+    }
+    const unaligned = stretches.filter((s) => s.kind === 'unaligned');
+    const trimmed = stretches.filter((s) => s.kind === 'trimmed');
+    if (!stretches.length) {
+      box.replaceChildren();
+      return;
+    }
+    const total = unaligned.reduce((sum, s) => sum + s.seq.length, 0);
+    box.replaceChildren(el('div', { class: 'unaligned' },
+      el('div', { class: 'unaligned-head' },
+        el('b', {}, 'Sequence not in the reference'),
+        el('span', { class: 'hint' }, unaligned.length
+          ? ` · ${fmt(total)} bp in ${fmt(unaligned.length)} stretch${unaligned.length === 1 ? '' : 'es'}`
+            + (a.mapped && a.strand === -1 ? ' · reverse-complemented, as the plasmid reads it' : '')
+          : ' · every base the read kept aligned; only its low-quality ends were trimmed')),
+      ...unaligned.map((s) => this.stretchItem(read, s, go)),
+      trimmed.length ? el('details', { class: 'unaligned-trimmed' },
+        el('summary', {}, `Ends trimmed for low quality (${fmt(trimmed.reduce((sum, s) => sum + s.seq.length, 0))} bp)`),
+        ...trimmed.map((s) => this.stretchItem(read, s, go))) : null));
+  },
+
+  /** One stretch of a read not in the reference: where it is, its bases, and what can be done with them. */
+  stretchItem(read, s, go) {
+    const a = read.alignment;
+    const n = this.reference.sequence.length;
+    const len = s.seq.length;
+    const where = {
+      whole: 'the whole read, which did not align',
+      before: `before reference ${fmt(s.at + 1)}`,
+      after: `after reference ${fmt(s.at)}`,
+      between: `between two aligned parts, at reference ${fmt(s.at)}|${fmt(s.at + 1)}`,
+    }[s.side];
+    const name = `${read.name}_${s.from + 1}-${s.to}${a.mapped && a.strand === -1 ? '_revcomp' : ''}`;
+    const fasta = `>${name} not in ${this.reference.name}\n${s.seq.match(/.{1,70}/g).join('\n')}\n`;
+    const copy = (text, what) => navigator.clipboard.writeText(text)
+      .then(() => toast(`${what} copied`, 'success', 2500))
+      .catch(() => toast('Could not copy: select the bases and copy them', 'error'));
+    // NCBI takes the query in the address; a very long one is copied to paste instead.
+    const blastUrl = 'https://blast.ncbi.nlm.nih.gov/Blast.cgi?PROGRAM=blastn&PAGE_TYPE=BlastSearch&LINK_LOC=blasthome'
+      + (len <= 6000 ? `&QUERY=${s.seq}` : '');
+    const insertion = s.side === 'between'
+      ? this.details(read).diffs.find((d) => d.type === 'insertion' && d.position === s.at % n) : null;
+    const actions = [
+      el('button', { class: 'btn btn-sm btn-secondary', type: 'button', onclick: () => copy(s.seq, 'Sequence') }, 'Copy'),
+      el('button', { class: 'btn btn-sm btn-secondary', type: 'button', onclick: () => copy(fasta, 'FASTA') }, 'Copy FASTA'),
+      el('a', {
+        class: 'btn btn-sm btn-secondary', href: blastUrl, target: '_blank', rel: 'noopener',
+        title: len < 20 ? 'Very short: BLAST may find nothing meaningful' : 'Search NCBI nucleotide BLAST with these bases',
+        onclick: () => { if (len > 6000) copy(s.seq, 'Sequence (too long for the link: paste it into BLAST)'); },
+      }, 'BLAST ↗'),
+    ];
+    if (s.kind === 'unaligned' && a.mapped && (s.side === 'before' || s.side === 'after') && this.reference.can_change) {
+      actions.push(el('button', {
+        class: 'btn btn-sm', type: 'button',
+        title: 'Add these bases to the plasmid where the read leaves it',
+        onclick: () => this.insertStretch(read, s),
+      }, `Insert into reference ${s.side === 'before' ? `before ${fmt(s.at + 1)}` : `after ${fmt(s.at)}`}`));
+    }
+    if (insertion && go) {
+      actions.push(el('button', { class: 'btn btn-sm btn-secondary', type: 'button', onclick: () => go(insertion.k) },
+        'Go to it in the alignment'));
+    }
+    return el('div', { class: `unaligned-item${s.kind === 'trimmed' ? ' trimmed' : ''}`, id: `unaligned-${s.from}` },
+      el('div', { class: 'unaligned-meta' },
+        el('b', {}, `${fmt(len)} bp`), ` ${where}`,
+        el('span', { class: 'hint' }, ` · read bases ${fmt(s.from + 1)}–${fmt(s.to)}`)),
+      el('pre', { class: 'unaligned-seq mono' }, s.seq),
+      el('div', { class: 'btn-group' }, ...actions));
+  },
+
+  /**
+   * Ask, then insert a stretch of a read into the reference where the read
+   * leaves it, through the same correction as a difference: features move
+   * with it, it is kept in the plasmid's history, and every read is aligned
+   * again - so the stretch then aligns, or shows how it still differs.
+   */
+  insertStretch(read, s) {
+    const seq = this.reference;
+    const len = s.seq.length;
+    const place = s.side === 'before' ? `before position ${fmt(s.at + 1)}` : `after position ${fmt(s.at)}`;
+    modal({
+      title: `Insert ${fmt(len)} bp into the reference`,
+      build: (body) => body.append(
+        el('p', {}, 'Inserts these bases from ', el('b', { text: read.name }), ' into ', el('b', { text: seq.name }),
+          ` ${place}, where the read leaves the reference:`),
+        el('pre', { class: 'unaligned-seq mono' }, s.seq),
+        el('p', { class: 'hint' },
+          'Nothing is removed. If the read has these bases in place of some of the reference\'s own (another '
+          + 'backbone, say), remove those in the editor afterwards. Features and translations move with the change, '
+          + 'it is kept in the plasmid\'s history, and every read is aligned again. Check the trace first: an error '
+          + 'in the read would be written into the plasmid.'),
+        ...(seq.confirmed ? [el('p', { class: 'hint' }, 'The plasmid stays confirmed: its reads keep their verdicts.')] : [])),
+      buttons: [
+        { label: 'Cancel', kind: 'secondary' },
+        {
+          label: `Insert ${fmt(len)} bp`,
+          onClick: async () => {
+            await this.applyCorrections(seq.id, read,
+              [{ type: 'insertion', position: s.at, ref: '-', read: s.seq, length: len, k: 0 }],
+              `${fmt(len)} bp inserted ${place}`);
+            return true;
+          },
+        },
+      ],
+    });
   },
 
   /** Say so when the last sufficient verdict went and took the confirmation with it. */
@@ -632,6 +807,7 @@ const Sequencing = {
     if (!a) {
       summary.replaceChildren(el('div', { class: 'empty' }, 'No alignment stored for this read.'));
       box.replaceChildren();
+      document.getElementById('readUnaligned').replaceChildren();
     } else if (!a.mapped) {
       summary.replaceChildren(el('div', { class: 'alert alert-warning' },
         el('div', { class: 'aln-headline' }, 'This read did not align to the reference'),
@@ -639,11 +815,13 @@ const Sequencing = {
           : `At best ${fmt(a.aligned_length ?? 0)} bp of the ${fmt(a.read_length ?? 0)} bp read matched anywhere on the plasmid: `
             + 'a different plasmid, a mixed colony, or a failed reaction.')));
       box.replaceChildren();
+      this.renderUnaligned(read, null);
     } else {
       const view = this.alignmentView(read, (k) => nav.go(k), (col) => this.focusTrace(col));
       const nav = this.differenceNav(read, view);
       summary.replaceChildren(this.headline(read, (k) => nav.go(k)), this.verdictBar(read));
       box.replaceChildren(...(a.differences.length ? [nav.bar] : []), view);
+      this.renderUnaligned(read, (k) => nav.go(k));
       if (pick !== null) nav.go(pick);
     }
     if (wasHidden || pick === null) {
@@ -690,7 +868,8 @@ const Sequencing = {
           + 'If the reference is only part of what was sequenced (an insert or a PCR product, say), that is expected; '
           + 'otherwise it is a bigger insert, another backbone, or another plasmid.'
         : `Only ${span} of the reference is in it. The rest may be a bigger insert than planned, `
-          + 'another backbone, or another plasmid: the read extent below shows which parts.'),
+          + 'another backbone, or another plasmid.'),
+      el('div', {}, 'Its sequence is below, to BLAST, or to insert into the reference if it belongs there.'),
       el('div', { style: 'margin-top:.3rem' }, diffs.length
         ? `Where it does align (${span}): ${fmt(diffs.length)} difference${diffs.length === 1 ? '' : 's'}`
           + `${diffs.some((d) => d.low) ? ', some on low-quality bases' : ''}.`
@@ -1073,8 +1252,12 @@ const Sequencing = {
     });
   },
 
-  /** Save the corrected plasmid, align its reads again, and show the same read. */
-  async applyCorrections(sequenceId, read, chosen) {
+  /**
+   * Save the corrected plasmid, align its reads again, and show the same
+   * read. `label` says what was done, for its history and the message, when
+   * it is not simply some differences corrected.
+   */
+  async applyCorrections(sequenceId, read, chosen, label = null) {
     const { sequence: doc } = await API.get(`/api/sequences/${sequenceId}`);
     const fixed = this.correctedDocument(doc, chosen);
     let mocloNote = null;
@@ -1087,7 +1270,8 @@ const Sequencing = {
         // Kept in its history as a correction, with the read it came from.
         base_revision: doc.revision,
         revision: { kind: 'corrected',
-                    note: `${chosen.length} difference${chosen.length > 1 ? 's' : ''} to read ${read.name}`
+                    note: (label ? `${label} from read ${read.name}`
+                      : `${chosen.length} difference${chosen.length > 1 ? 's' : ''} to read ${read.name}`)
                           + (read.clone_number ? ` (clone ${read.clone_number})` : '') },
       });
       synced = saved.synced_to_moclo;
@@ -1105,7 +1289,8 @@ const Sequencing = {
       || this.reads.find((r) => r.name === read.name);
     if (again) await this.showRead(again);
     const what = `${fmt(chosen.length)} difference${chosen.length > 1 ? 's' : ''}`;
-    toast(`Corrected ${what}; features moved with them and the reads were aligned again`
+    toast(`${label ? `${label[0].toUpperCase()}${label.slice(1)}` : `Corrected ${what}`}; `
+          + 'features moved with the change and the reads were aligned again'
           + (synced ? ', and MoClo updated' : ''), 'success', 6000);
     if (mocloNote) toast(`MoClo was not updated: ${mocloNote} Open the plasmid in the editor and save it to resolve this.`, 'error', 12000);
   },

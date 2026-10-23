@@ -7,9 +7,11 @@ const src = fs.readFileSync('app/static/js/sequencing.js', 'utf8');
 const ctx = {};
 globalThis.document = { addEventListener() {} };
 globalThis.fmt = (n) => Number(n).toLocaleString('en-US');
-new Function('globalThis', `${src}\nglobalThis.__x = { alignmentColumns, differenceColumns, differenceQuality, mergedCoverage, coverageGaps, rulerStep, describeDifference, LOW_QUALITY };`)(ctx);
+const comp = { A: 'T', C: 'G', G: 'C', T: 'A', N: 'N' };
+globalThis.DNA = { revComp: (x) => [...x].reverse().map((c) => comp[c]).join('') };
+new Function('globalThis', `${src}\nglobalThis.__x = { alignmentColumns, differenceColumns, differenceQuality, mergedCoverage, coverageGaps, rulerStep, describeDifference, LOW_QUALITY, unalignedStretches, stretchSequence };`)(ctx);
 const { alignmentColumns, differenceColumns, differenceQuality, mergedCoverage, coverageGaps, rulerStep,
-  describeDifference, LOW_QUALITY } = ctx.__x;
+  describeDifference, LOW_QUALITY, unalignedStretches, stretchSequence } = ctx.__x;
 
 // Reference AAAACCCCGGGG; the read has an extra T after position 7 and lacks the G at 8 (0-based).
 //   column: 0 1 2 3 4 5 6
@@ -73,5 +75,40 @@ assert.strictEqual(describeDifference({ type: 'mismatch', position: 510, ref: 'C
 assert.strictEqual(describeDifference({ type: 'insertion', position: 720, read: 'A'.repeat(60), length: 60 }), '+60 bp at 721');
 assert.strictEqual(describeDifference({ type: 'deletion', position: 719, ref: 'G', length: 1 }), '−G at 720');
 assert.strictEqual(describeDifference({ type: 'insertion', position: 1999, read: 'T', length: 1 }), '+T at 2,000');
+
+// What of a read is not in its alignment, in reference order, with where it would go.
+// A 100 bp read: 5 bp trimmed each end, read bases 20..60 aligned to reference 40..80.
+const one = { strand: 1, read_length: 100, trim: [5, 95], ref_start: 40, ref_end: 80,
+  segments: [{ read_start: 20, read_end: 60, ref_start: 40, ref_end: 80 }] };
+assert.deepStrictEqual(unalignedStretches(one), [
+  { from: 0, to: 5, kind: 'trimmed', at: 40, side: 'before' },
+  { from: 5, to: 20, kind: 'unaligned', at: 40, side: 'before' },
+  { from: 60, to: 95, kind: 'unaligned', at: 80, side: 'after' },
+  { from: 95, to: 100, kind: 'trimmed', at: 80, side: 'after' },
+], 'forward read: before and after the aligned part');
+
+// The same read on the reverse strand: its first bases lie after the aligned part.
+assert.deepStrictEqual(unalignedStretches({ ...one, strand: -1 }), [
+  { from: 95, to: 100, kind: 'trimmed', at: 40, side: 'before' },
+  { from: 60, to: 95, kind: 'unaligned', at: 40, side: 'before' },
+  { from: 5, to: 20, kind: 'unaligned', at: 80, side: 'after' },
+  { from: 0, to: 5, kind: 'trimmed', at: 80, side: 'after' },
+], 'reverse read: reference order, ends swapped');
+
+// Two aligned pieces with read bases between them that the reference lacks.
+const split = { strand: 1, read_length: 90, trim: [0, 90], ref_start: 10, ref_end: 80,
+  segments: [{ read_start: 0, read_end: 30, ref_start: 10, ref_end: 40 },
+             { read_start: 50, read_end: 90, ref_start: 40, ref_end: 80 }] };
+assert.deepStrictEqual(unalignedStretches(split), [{ from: 30, to: 50, kind: 'unaligned', at: 40, side: 'between' }],
+  'between two aligned pieces');
+assert.deepStrictEqual(unalignedStretches({ ...split,
+  segments: [{ read_start: 0, read_end: 40, ref_start: 40, ref_end: 80 }, { read_start: 60, read_end: 90, ref_start: 10, ref_end: 40 }],
+  strand: -1 }), [{ from: 40, to: 60, kind: 'unaligned', at: 40, side: 'between' }], 'between, reverse read');
+assert.deepStrictEqual(unalignedStretches({ ...one, segments: [{ ref_start: 40, ref_end: 80 }] }), [],
+  'an older alignment cannot say');
+
+// Shown as the plasmid reads it.
+assert.strictEqual(stretchSequence('aaccgGTTT', { from: 2, to: 6 }, 1), 'CCGG');
+assert.strictEqual(stretchSequence('AACCGTTT', { from: 0, to: 4 }, -1), 'GGTT', 'reverse read: reverse complement');
 
 console.log('sequencing helpers: all checks passed');
