@@ -6,6 +6,16 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **The sequence a read has that the reference doesn't.** Under a read's extent, each stretch of it
+  that did not align - before the aligned part, between its pieces, or after it - is listed with
+  where it lies, which read bases it is, and its bases, as the plasmid would read them
+  (reverse-complemented for a reverse read). Each can be copied, copied as FASTA, or searched with
+  NCBI BLAST; one at either end of the alignment can be inserted into the reference where the read
+  leaves it, kept in the plasmid's history like any correction, after which the reads are aligned
+  again. A read that did not align at all shows its whole sequence, to BLAST. The ends trimmed for
+  low quality are listed too, folded away, and clicking a stretch on the read extent goes to it.
+
 ## [0.6.1] - 2026-10-22
 
 ### Fixed
