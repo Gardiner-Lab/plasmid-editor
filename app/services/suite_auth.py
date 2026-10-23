@@ -1,4 +1,4 @@
-"""Signing in through the Gardiner Lab suite.
+"""Signing in through Trellis Tools.
 
 With SUITE_AUTH=proxy, the suite's proxy says who is signed in, in an
 X-Suite-User header it sets on every request (and strips from what the browser
