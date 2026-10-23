@@ -1,6 +1,6 @@
 """Who is in which lab, and who leads it, when the lab suite keeps that.
 
-Inside the Gardiner Lab suite (SUITE_AUTH=proxy), labs, their registration
+Inside Trellis Tools (SUITE_AUTH=proxy), labs, their registration
 codes and memberships belong to the suite's sign-in service, in its own
 database (SUITE_DATABASE_PATH). The editor reads them from there instead of
 its own users.lab_source and users.role, so a change made on the suite's Labs
