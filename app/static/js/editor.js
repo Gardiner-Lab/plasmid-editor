@@ -314,6 +314,14 @@ const Editor = {
       if (!doc?.id) { toast('Save it to the lab library first: the history starts there', 'error'); return; }
       showHistory(doc.id, { unsaved: this.dirty, onRestored: (sequence) => this.replaceWithStored(doc, sequence) });
     });
+    // Its map and features into a day's page of the Lab Notebook.
+    document.getElementById('btnNotebook').hidden = !Notebook.enabled();
+    on('btnNotebook', () => {
+      const doc = this.doc;
+      if (!doc?.sequence) { toast('Open a sequence first', 'error'); return; }
+      Notebook.add(`The map of ${doc.name || 'this sequence'} (${fmt(doc.sequence.length)} bp, as it is now) and its features.`,
+        () => PlasmidMap.section(doc, this.sites));
+    });
     on('btnUndo', () => this.undo());
     on('btnRedo', () => this.redo());
 

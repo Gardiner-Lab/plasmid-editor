@@ -192,6 +192,136 @@ function confirmDialog(title, message, confirmLabel = 'Delete') {
   });
 }
 
+/**
+ * The Lab Notebook beside the editor in the suite: a figure made here - a map, a gel, a
+ * chromatogram - and what it shows, put into a day's page there (its /api/days/import).
+ */
+const Notebook = {
+  enabled: () => !!NOTEBOOK,
+
+  today() {
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  },
+
+  /**
+   * "📓 Add to notebook": asks which day (today unless another is chosen), then puts what
+   * make() builds - { section, pictures: [Blob] } - at the end of that day's page. `what`
+   * says in the dialog what goes in; onAdded(note) hears which day page it went to. Null when
+   * there is no notebook to add to.
+   */
+  button(what, make, { label = '📓 Add to notebook', className = 'btn btn-sm btn-secondary', onAdded = null } = {}) {
+    if (!NOTEBOOK) return null;
+    return el('button', {
+      class: className, type: 'button', title: "Put this into a day's page of your Lab Notebook",
+      onclick: () => this.add(what, make, onAdded),
+    }, label);
+  },
+
+  add(what, make, onAdded = null) {
+    const today = this.today();
+    modal({
+      title: 'Add to the Lab Notebook',
+      build: (body) => body.append(
+        el('p', {}, typeof what === 'function' ? what() : what, ' It goes at the end of the day\'s page.'),
+        el('div', { class: 'field' },
+          el('label', { for: 'nbDay' }, 'Day'),
+          el('input', { type: 'date', id: 'nbDay', value: today, style: 'max-width:12rem' }),
+          el('span', { class: 'hint' }, 'Started in your notebook if it is not there yet.'))),
+      buttons: [
+        { label: 'Cancel', kind: 'secondary' },
+        {
+          label: 'Add to notebook',
+          onClick: async ({ body }) => {
+            const day = body.querySelector('#nbDay').value || today;
+            const { section, pictures = [] } = await make();
+            const note = await this.send(section, pictures, day);
+            toast(`Added to ${note.title} in your Lab Notebook`, 'success', 6000);
+            onAdded?.(note);
+            return true;
+          },
+        },
+      ],
+    });
+  },
+
+  async send(section, pictures, day) {
+    const form = new FormData();
+    form.append('section', JSON.stringify(section));
+    if (day) form.append('date', day);
+    pictures.filter(Boolean).forEach((blob, i) => form.append('picture', blob, `figure-${i + 1}.png`));
+    const res = await fetch(`${NOTEBOOK}/api/days/import`, { method: 'POST', credentials: 'same-origin', body: form });
+    let data = {};
+    try { data = await res.json(); } catch { /* not JSON */ }
+    if (!res.ok) throw new Error(data.error || `Lab Notebook: ${res.status}`);
+    return data.note;
+  },
+
+  /** Where a note is in the notebook. */
+  link: (note) => `${NOTEBOOK}/#note=${encodeURIComponent(note.id)}`,
+
+  /** Text made safe to put into a section's HTML. */
+  esc: (s) => String(s ?? '').replace(/[&<>"]/g, (ch) => `&#${ch.charCodeAt(0)};`),
+
+  /** A plasmid by name: linked when it is saved, so the day shows on it in the notebook. */
+  plasmid(doc) {
+    const name = this.esc(doc.name || 'Untitled');
+    return doc.id ? `<a data-plasmid="${this.esc(doc.id)}">${name}</a>` : `<b>${name}</b>`;
+  },
+
+  /** A section's n-th picture (from 0), as the notebook names it until it is attached. */
+  picture: (n, alt) => `<p><img data-attachment="${n === 0 ? 'picture' : `picture-${n + 1}`}" alt="${Notebook.esc(alt)}"></p>`,
+
+  /** A table for a section: columns as [name, kind?, unit?], rows as lists of cells. */
+  table(title, columns, rows) {
+    return { type: 'table', title, scale: null,
+             columns: columns.map(([name, kind = 'text', unit = '']) => ({ name, kind, unit })),
+             rows: rows.map((cells) => ({ cells: cells.map((c) => (c === null || c === undefined ? null : String(c))) })) };
+  },
+
+  /** A sequence's features as a table: name, type, where, strand and length. */
+  features(doc) {
+    const n = doc.sequence.length;
+    return this.table('Features', [['Name'], ['Type'], ['Start', 'number'], ['End', 'number'], ['Strand'], ['Length', 'number', 'bp']],
+      [...(doc.features || [])].sort((a, b) => a.start - b.start).map((f) => [f.name, f.type, f.start + 1, f.end,
+        f.strand === -1 ? 'reverse' : f.strand === 1 ? 'forward' : '', f.end > f.start ? f.end - f.start : n - f.start + f.end]));
+  },
+};
+
+/**
+ * An SVG (element or markup) as a PNG Blob, drawn at `scale` times its size so it stays
+ * sharp, on a white ground (a picture in a notebook page or a PDF has no page behind it).
+ */
+function svgToPng(svg, scale = 2) {
+  const node = typeof svg === 'string'
+    ? new DOMParser().parseFromString(svg, 'image/svg+xml').documentElement : svg.cloneNode(true);
+  node.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+  if (!node.getAttribute('font-family')) node.setAttribute('font-family', 'system-ui, -apple-system, "Segoe UI", Arial, sans-serif');
+  const box = node.viewBox?.baseVal;
+  const width = Number.parseFloat(node.getAttribute('width')) || box?.width || 800;
+  const height = Number.parseFloat(node.getAttribute('height')) || box?.height || 600;
+  node.setAttribute('width', width);
+  node.setAttribute('height', height);
+  const source = URL.createObjectURL(new Blob([new XMLSerializer().serializeToString(node)], { type: 'image/svg+xml' }));
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(width * scale);
+      canvas.height = Math.round(height * scale);
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(source);
+      canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('Could not draw the picture'))), 'image/png');
+    };
+    img.onerror = () => { URL.revokeObjectURL(source); reject(new Error('Could not draw the picture')); };
+    img.src = source;
+  });
+}
+
 /** Trigger a download from an API path (handles the Content-Disposition name). */
 async function downloadFrom(path, fallbackName, body) {
   const res = await fetch(url(path), {

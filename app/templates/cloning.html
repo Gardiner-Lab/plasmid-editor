@@ -69,5 +69,6 @@
 {% endblock %}
 
 {% block extra_js %}
+<script src="{{ url_for('static', filename='js/plasmidmap.js') }}?v={{ app_version }}"></script>
 <script src="{{ url_for('static', filename='js/cloning.js') }}?v={{ app_version }}"></script>
 {% endblock %}

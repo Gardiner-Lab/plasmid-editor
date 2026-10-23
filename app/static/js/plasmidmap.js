@@ -346,6 +346,43 @@ class PlasmidMap {
     return svg;
   }
 
+  /**
+   * A sequence's map as a PNG, drawn as the editor draws it, without opening it:
+   * circular or linear by its topology, labelled with its unique cutters among `sites`.
+   */
+  static async picture(doc, sites = []) {
+    const box = el('div', { style: 'position:absolute;left:-10000px;top:0;width:1000px' });
+    document.body.append(box);
+    try {
+      new PlasmidMap(box).render(doc, sites);
+      return await svgToPng(box.querySelector('svg'));
+    } finally {
+      box.remove();
+    }
+  }
+
+  /**
+   * A sequence as a section for a day's page of the Lab Notebook: what it is, its map, and
+   * its features. `lead` (HTML) comes first, `extra` blocks before the features. Resolves to
+   * { section, pictures } for Notebook.add.
+   */
+  static async section(doc, sites = [], { kind = 'plasmid-map', title = null, lead = '', extra = [] } = {}) {
+    const picture = await PlasmidMap.picture(doc, sites);
+    const features = doc.features || [];
+    const about = `${Notebook.plasmid(doc)}: ${fmt(doc.sequence.length)} bp, ${doc.circular ? 'circular' : 'linear'}, `
+      + `${features.length} feature${features.length === 1 ? '' : 's'}`
+      + (doc.description ? `. ${Notebook.esc(doc.description)}` : '');
+    return {
+      section: {
+        type: 'section', title: title || `Plasmid map: ${doc.name || 'Untitled'}`,
+        source: { kind, id: doc.id || '', name: doc.name || '' },
+        blocks: [{ type: 'text', html: `${lead}<p>${about}.</p>${Notebook.picture(0, `Map of ${doc.name || 'the sequence'}`)}` },
+          ...extra, ...(features.length ? [Notebook.features(doc)] : [])],
+      },
+      pictures: [picture],
+    };
+  }
+
   /** The current map as a standalone SVG file. */
   toSVGString() {
     const svg = this.container.querySelector('svg');

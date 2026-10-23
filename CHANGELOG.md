@@ -6,6 +6,23 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **More of what the editor makes goes into the Lab Notebook.** 📓 Add to notebook - asking which
+  day, today unless another is chosen - is on:
+  - the editor's toolbar (📓 Notebook): the open sequence's map, as drawn here, and its features;
+  - a cloning product: its map, how it was made (the parts in order, and the junctions);
+  - a simulated PCR: the primers, the products (to tick off on the gel), and the template's map with
+    the products on it;
+  - a designed primer pair: sequences with their tails, length, Tm and GC, to tick off as ordered;
+  - a sequencing read: what it says about the plasmid, its verdict, the chromatogram as shown (around
+    the base chosen), and its differences, to tick off as checked on the trace.
+  The virtual gel's goes the same way.
+- **Ladders of your own for the virtual gel.** Ladders…, beside the ladder in the digest dialog, makes
+  a ladder from its band sizes (typed as "10000, 6000, 3 kb*, …"; a * marks a brighter reference
+  band), with a preview as you type. Everyone in your chair group - the labs that work together, your
+  own among them - then finds it among the ladders, beside the standard ones; only whoever made it (or
+  an administrator) changes or removes it. Reference bands show brighter on the gel and its picture.
+
 ## [0.7.0] - 2026-10-23
 
 ### Added
