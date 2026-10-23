@@ -481,7 +481,7 @@ def test_cloning_sends_golden_gate_to_the_moclo_tool(monkeypatch, tmp_dbs):
     # The other three methods stay here.
     for method in ('gibson', 'ligate', 'recombine'):
         assert f'data-method="{method}"' in html
-    assert 'MoClo tool' in c.get('/editor').get_data(as_text=True)
+    assert 'MoClo ↗' in c.get('/editor').get_data(as_text=True)
 
 
 def test_moclo_links_use_an_absolute_base(monkeypatch, tmp_dbs):
@@ -505,15 +505,15 @@ def test_suite_launch_page_link(monkeypatch, tmp_dbs):
     """Behind the suite, every page links back to the launch page."""
     c = _logged_in(_app_with(monkeypatch, tmp_dbs, SUITE_HOME_URL='/'))
     for page in ('/editor', '/cloning', '/sequencing'):
-        assert 'class="navbar-home"' in c.get(page).get_data(as_text=True), page
+        assert 'class="tt-home"' in c.get(page).get_data(as_text=True), page
     c.get('/logout')
-    assert 'Lab tools' in c.get('/login').get_data(as_text=True), 'signed out too'
+    assert 'Trellis Tools' in c.get('/login').get_data(as_text=True), 'signed out too'
 
 
 def test_suite_launch_page_link_hidden_when_standalone(monkeypatch, tmp_dbs):
     monkeypatch.delenv('SUITE_HOME_URL', raising=False)
     c = _logged_in(_app_with(monkeypatch, tmp_dbs))
-    assert 'navbar-home' not in c.get('/editor').get_data(as_text=True)
+    assert 'tt-home' not in c.get('/editor').get_data(as_text=True)
 
 
 def test_editor_has_a_blast_button(monkeypatch, tmp_dbs):

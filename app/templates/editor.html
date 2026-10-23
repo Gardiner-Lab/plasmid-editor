@@ -3,15 +3,15 @@
 
 {% block content %}
 <div class="toolbar" id="toolbar">
-    <button class="tool-btn" id="btnNew" title="New empty sequence">＋ New</button>
+    <button class="tool-btn" id="btnNew" title="New empty sequence"><img class="tt-glyph" src="{{ url_for('static', filename='trellis/glyphs/add.svg') }}" alt=""> New</button>
     <label class="tool-btn" for="fileInput" title="Open GenBank, FASTA, SnapGene, ApE or ABI files">
-        📂 Open
+        <img class="tt-glyph" src="{{ url_for('static', filename='trellis/glyphs/open.svg') }}" alt=""> Open
         <input type="file" id="fileInput" multiple accept=".gb,.gbk,.genbank,.ape,.embl,.fa,.fasta,.fna,.seq,.txt,.dna,.ab1" hidden>
     </label>
-    <button class="tool-btn" id="btnSave" title="Save to the lab library (Ctrl+S)">💾 Save</button>
+    <button class="tool-btn" id="btnSave" title="Save to the lab library (Ctrl+S)"><img class="tt-glyph" src="{{ url_for('static', filename='trellis/glyphs/save.svg') }}" alt=""> Save</button>
     <button class="tool-btn" id="btnSaveAs" title="Save a copy, or download as a file (Ctrl+Shift+S)">Save as…</button>
-    <button class="tool-btn" id="btnHistory" title="Every saved version of this sequence, and rolling back to one">🕘 History</button>
-    <button class="tool-btn" id="btnNotebook" title="Put this sequence's map and features into a day's page of your Lab Notebook" hidden>📓 Notebook</button>
+    <button class="tool-btn" id="btnHistory" title="Every saved version of this sequence, and rolling back to one"><img class="tt-glyph" src="{{ url_for('static', filename='trellis/glyphs/history.svg') }}" alt=""> History</button>
+    <button class="tool-btn" id="btnNotebook" title="Put this sequence's map and features into a day's page of your Lab Notebook" hidden><img class="tt-glyph" src="{{ url_for('static', filename='trellis/glyphs/notebook.svg') }}" alt=""> Notebook</button>
     <div class="tool-sep"></div>
 
     <button class="tool-btn" id="btnUndo" title="Undo (Ctrl+Z)" disabled>↶ Undo</button>
@@ -28,8 +28,8 @@
     <button class="tool-btn" id="btnRevComp" title="Reverse complement the whole sequence">⇄ Rev-comp</button>
     <button class="tool-btn" id="btnTopology" title="Switch between circular and linear">↻ Topology</button>
     <button class="tool-btn" id="btnOrigin" title="Set the selection start as position 1">Set origin</button>
-    <button class="tool-btn" id="btnFeature" title="Make a feature from the selection">🏷 Add feature</button>
-    <button class="tool-btn" id="btnTranslateSel" title="Translate the selection, showing each amino acid under its codon">🧬 Translate</button>
+    <button class="tool-btn" id="btnFeature" title="Make a feature from the selection"><img class="tt-glyph" src="{{ url_for('static', filename='trellis/glyphs/label.svg') }}" alt=""> Add feature</button>
+    <button class="tool-btn" id="btnTranslateSel" title="Translate the selection, showing each amino acid under its codon"><img class="tt-glyph" src="{{ url_for('static', filename='trellis/glyphs/line.svg') }}" alt=""> Translate</button>
     <div class="tool-sep"></div>
 
     <span class="tool-label">Show</span>

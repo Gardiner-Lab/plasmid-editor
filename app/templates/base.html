@@ -4,47 +4,42 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Plasmid Editor{% endblock %}</title>
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='trellis/editor.svg') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='trellis/trellis.css') }}?v={{ app_version }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v={{ app_version }}">
     {% block extra_css %}{% endblock %}
 </head>
-<body data-base="{{ request.script_root }}" data-stocks="{{ stocks_url }}" data-notebook="{{ notebook_url }}" data-username="{{ session.get('username', '') }}" data-is-admin="{{ 'true' if session.get('is_admin') else 'false' }}">
-<nav class="navbar">
-    <div class="container container-wide">
-        <div class="navbar-brand">
-            {% if suite_home %}
-                <a href="{{ suite_home }}" class="navbar-home" title="Back to the lab tools launch page">← Lab tools</a>
-                <span class="navbar-divider"></span>
+<body class="tt" data-base="{{ request.script_root }}" data-stocks="{{ stocks_url }}" data-notebook="{{ notebook_url }}" data-username="{{ session.get('username', '') }}" data-is-admin="{{ 'true' if session.get('is_admin') else 'false' }}">
+<header class="tt-bar">
+    {% if suite_home %}
+        <a class="tt-home" href="{{ suite_home }}" title="All of Trellis Tools"><img src="{{ url_for('static', filename='trellis/trellis.svg') }}" alt=""><span>Trellis Tools</span></a>
+    {% endif %}
+    <a class="tt-module" href="{{ url_for('editor_page') if session.get('user_id') else url_for('login_page') }}"><img src="{{ url_for('static', filename='trellis/editor.svg') }}" alt="">Plasmid Editor</a>
+    {% if session.get('user_id') %}
+        {% set page = request.endpoint %}
+        <nav class="tt-tabs">
+            <a href="{{ url_for('editor_page') }}" class="tt-tab {{ 'active' if page == 'editor_page' }}">Editor</a>
+            <a href="{{ url_for('library_page') }}" class="tt-tab {{ 'active' if page == 'library_page' }}">My sequences</a>
+            <a href="{{ url_for('cloning_page') }}" class="tt-tab {{ 'active' if page == 'cloning_page' }}">Cloning</a>
+            <a href="{{ url_for('sequencing_page') }}" class="tt-tab {{ 'active' if page == 'sequencing_page' }}">Sequencing</a>
+            <a href="{{ url_for('features_page') }}" class="tt-tab {{ 'active' if page == 'features_page' }}">Features</a>
+            {% if not suite_dashboard and session.get('role') in ('admin', 'lab_lead') %}
+                <a href="{{ url_for('admin_page') }}" class="tt-tab {{ 'active' if page == 'admin_page' }}">Admin</a>
             {% endif %}
-            <a href="{{ url_for('editor_page') if session.get('user_id') else url_for('login_page') }}" class="navbar-logo">
-                🧬 Plasmid Editor
-            </a>
-        </div>
-        <div class="navbar-menu">
-            {% if session.get('user_id') %}
-                {% set page = request.endpoint %}
-                <a href="{{ url_for('editor_page') }}" class="navbar-link {{ 'active' if page == 'editor_page' }}">Editor</a>
-                <a href="{{ url_for('library_page') }}" class="navbar-link {{ 'active' if page == 'library_page' }}">My sequences</a>
-                <a href="{{ url_for('cloning_page') }}" class="navbar-link {{ 'active' if page == 'cloning_page' }}">Cloning</a>
-                <a href="{{ url_for('sequencing_page') }}" class="navbar-link {{ 'active' if page == 'sequencing_page' }}">Sequencing</a>
-                <a href="{{ url_for('features_page') }}" class="navbar-link {{ 'active' if page == 'features_page' }}">Features</a>
-                {% if suite_dashboard %}
-                    <a href="{{ suite_dashboard }}" class="navbar-link">Dashboard</a>
-                {% elif session.get('role') in ('admin', 'lab_lead') %}
-                    <a href="{{ url_for('admin_page') }}" class="navbar-link {{ 'active' if page == 'admin_page' }}">Admin</a>
-                {% endif %}
-                <span class="navbar-divider"></span>
-                {% if moclo.enabled %}
-                    <a href="{{ moclo.library }}" class="navbar-link">MoClo tool ↗</a>
-                {% endif %}
-                <span class="navbar-user">👤 {{ session.get('username') }}</span>
-                <a href="{{ url_for('logout_page') }}" class="navbar-link">Log out</a>
-            {% else %}
-                <a href="{{ url_for('login_page') }}" class="navbar-link">Log in</a>
-                <a href="{{ url_for('about_page') }}" class="navbar-link">About</a>
-            {% endif %}
-        </div>
-    </div>
-</nav>
+        </nav>
+        <nav class="tt-links">
+            {% if suite_dashboard %}<a href="{{ suite_dashboard }}">Dashboard</a>{% endif %}
+            {% if moclo.enabled %}<a href="{{ moclo.library }}">MoClo ↗</a>{% endif %}
+        </nav>
+        <span class="tt-user">{{ session.get('username') }}</span>
+        <a class="tt-logout" href="{{ url_for('logout_page') }}">Log out</a>
+    {% else %}
+        <nav class="tt-links">
+            <a href="{{ url_for('login_page') }}">Log in</a>
+            <a href="{{ url_for('about_page') }}">About</a>
+        </nav>
+    {% endif %}
+</header>
 
 <main class="main-content">
     <div class="container {% block container_class %}container-wide{% endblock %}">

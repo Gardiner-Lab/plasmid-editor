@@ -51,7 +51,7 @@ const Features = {
         text: e.sequence.length > 48 ? `${e.sequence.slice(0, 45)}…` : e.sequence }),
       el('td', {}, el('span', { class: `badge ${e.source === 'lab' ? 'badge-gg' : ''}`, text: e.source })),
       el('td', {}, e.source === 'lab'
-        ? el('button', { class: 'tool-btn', title: 'Remove', onclick: () => this.remove(e) }, '🗑')
+        ? el('button', { class: 'tool-btn', title: 'Remove', onclick: () => this.remove(e) }, glyph('trash'))
         : null))));
   },
 

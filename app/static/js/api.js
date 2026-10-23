@@ -39,7 +39,7 @@ const Stocks = {
   render(code) {
     if (!code) return '—';
     if (!STOCKS || !this.kind(code)) return String(code);
-    return el('a', { href: this.link(code), target: '_blank', rel: 'noopener', title: 'Open in Lab Stocks' }, `🧫 ${code}`);
+    return el('a', { href: this.link(code), target: '_blank', rel: 'noopener', title: 'Open in Lab Stocks' }, glyph('stocks'), ` ${code}`);
   },
 };
 
@@ -110,6 +110,10 @@ const el = (tag, attrs = {}, ...children) => {
   }
   return node;
 };
+
+/** One of Trellis Tools' small icons (static/trellis/glyphs/), in place of an emoji. */
+const glyph = (name) => el('img', { class: 'tt-glyph', alt: '',
+  src: `${document.body.dataset.base || ''}/static/trellis/glyphs/${name}.svg` });
 
 /**
  * Copy text to the clipboard; resolves true when it was copied. Browsers give
@@ -206,12 +210,12 @@ const Notebook = {
   },
 
   /**
-   * "📓 Add to notebook": asks which day (today unless another is chosen), then puts what
+   * "Add to notebook": asks which day (today unless another is chosen), then puts what
    * make() builds - { section, pictures: [Blob] } - at the end of that day's page. `what`
    * says in the dialog what goes in; onAdded(note) hears which day page it went to. Null when
    * there is no notebook to add to.
    */
-  button(what, make, { label = '📓 Add to notebook', className = 'btn btn-sm btn-secondary', onAdded = null } = {}) {
+  button(what, make, { label = [glyph('notebook'), ' Add to notebook'], className = 'btn btn-sm btn-secondary', onAdded = null } = {}) {
     if (!NOTEBOOK) return null;
     return el('button', {
       class: className, type: 'button', title: "Put this into a day's page of your Lab Notebook",

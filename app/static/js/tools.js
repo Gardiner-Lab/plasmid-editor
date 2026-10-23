@@ -217,7 +217,7 @@ const Tools = {
                 class: 'btn btn-sm btn-secondary', type: 'button',
                 title: "Put this gel and its fragments into a day's page of your Lab Notebook",
                 onclick: () => this.toNotebook(res, [...lanes], ladder),
-              }, '📓 Add to notebook')) : null,
+              }, glyph('notebook'), ' Add to notebook')) : null,
             el('div', { class: 'gel-kept' },
               el('span', { class: 'hint' }, lanes.length > 1
                 ? `Lanes stay on the gel until their tab is closed${others ? ` (${others} from other open tabs)` : ''}: `

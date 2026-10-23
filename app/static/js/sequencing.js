@@ -460,7 +460,7 @@ const Sequencing = {
       }, r.verdict === 'sufficient' ? '✓' : '✗') : null,
       this.statusBadge(r),
       this.reference.can_change
-        ? el('button', { class: 'tool-btn rmap-remove', title: 'Remove read', onclick: () => this.remove(r) }, '🗑')
+        ? el('button', { class: 'tool-btn rmap-remove', title: 'Remove read', onclick: () => this.remove(r) }, glyph('trash'))
         : null));
 
       if (!a.mapped) {

@@ -622,7 +622,7 @@ const Editor = {
       box.replaceChildren(...glycerol.map((g) => el('a', {
         class: `badge badge-stock ${g.status !== 'in stock' ? 'faded' : ''}`, href: Stocks.link(g.code), target: '_blank', rel: 'noopener',
         title: `Glycerol stock${g.clone ? `, clone ${g.clone}` : ''}${g.host ? ` in ${g.host}` : ''}${g.location ? `, kept in ${g.location}` : ''} · ${g.status}`,
-      }, `🧫 ${g.code}`)));
+      }, glyph('stocks'), ` ${g.code}`)));
     } catch (err) {
       box.replaceChildren();          // Lab Stocks not reachable: nothing to show
     }
@@ -1709,7 +1709,7 @@ const Editor = {
           disabled: !canContribute,
           title: canContribute ? '' : 'The shared MoClo parts database is not mounted on this server',
           onclick: () => this.contribute(result),
-        }, '➕ Add to MoClo parts library'),
+        }, glyph('add'), ' Add to MoClo parts library'),
         this.doc.moclo_part_id
           ? el('span', { class: 'hint' }, 'Already contributed.')
           : !canContribute
