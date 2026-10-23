@@ -6,6 +6,8 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-10-23
+
 ### Changed
 - **Trellis Tools' look**: the header every module shares (Trellis Tools, then this module's icon and name,
   its tabs, the person and Log out), and the suite's palette - green for what you do, brown for structure,
