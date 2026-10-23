@@ -492,6 +492,7 @@ tr.clickable:hover td { background: var(--bg-color); }
 .gel-lane { position: relative; width: 4.5rem; height: 20rem; border-left: 1px solid #374151; }
 .gel-lane-label { position: absolute; top: calc(100% + .35rem); left: -.5rem; right: -.5rem; text-align: center; font-size: .68rem;
                    line-height: 1.15; color: #d1d5db; white-space: pre-line; overflow-wrap: anywhere; }
+.gel-notebook { display: flex; align-items: center; gap: .4rem; margin-top: .5rem; font-size: .8rem; }
 .gel-kept { display: flex; flex-wrap: wrap; gap: .35rem; align-items: center; margin-top: .5rem; font-size: .8rem; }
 .gel-kept-lane .chip-x { border: 0; background: none; cursor: pointer; font-size: .9rem; line-height: 1; padding: 0 .1rem; color: inherit; opacity: .6; }
 .gel-kept-lane .chip-x:hover { opacity: 1; }

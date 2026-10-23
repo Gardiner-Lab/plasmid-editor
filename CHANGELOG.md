@@ -6,6 +6,14 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **A virtual digest goes into the Lab Notebook.** In the suite, 📓 Add to notebook, under the virtual
+  gel, puts the gel and its fragments into a day's page of your Lab Notebook - today's, or another
+  day chosen - starting the day if needed: the gel as a picture with its wells numbered and named
+  (the ladder first, then each lane, with the bands expected), and a table of every lane's
+  fragments, largest first, with a column to tick off the bands seen on the real gel. The plasmids
+  are linked, so the day shows on them in the notebook. NOTEBOOK_URL says where the notebook is.
+
 ## [0.6.2] - 2026-10-23
 
 ### Added

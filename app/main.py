@@ -99,6 +99,9 @@ def create_app() -> Flask:
             # Lab Stocks (glycerol stocks and primers): "/stocks" in the suite;
             # unset, the editor's links and buttons for it are hidden.
             'stocks_url': os.environ.get('STOCKS_URL', '').strip().rstrip('/'),
+            # The Lab Notebook: "/notebook" in the suite, where a virtual digest
+            # can be put into a day's page; unset, that button is hidden.
+            'notebook_url': os.environ.get('NOTEBOOK_URL', '').strip().rstrip('/'),
             # Inside the suite, its dashboard has every account and admin control.
             'suite_dashboard': suite_auth.dashboard_url() if suite_auth.enabled() else '',
             'moclo': {
