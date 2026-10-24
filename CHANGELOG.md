@@ -6,6 +6,10 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **Family tree ↗** beside a saved plasmid's badges, with SEEDS_URL set (/seeds in the suite): in the Seed Bank,
+  the lines made with it, their seeds and plants, and the notebook pages about each.
+
 ## [0.9.0] - 2026-10-23
 
 ### Changed

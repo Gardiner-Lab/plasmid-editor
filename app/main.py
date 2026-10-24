@@ -102,6 +102,9 @@ def create_app() -> Flask:
             # The Lab Notebook: "/notebook" in the suite, where a virtual digest
             # can be put into a day's page; unset, that button is hidden.
             'notebook_url': os.environ.get('NOTEBOOK_URL', '').strip().rstrip('/'),
+            # The Seed Bank: "/seeds" in the suite, for a plasmid's family tree (the
+            # lines made with it and their seeds); unset, that link is hidden.
+            'seeds_url': os.environ.get('SEEDS_URL', '').strip().rstrip('/'),
             # Inside the suite, its dashboard has every account and admin control.
             'suite_dashboard': suite_auth.dashboard_url() if suite_auth.enabled() else '',
             'moclo': {
