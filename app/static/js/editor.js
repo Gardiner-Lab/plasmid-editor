@@ -611,6 +611,12 @@ const Editor = {
 
   /** The plasmid's glycerol stocks in Lab Stocks, as links beside its badges. */
   async showStocks(doc) {
+    const tree = document.getElementById('badgeTree');
+    const seeds = (document.body.dataset.seeds || '').replace(/\/$/, '');
+    if (tree) {
+      tree.hidden = !(seeds && doc?.id);
+      if (!tree.hidden) tree.href = `${seeds}/#tree=plasmid:${encodeURIComponent(doc.id)}`;
+    }
     const box = document.getElementById('stockChips');
     if (!box || !Stocks.enabled()) return;
     if (!doc?.id) { box.replaceChildren(); return; }

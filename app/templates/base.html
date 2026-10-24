@@ -9,7 +9,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v={{ app_version }}">
     {% block extra_css %}{% endblock %}
 </head>
-<body class="tt" data-base="{{ request.script_root }}" data-stocks="{{ stocks_url }}" data-notebook="{{ notebook_url }}" data-username="{{ session.get('username', '') }}" data-is-admin="{{ 'true' if session.get('is_admin') else 'false' }}">
+<body class="tt" data-base="{{ request.script_root }}" data-stocks="{{ stocks_url }}" data-notebook="{{ notebook_url }}" data-seeds="{{ seeds_url }}" data-username="{{ session.get('username', '') }}" data-is-admin="{{ 'true' if session.get('is_admin') else 'false' }}">
 <header class="tt-bar">
     {% if suite_home %}
         <a class="tt-home" href="{{ suite_home }}" title="All of Trellis Tools"><img src="{{ url_for('static', filename='trellis/trellis.svg') }}" alt=""><span>Trellis Tools</span></a>
