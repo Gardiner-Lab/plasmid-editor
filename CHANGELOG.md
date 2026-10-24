@@ -6,7 +6,7 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [0.10.0] - 2026-10-23
+## [0.10.0] - 2026-10-24
 
 ### Added
 - **Family tree ↗** beside a saved plasmid's badges, with SEEDS_URL set (/seeds in the suite): in the Seed Bank,
