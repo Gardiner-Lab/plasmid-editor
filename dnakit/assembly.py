@@ -241,27 +241,34 @@ def overlap_assembly(fragments: List[Dict[str, Any]], circular: bool = True, min
 # Site-specific recombination (Gateway BP / LR, Cre-lox, FLP-FRT)
 # ---------------------------------------------------------------------------
 
-def _shared_blocks(a: str, b: str, min_len: int, max_len: int, circular_b: bool) -> List[Tuple[int, int, int]]:
-    """Maximal exact matches (pos_a, pos_b, length) with min_len <= length <= max_len."""
+def _shared_blocks(a: str, b: str, min_len: int, max_len: int, circular_b: bool,
+                   circular_a: bool = False) -> List[Tuple[int, int, int]]:
+    """
+    Maximal exact matches (pos_a, pos_b, length) with min_len <= length <= max_len. A circular
+    sequence is searched past its origin as well, so a core that spans it is found.
+    """
     k = min_len
-    index: Dict[str, List[int]] = {}
-    for i in range(len(a) - k + 1):
-        index.setdefault(a[i:i + k], []).append(i)
+    aa = a + a[:max_len] if circular_a else a
     bb = b + b[:max_len] if circular_b else b
+    index: Dict[str, List[int]] = {}
+    for i in range(len(a) if circular_a else max(0, len(a) - k + 1)):
+        index.setdefault(aa[i:i + k], []).append(i)
     blocks = []
-    for j in range(len(b)):
+    for j in range(len(b) if circular_b else max(0, len(b) - k + 1)):
         for i in index.get(bb[j:j + k], ()):
-            if i > 0 and j > 0 and a[i - 1] == bb[j - 1]:
+            before_a = aa[i - 1] if i else (a[-1] if circular_a else None)
+            before_b = bb[j - 1] if j else (b[-1] if circular_b else None)
+            if before_a is not None and before_a == before_b:
                 continue  # not left-maximal
             L = k
-            while i + L < len(a) and j + L < len(bb) and a[i + L] == bb[j + L]:
+            while i + L < len(aa) and j + L < len(bb) and aa[i + L] == bb[j + L]:
                 L += 1
             if L <= max_len:
                 blocks.append((i, j, L))
     return blocks
 
 
-def recombine(donor: Dict[str, Any], acceptor: Dict[str, Any], min_core: int = 13,
+def recombine(donor: Dict[str, Any], acceptor: Dict[str, Any], min_core: int = 20,
               max_core: int = 60, name: str = 'Recombination product') -> List[Dict[str, Any]]:
     """
     Double crossover through two short shared core sequences, as in
@@ -269,35 +276,63 @@ def recombine(donor: Dict[str, Any], acceptor: Dict[str, Any], min_core: int = 1
     exchange. The region of the donor between the two cores replaces the
     corresponding region of the acceptor. Long homology (shared backbone
     elements such as an origin) is ignored via max_core.
+
+    A circular donor is read round its origin, so the piece carried over is the same wherever the
+    file happens to start, and both pieces between the cores are offered: in an LR reaction that is
+    the expression clone and the by-product. Each product keeps the features of whichever parent
+    contributed the bases. The cores of real systems are 21-25 bp (Gateway att) or 34 bp (loxP, FRT);
+    min_core much below that matches by chance.
     """
     a = donor['sequence'].upper()
     b_fwd = acceptor['sequence'].upper()
+    na = len(a)
+    donor_circular = bool(donor.get('circular'))
+    acceptor_circular = bool(acceptor.get('circular'))
     results = []
     for flipped in (False, True):
         b = reverse_complement(b_fwd) if flipped else b_fwd
-        blocks = _shared_blocks(a, b, min_core, max_core, acceptor.get('circular', False))
+        nb = len(b)
+        acc = (dict(acceptor, sequence=b, features=_flip(acceptor.get('features') or [], nb))
+               if flipped else acceptor)
+        blocks = _shared_blocks(a, b, min_core, max_core, acceptor_circular, donor_circular)
         for x in blocks:
             for y in blocks:
-                if y[0] <= x[0] + x[2] or y[1] == x[1]:
+                if y[1] == x[1] or y[0] % na == x[0] % na:
                     continue
-                ai0, ai1 = x[0], y[0] + y[2]  # donor segment, core to core inclusive
-                insert = a[ai0:ai1]
-                nb = len(b)
+                # The donor segment carried over, from core x through core y. A circular donor has two
+                # such segments for a pair of cores: the one running past its origin counts as well.
+                ai0 = x[0] % na
+                if donor_circular:
+                    span = ((y[0] + y[2]) - x[0]) % na or na
+                    if span < x[2] + y[2]:
+                        continue            # the cores would overlap: not a crossover
+                    insert = (a + a)[ai0:ai0 + span]
+                else:
+                    if y[0] <= x[0] + x[2]:
+                        continue
+                    span = (y[0] + y[2]) - x[0]
+                    insert = a[ai0:ai0 + span]
                 bj0, bj1 = x[1] % nb, (y[1] + y[2]) % nb
-                if acceptor.get('circular'):
-                    outside = (b + b)[bj1:bj1 + (bj0 - bj1) % nb]
-                    product = insert + outside
+                feats = _features_in(donor, ai0, span)
+                if acceptor_circular:
+                    kept = (bj0 - bj1) % nb
+                    product = insert + (b + b)[bj1:bj1 + kept]
+                    feats += _shift(_features_in(acc, bj1, kept), span, span + kept, True)
                 else:
                     if bj1 <= bj0:
                         continue
                     product = b[:bj0] + insert + b[bj1:]
-                feats = _features_in(donor, ai0, len(insert))
+                    feats = (_features_in(acc, 0, bj0) + _shift(feats, bj0, 0, False)
+                             + _shift(_features_in(acc, bj1, nb - bj1), bj0 + span, 0, False))
                 results.append({
-                    'core_1': a[x[0]:x[0] + x[2]], 'core_2': a[y[0]:y[0] + y[2]],
+                    'core_1': a[x[0] % na:x[0] % na + x[2]] if x[0] + x[2] <= na else (a + a)[x[0]:x[0] + x[2]],
+                    'core_2': a[y[0] % na:y[0] % na + y[2]] if y[0] + y[2] <= na else (a + a)[y[0]:y[0] + y[2]],
                     'acceptor_flipped': flipped, 'length': len(product),
-                    'document': make_document(name, product, bool(acceptor.get('circular')), feats),
+                    'from_donor': span, 'from_acceptor': len(product) - span,
+                    'document': make_document(name, product, acceptor_circular, _dedupe_features(feats)),
                 })
-    results.sort(key=lambda r: -len(r['core_1']) - len(r['core_2']))
+    # The biggest shared cores first; of those, the product that keeps most of the acceptor (its backbone).
+    results.sort(key=lambda r: (-len(r['core_1']) - len(r['core_2']), -r['from_acceptor']))
     seen, unique = set(), []
     for r in results:
         if r['document']['sequence'] not in seen:

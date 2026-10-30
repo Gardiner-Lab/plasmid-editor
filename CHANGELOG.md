@@ -6,6 +6,19 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- Recombination (Gateway LR, Cre-lox, FLP-FRT) read a circular donor as if it were linear, so when the
+  entry clone's file happened to start between its two att sites the piece carried over was the one past the
+  origin: the product came back with the entry backbone and ccdB instead of the gene, and no warning. A
+  circular donor is now read round its origin, so the product is the same wherever the file starts. BP, whose
+  donor is usually a linear attB product, was not affected.
+- Both pieces between the two cores are now reported, as a double crossover gives: in an LR, the expression
+  clone (listed first) and the by-product. Each says how many bases came from the donor and from the acceptor.
+- A product keeps the features of both parents: what the donor put in, and the backbone the acceptor kept.
+  Only the donor's were carried over before, so an expression clone lost its vector's marker and origin.
+- The smallest core counted as a crossover is 20 bp by default, not 13: att cores are 21-25 bp and loxP and
+  FRT are 34 bp, while a 13 bp match turns up by chance in a plasmid and produced extra, wrong products.
+
 ## [0.11.0] - 2026-10-30
 
 ### Changed

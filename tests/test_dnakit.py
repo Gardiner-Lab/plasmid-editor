@@ -282,6 +282,70 @@ def test_recombination_double_crossover():
     assert acceptor['sequence'][34:184] not in prod + prod
 
 
+def _gateway():
+    """An LR pair: a circular entry clone (attL1-gene-attL2) and a destination (attR1-ccdB-attR2)."""
+    # Its own generator, so these sequences are the same whatever else has run.
+    rng = random.Random(20261030)
+    draw = lambda n: rand_dna(n, rng=rng)
+    core1, core2 = 'ACAAGTTTGTACAAAAAAGCAGGCT', 'ACCCAGCTTTCTTGTACAAAGTGGT'
+    l_arm, r_arm = draw(70), draw(90)                  # the arms of attL and attR are not shared
+    gene, entry_bb, ccdb, dest_bb = draw(600), draw(1800), draw(1500), draw(2600)
+    entry = l_arm + core1 + gene + core2 + l_arm + entry_bb
+    dest = model.make_document('destination', core1 + r_arm + ccdb + r_arm + core2 + dest_bb, True)
+    return entry, dest, gene, entry_bb, ccdb, dest_bb
+
+
+def test_lr_finds_the_expression_clone_wherever_the_entry_clone_file_starts():
+    entry_seq, dest, gene, entry_bb, ccdb, dest_bb = _gateway()
+    # Where the file starts is arbitrary: inside the gene it puts attL2 before attL1, and the segment
+    # that is carried over runs past the origin.
+    for start in (0, entry_seq.index(gene) + 300, len(entry_seq) - 400):
+        entry = model.make_document('entry clone', entry_seq[start:] + entry_seq[:start], True)
+        products = assembly.recombine(entry, dest, min_core=13, max_core=60)
+        wanted = [p for p in products if gene in p['document']['sequence'] * 2]
+        assert wanted, f'the gene is in no product when the file starts at {start}'
+        clone = wanted[0]['document']['sequence'] * 2
+        assert dest_bb in clone, 'the expression clone keeps the destination backbone'
+        assert ccdb not in clone and entry_bb not in clone, 'ccdB and the entry backbone are swapped out'
+        # Both halves of the double crossover: the expression clone and the by-product.
+        assert any(ccdb in p['document']['sequence'] * 2 and entry_bb in p['document']['sequence'] * 2
+                   for p in products), 'the by-product is reported too'
+
+
+def test_bp_with_a_linear_attb_product_is_unchanged():
+    entry_seq, pdonr, gene, _, ccdb, _ = _gateway()
+    core1, core2 = 'ACAAGTTTGTACAAAAAAGCAGGCT', 'ACCCAGCTTTCTTGTACAAAGTGGT'
+    pad = random.Random(5).choice  # fixed, so nothing else shifts
+    flank = lambda n: ''.join(pad('ACGT') for _ in range(n))
+    attb = model.make_document('attB-PCR', flank(30) + core1 + gene + core2 + flank(30), False)
+    products = assembly.recombine(attb, pdonr, min_core=13, max_core=60)
+    assert products and gene in products[0]['document']['sequence'] * 2
+    assert ccdb not in products[0]['document']['sequence'] * 2
+
+
+def test_a_recombination_product_keeps_the_features_of_both_parents():
+    entry_seq, dest, gene, entry_bb, ccdb, dest_bb = _gateway()
+    # The file starts inside the gene, so the piece carried over runs past the origin: one annotated
+    # region of it lies after the origin, another before it.
+    start = entry_seq.index(gene) + 300
+    rotated = entry_seq[start:] + entry_seq[:start]
+    entry = model.make_document('entry clone', rotated, True)
+    tail, head = gene[300:500], gene[:300]
+    entry['features'] = [
+        {'id': 'f1', 'name': 'tail', 'type': 'CDS', 'start': rotated.index(tail), 'end': rotated.index(tail) + len(tail), 'strand': 1},
+        {'id': 'f2', 'name': 'head', 'type': 'CDS', 'start': len(rotated) - len(head), 'end': len(rotated), 'strand': 1}]
+    marker = dest['sequence'].index(dest_bb) + 50          # clear of the crossover, as in a real vector
+    dest['features'] = [{'id': 'g1', 'name': 'SpecR', 'type': 'CDS', 'start': marker, 'end': marker + 1200, 'strand': 1}]
+    product = next(p for p in assembly.recombine(entry, dest, min_core=13, max_core=60)
+                   if gene in p['document']['sequence'] * 2)['document']
+    named = {f['name']: f for f in product['features']}
+    assert set(named) == {'tail', 'head', 'SpecR'}, 'both parents annotate what they put in'
+    twice = product['sequence'] * 2
+    for name, bases in (('tail', tail), ('head', head), ('SpecR', dest_bb[50:1250])):
+        f = named[name]
+        assert twice[f['start']:f['start'] + len(bases)] == bases, f'{name} sits on the wrong bases'
+
+
 # --- features --------------------------------------------------------------
 
 def test_ape_library_parse_and_annotate():

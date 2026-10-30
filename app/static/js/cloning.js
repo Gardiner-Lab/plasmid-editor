@@ -3,7 +3,7 @@
 const HELP = {
   gibson: 'Pick fragments in the order they should be joined. Each neighbouring pair must share terminal homology; a fragment is flipped automatically if only its reverse complement overlaps.',
   ligate: 'Pick exactly two sequences: the vector first, then the insert. Choose the enzymes for each and which fragment to use.',
-  recombine: 'Pick the donor first, then the acceptor. A double crossover through two shared core sequences (attL×attR, attB×attP, loxP, FRT) swaps the donor segment into the acceptor.',
+  recombine: 'Pick the donor first, then the acceptor. A double crossover through two shared core sequences (attL×attR, attB×attP, loxP, FRT) swaps the donor segment into the acceptor. Both products are listed: in a Gateway LR, the expression clone and the by-product.',
 };
 
 const Cloning = {
@@ -137,7 +137,7 @@ const Cloning = {
         el('div', { class: 'field-row' },
           el('div', { class: 'field' },
             el('label', { for: 'recMin' }, 'Minimum core (bp)'),
-            el('input', { type: 'number', id: 'recMin', value: '13', min: '8' })),
+            el('input', { type: 'number', id: 'recMin', value: '20', min: '8', title: 'att cores are 21–25 bp, loxP and FRT 34 bp; below about 20 bp, chance matches look like crossovers' })),
           el('div', { class: 'field' },
             el('label', { for: 'recMax' }, 'Maximum core (bp)'),
             el('input', { type: 'number', id: 'recMax', value: '60', min: '20' }))));
@@ -176,11 +176,14 @@ const Cloning = {
         const res = await API.post('/api/tools/recombine', {
           donor: this.payload(this.picked[0]),
           acceptor: this.payload(this.picked[1]),
-          min_core: Number(document.getElementById('recMin').value) || 13,
+          min_core: Number(document.getElementById('recMin').value) || 20,
           max_core: Number(document.getElementById('recMax').value) || 60,
         });
+        // Both halves of a double crossover come back (in Gateway LR: the expression clone and the
+        // by-product), so each says how much of it came from where.
         this.showProducts(res.products.map((r) => r.document), null,
-          res.products.map((r) => `cores ${r.core_1.slice(0, 12)}… / ${r.core_2.slice(0, 12)}…`));
+          res.products.map((r) => `${r.length} bp · ${r.from_donor} bp from the donor, `
+            + `${r.from_acceptor} bp from the acceptor · cores ${r.core_1.slice(0, 12)}… / ${r.core_2.slice(0, 12)}…`));
       }
     } catch (err) {
       out.replaceChildren(el('div', { class: 'alert alert-error', text: err.message }));
