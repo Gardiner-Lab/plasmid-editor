@@ -98,7 +98,7 @@ const Admin = {
   },
 
   userRow(u) {
-    const joined = (u.created_at || '').slice(0, 10);
+    const joined = localTime(u.created_at).slice(0, 10);
     if (!this.isAdmin) {
       return el('tr', {}, el('td', {}, u.username), el('td', {}, u.lab || '—'),
         el('td', {}, ROLE_NAMES[u.role] || u.role), el('td', {}, joined));

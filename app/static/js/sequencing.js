@@ -176,7 +176,7 @@ const Sequencing = {
           el('span', {}, s.circular ? 'circular' : 'linear'),
           s.read_count ? el('span', {}, `${s.read_count} read${s.read_count === 1 ? '' : 's'}`) : null,
           s.reads_bad ? el('span', { class: 'verdict-bad', text: `${s.reads_bad} not sufficient` }) : null,
-          s.created_at ? el('span', {}, `added ${String(s.created_at).slice(0, 10)}`) : null,
+          s.created_at ? el('span', {}, `added ${localTime(s.created_at).slice(0, 10)}`) : null,
           s.description ? el('span', {}, '· ', highlight(s.description.slice(0, 60), query)) : null)),
       onSelect: (s) => this.selectReference(s.id),
     });
