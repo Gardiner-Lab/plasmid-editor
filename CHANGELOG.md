@@ -6,6 +6,8 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-10-30
+
 ### Changed
 - Dates are written day-first, as in Europe: 30-10-2026, and 30-10-2026 16:40 on the 24-hour clock: in a
   plasmid's history, sequencing reads, references and the list of accounts.
