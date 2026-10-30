@@ -6,6 +6,8 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-10-30
+
 ### Added
 - A **Help** page, *How to use the Plasmid Editor*: getting a sequence in, editing, features and annotation,
   enzymes and digests, the cloning simulations, Gateway and Cre-lox, primers and PCR, sequencing reads,
