@@ -6,6 +6,15 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-10-30
+
+### Fixed
+- Searching a sequence that reads on the **reverse strand** found it, but marked it on the forward strand
+  only: the complement was drawn as plain text, so the strand the match actually reads on was never
+  highlighted. A hit is now marked on the strand it reads on, underlined so it is plain even where the
+  selection covers both rows, and the complement carries the selection too. With the complement hidden, a
+  reverse hit is still marked on the sequence rather than not at all.
+
 ## [0.12.0] - 2026-10-30
 
 ### Added

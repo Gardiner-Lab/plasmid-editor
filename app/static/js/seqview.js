@@ -436,7 +436,7 @@ class SeqView {
       const basesRow = el('div', { class: 'seqmap-row bases' });
       basesRow.dataset.start = String(start);
       basesRow.dataset.len = String(len);
-      basesRow.append(...this._styledBases(text, start, end, sel, selLen));
+      basesRow.append(...this._styledBases(text, start, end, sel, selLen, 1));
       // The caret belongs to the block it starts in; at the very end of the
       // sequence it sits just past the last base of the final block.
       if (this.opts.editable && this.caret !== null
@@ -448,9 +448,10 @@ class SeqView {
       }
       rows.appendChild(basesRow);
 
-      const compRow = comp
-        ? el('div', { class: 'seqmap-row complement', text: comp.slice(start, end) })
-        : null;
+      // The complement carries the selection and the highlights too, so a hit on the reverse strand
+      // is marked on the strand it actually reads on.
+      const compRow = comp ? el('div', { class: 'seqmap-row complement' }) : null;
+      if (compRow) compRow.append(...this._styledBases(comp, start, end, sel, selLen, -1));
       if (compRow) rows.appendChild(compRow);
       if (this.opts.showEnzymes) this._drawCuts(basesRow, compRow, start, end, n, circular);
 
@@ -583,9 +584,19 @@ class SeqView {
     return i >= sel.start || i < sel.end;   // wraps the origin
   }
 
-  _styledBases(text, start, end, sel, selLen) {
+  /**
+   * The bases of one row, with the selection and the highlights marked. `strand` says which row this is
+   * (1 the sequence, -1 its complement): a highlight that names a strand is marked on that one, so a hit
+   * found on the reverse strand is highlighted on the complement. With the complement hidden it is marked
+   * on the sequence instead, rather than not at all.
+   */
+  _styledBases(text, start, end, sel, selLen, strand = 1) {
     const out = [];
-    const hlAt = (i) => this.highlights.find((h) => (h.end > h.start
+    const shows = (h) => {
+      if (!h.strand || h.strand === strand) return true;
+      return strand === 1 && !this.opts.showComplement;
+    };
+    const hlAt = (i) => this.highlights.find((h) => shows(h) && (h.end > h.start
       ? i >= h.start && i < h.end
       : i >= h.start || i < h.end));
     let buf = '';

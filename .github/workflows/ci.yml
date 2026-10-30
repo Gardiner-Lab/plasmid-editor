@@ -24,3 +24,4 @@ jobs:
           for f in app/static/js/*.js; do node --check "$f"; done
           node tests/js/helpers.test.js
           node tests/js/sequencing.test.js
+          node tests/js/seqview.test.js

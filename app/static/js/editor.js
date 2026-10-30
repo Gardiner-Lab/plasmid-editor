@@ -1651,7 +1651,12 @@ const Editor = {
       const { hits } = await API.post('/api/tools/find', { document: this.payloadDoc(), query, mode });
       this.findHits = hits;
       this.findAt = -1;
-      this.view.setHighlights(hits.map((h) => ({ start: h.start, end: h.end, class: 'hit' })));
+      // A hit read on the reverse strand is marked on the complement, in its own colour.
+      this.view.setHighlights(hits.map((h) => ({
+        start: h.start, end: h.end, strand: h.strand === -1 ? -1 : 1,
+        class: h.strand === -1 ? 'hit hit-rev' : 'hit',
+      })));
+      // With hits, findNext() names the one it goes to, and says if it reads on the reverse strand.
       document.getElementById('findStatus').textContent =
         hits.length ? `${hits.length} match${hits.length > 1 ? 'es' : ''}` : 'No matches';
       if (hits.length) this.findNext();

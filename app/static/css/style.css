@@ -199,8 +199,12 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .base-g { color: var(--base-g); } .base-t { color: var(--base-t); }
 .sel { background: #bfdbfe; }
 .hit { background: #fde68a; }
-/* The match Find has selected: the selection shows over the match colour. */
+/* A match read on the reverse strand is marked on the complement, underlined so the strand is plain even
+   where the selection paints both rows. */
+.hit-rev { background: #fde68a; box-shadow: inset 0 -2px #b45309; }
+/* The match Find has selected: the selection shows over the match colour, keeping the strand's underline. */
 .sel.hit { background: #93c5fd; box-shadow: inset 0 -2px #f59e0b; }
+.sel.hit-rev { background: #93c5fd; box-shadow: inset 0 -2px #b45309; }
 .diff { background: #fecaca; text-decoration: underline; }
 .feat-bar {
     position: absolute; height: .85em; border-radius: .15rem; top: .1em;
