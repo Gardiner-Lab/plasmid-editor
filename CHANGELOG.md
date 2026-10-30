@@ -6,6 +6,13 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- A **Help** page, *How to use the Plasmid Editor*: getting a sequence in, editing, features and annotation,
+  enzymes and digests, the cloning simulations, Gateway and Cre-lox, primers and PCR, sequencing reads,
+  confirming a clone, and putting mistakes right. Linked from the top bar and the editor's hint line.
+- **About** says what the editor does, how it fits with the other tools and who sees what, keeping the ApE
+  attribution and citations.
+
 ### Fixed
 - Recombination (Gateway LR, Cre-lox, FLP-FRT) read a circular donor as if it were linear, so when the
   entry clone's file happened to start between its two att sites the piece carried over was the one past the

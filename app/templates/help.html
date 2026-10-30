@@ -1,0 +1,211 @@
+{% extends "base.html" %}
+{% block title %}Help &middot; Plasmid Editor{% endblock %}
+{% block container_class %}{% endblock %}
+
+{% block content %}
+<div class="help">
+    <h1>How to use the Plasmid Editor</h1>
+    <p class="lead">Everything here works on a <b>sequence</b>: your own, one from the MoClo library, or one
+       pasted in. This page covers getting a sequence in, editing and annotating it, restriction analysis,
+       the cloning simulations, primers and PCR, judging sequencing reads, and what to do when something looks
+       wrong. <a href="{{ url_for('about_page') }}">What the Plasmid Editor is →</a></p>
+
+    <nav class="help-toc">
+        <a href="#rules">Golden rules</a>
+        <a href="#in">Getting a sequence in</a>
+        <a href="#edit">Editing</a>
+        <a href="#features">Features and annotation</a>
+        <a href="#enzymes">Enzymes and digests</a>
+        <a href="#cloning">Cloning simulations</a>
+        <a href="#gateway">Gateway, Cre-lox and FRT</a>
+        <a href="#primers">Primers and PCR</a>
+        <a href="#sequencing">Sequencing reads</a>
+        <a href="#confirm">Confirming a clone</a>
+        <a href="#moclo">MoClo and the rest of the suite</a>
+        <a href="#mistakes">Fixing mistakes</a>
+    </nav>
+
+    <section id="rules">
+        <h2>Golden rules</h2>
+        <ol class="rules">
+            <li><b>Save a sequence before you work on it.</b> An unsaved sequence is yours alone and goes when
+                the tab does. <b>Save as…</b> puts it in <i>My sequences</i>, where the rest of the suite can
+                reach it.</li>
+            <li><b>Annotate once, properly.</b> A plasmid with its promoter, CDS and terminator marked explains
+                itself to everyone later; one with a bare sequence explains nothing.</li>
+            <li><b>Simulate before you clone.</b> A digest, a PCR or an assembly takes a minute here and saves a
+                failed week at the bench.</li>
+            <li><b>Read the whole product, not just its size.</b> A simulated product of the right length can
+                still have the wrong insert in it.</li>
+            <li><b>Confirm a clone from its reads,</b> not from a gel alone. Confirming makes the glycerol stock
+                in Lab Stocks, so the tube in the freezer is tied to the sequence that proved it.</li>
+            <li><b>Keep one plasmid, not five copies.</b> Edit the saved one; its history keeps what it was.</li>
+        </ol>
+    </section>
+
+    <section id="in">
+        <h2>Getting a sequence in</h2>
+        <ul>
+            <li><b>Open</b> a file: GenBank, FASTA, SnapGene (<code>.dna</code>) or plain sequence. Features and
+                colours come with it.</li>
+            <li><b>Paste</b> bases straight into an empty editor.</li>
+            <li><b>My sequences</b> lists what you and the lab have saved.</li>
+            <li><b>MoClo</b> parts, backbones and assembled plasmids open here directly, since both tools share
+                the same library.</li>
+            <li><b>New</b> starts an empty sequence to type or paste into.</li>
+        </ul>
+        <p>Mark a plasmid <b>circular</b> if it is: it changes restriction mapping, PCR across the origin, and
+           how reads are aligned.</p>
+    </section>
+
+    <section id="edit">
+        <h2>Editing</h2>
+        <p>Click in the sequence and type: A, C, G and T insert, Backspace and Delete remove, and the arrow
+           keys, Home, End and shift-select work as in a text editor. <b>Ctrl+Z</b> undoes.</p>
+        <ul>
+            <li><b>Copy</b>, <b>Copy RC</b> (reverse complement) and <b>Copy AA</b> (translated) for the
+                selection.</li>
+            <li><b>Rev-comp</b> flips the whole sequence, <b>Topology</b> switches circular and linear, and
+                <b>Set origin</b> makes the selected base number 1.</li>
+            <li><b>Translate</b> adds the protein of the selection, in the reading frame you choose.</li>
+            <li><b>Sequence</b> and <b>Map</b> switch between the bases and the circular or linear map.</li>
+        </ul>
+        <p>Every save keeps the version before it, so editing a saved plasmid is safe: <b>History</b> shows what
+           it was.</p>
+    </section>
+
+    <section id="features">
+        <h2>Features and annotation</h2>
+        <ol class="steps">
+            <li>Select the bases and press <b>Add feature</b>: a name, a type (promoter, CDS, terminator…), the
+                strand and a colour.</li>
+            <li><b>Auto-annotate</b> marks what it recognises from a feature library, which is the quick way to
+                make sense of a sequence from elsewhere.</li>
+            <li>The <b>Features</b> tab holds the libraries. The lab's own library can be edited there, and
+                ApE's tab-separated format is read and written unchanged, so libraries move between the two
+                programs.</li>
+        </ol>
+        <p>Colours follow ApE's GenBank conventions, so a file annotated here opens in ApE with its colours,
+           and the other way round.</p>
+    </section>
+
+    <section id="enzymes">
+        <h2>Enzymes and digests</h2>
+        <ul>
+            <li>The <b>Enzymes</b> panel lists what cuts the open sequence and where. Filter by name, show only
+                enzymes cutting a chosen number of times, or show the ones that do not cut at all &mdash; which
+                is how you find a site to linearise with.</li>
+            <li><b>Choose…</b> picks which set of enzymes to consider; the lab's own lists can be saved.</li>
+            <li><b>Digest / gel</b> cuts with the enzymes you pick and draws the fragments as a virtual gel, so
+                you know what the real gel should look like before you run it.</li>
+            <li><b>Silent sites</b> finds where a site could be added or removed without changing the protein.</li>
+        </ul>
+    </section>
+
+    <section id="cloning">
+        <h2>Cloning simulations</h2>
+        <p>The <b>Cloning</b> tab simulates an assembly and gives you the product to save and annotate:</p>
+        <ul>
+            <li><b>Golden Gate</b> &mdash; one-pot Type IIS assembly. Pick the parts and the enzyme; it keeps
+                the fragments that no longer carry a site and joins them by their overhangs, and reports per
+                part what it used, which is how you find the part that is stopping an assembly.</li>
+            <li><b>Gibson / In-Fusion / HiFi</b> &mdash; joins fragments in the order given, through terminal
+                homology. It flips a fragment automatically where only its reverse complement overlaps, and
+                reports each junction with its overlap and melting temperature.</li>
+            <li><b>Restriction and ligation</b> &mdash; cut a vector and an insert with chosen enzymes, pick the
+                fragment of each, and see the ligation products.</li>
+            <li><b>Recombination</b> &mdash; see below.</li>
+        </ul>
+    </section>
+
+    <section id="gateway">
+        <h2>Gateway, Cre-lox and FRT</h2>
+        <p><b>Recombination</b> covers a double crossover through two shared core sequences: Gateway
+           <b>LR</b> (attL × attR) and <b>BP</b> (attB × attP), and loxP or FRT exchange.</p>
+        <ol class="steps">
+            <li>Pick the <b>donor</b> first (the entry clone, or the attB PCR product), then the
+                <b>acceptor</b> (the destination vector, or pDONR).</li>
+            <li>Leave the <b>minimum core</b> at 20 bp. Real cores are larger &mdash; att cores are 21&ndash;25 bp,
+                loxP and FRT 34 bp &mdash; and a shorter setting starts matching by chance.</li>
+            <li><b>Both products</b> of the crossover are listed, as the reaction really gives: in an LR, the
+                <b>expression clone</b> first, then the by-product carrying ccdB and the entry backbone. Each
+                says how many bases came from the donor and how many from the acceptor.</li>
+            <li>Save the one you want. It keeps the features of both parents: your insert, and the backbone's
+                marker and origin.</li>
+        </ol>
+        <p>It does not matter where the entry clone's file happens to start: a circular donor is read round its
+           origin, so you get the same answer either way.</p>
+    </section>
+
+    <section id="primers">
+        <h2>Primers and PCR</h2>
+        <ul>
+            <li><b>Design primers</b> for the selected region, to a melting temperature you choose, with tails
+                added for the cloning method you are using.</li>
+            <li><b>Simulate PCR</b> with a forward and reverse primer, allowing mismatches, to see the product
+                and its size before ordering anything.</li>
+            <li><b>Lab primers</b> shows which of the lab's primers, from Lab Stocks, bind the open plasmid and
+                where &mdash; so a sequencing primer you already own is found before a new one is ordered.</li>
+            <li>A designed primer can be saved straight to Lab Stocks, keeping the sequence exactly as
+                designed.</li>
+        </ul>
+    </section>
+
+    <section id="sequencing">
+        <h2>Sequencing reads</h2>
+        <ol class="steps">
+            <li><b>Sequencing</b> tab: choose the plasmid the reads are of.</li>
+            <li>Upload the reads &mdash; <code>.ab1</code> chromatograms or FASTA &mdash; or paste them.</li>
+            <li>Each read is aligned and shown against the reference, with its chromatogram, its quality, and
+                every mismatch marked. The coverage across the plasmid shows what the reads reached and what
+                they did not.</li>
+            <li>Judge each read: whether it is good enough, and what it says about the clone.</li>
+        </ol>
+    </section>
+
+    <section id="confirm">
+        <h2>Confirming a clone</h2>
+        <p>When the reads say the clone is right, <b>confirm</b> the plasmid and name the clone you confirmed.
+           Two things follow:</p>
+        <ul>
+            <li>The plasmid is marked confirmed, with who confirmed it and from which reads.</li>
+            <li>Its <b>glycerol stock appears in Lab Stocks</b> with the next code, already linked to this
+                plasmid. Fill in the strain and where the tube is, and print its label.</li>
+        </ul>
+        <p>This is the step that ties the tube in the freezer to the sequence that proved it, so do it here
+           rather than entering the stock by hand.</p>
+    </section>
+
+    <section id="moclo">
+        <h2>MoClo and the rest of the suite</h2>
+        <ul>
+            <li>Tick a plasmid <b>Golden Gate ready</b> and the editor checks that one Type IIS enzyme releases
+                a single clean insert with two 4&nbsp;bp fusion sites, then offers to add it to the shared MoClo
+                parts library. If it cannot, it says why.</li>
+            <li>MoClo's parts, backbones and assembled plasmids open here for editing or read alignment.</li>
+            <li><b>Notebook</b>: type <code>@</code> in a page to link a plasmid, and it opens here.</li>
+            <li><b>Seed Bank</b>: from a plasmid you can reach the lines made with it, their seeds and plants.</li>
+            <li>A plasmid marked <b>public</b> is readable by every lab in the suite; otherwise it stays with
+                your own labs.</li>
+        </ul>
+    </section>
+
+    <section id="mistakes">
+        <h2>Fixing mistakes</h2>
+        <ul>
+            <li><b>An assembly gives no product:</b> read the per-part report. Usually one part still carries an
+                enzyme site, or two overhangs are the same.</li>
+            <li><b>A product is the right size but wrong inside:</b> open it and look at the features. For a
+                recombination, check which product you saved &mdash; the by-product is listed too.</li>
+            <li><b>Edited the wrong plasmid:</b> open <b>History</b> and restore the version before your
+                change.</li>
+            <li><b>Reads will not align:</b> check the plasmid is marked circular if it is, and that you chose
+                the right reference.</li>
+            <li><b>An enzyme is missing from the list:</b> the chosen enzyme set may be a short one. Use
+                <b>Choose…</b> to widen it.</li>
+            <li><b>Confirmed the wrong clone:</b> confirm again with the right clone; the glycerol stock already
+                made can be corrected or marked used up in Lab Stocks.</li>
+        </ul>
+    </section>
+</div>
+{% endblock %}

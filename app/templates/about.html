@@ -3,19 +3,78 @@
 {% block container_class %}{% endblock %}
 
 {% block content %}
-<div style="max-width:52rem;margin:0 auto">
-    <div class="card">
-        <div class="card-title">Plasmid Editor</div>
-        <p>
-            Sequence editing, annotation, restriction analysis, cloning simulation and
-            sequencing alignment for the Gardiner Lab. It is the general-purpose companion
-            to the <b>MoClo Library Tool</b>: use the MoClo tool to manage a Golden Gate
-            parts library and plan modular assemblies, and this editor whenever the work is
-            not MoClo based — aligning sequencing reads, classical restriction cloning,
-            Gibson assembly, Gateway reactions, primer design, or simply manipulating DNA by hand.
-        </p>
-    </div>
+<div class="help">
+    <h1>Plasmid Editor {{ app_version }}</h1>
+    <p class="lead">Sequence editing, annotation, restriction analysis, cloning simulation and sequencing
+       alignment. It is the general-purpose companion to the <b>MoClo Library Tool</b>: the MoClo tool for a
+       Golden Gate parts library and modular assemblies, and this editor whenever the work is not MoClo based.
+       <a href="{{ url_for('help_page') }}">How to use it →</a></p>
 
+    <nav class="help-toc">
+        <a href="#does">What it does</a>
+        <a href="#together">With the other tools</a>
+        <a href="#sees">Who sees what</a>
+        <a href="#attribution">Attribution</a>
+        <a href="#other">Other software used</a>
+        <a href="#moclo">How it fits with MoClo</a>
+    </nav>
+
+    <section id="does">
+        <h2>What it does</h2>
+        <div class="help-cards">
+            <div class="help-card">
+                <h3>Edit and annotate</h3>
+                <p>Type straight into the sequence, with features, colours and translations, as a circular or
+                   linear map. GenBank, FASTA and SnapGene files in and out, keeping ApE's colours.</p>
+            </div>
+            <div class="help-card">
+                <h3>Restriction analysis</h3>
+                <p>What cuts and where, from REBASE: filter by how many times an enzyme cuts, find one that does
+                   not cut at all, and draw the digest as a virtual gel.</p>
+            </div>
+            <div class="help-card">
+                <h3>Cloning simulation</h3>
+                <p>Golden Gate, Gibson, restriction and ligation, and recombination (Gateway LR and BP, loxP,
+                   FRT), each giving a product you can save and annotate.</p>
+            </div>
+            <div class="help-card">
+                <h3>Primers and PCR</h3>
+                <p>Design primers to a melting temperature, simulate the PCR, and see which of the lab\'s own
+                   primers bind a plasmid.</p>
+            </div>
+            <div class="help-card">
+                <h3>Sequencing</h3>
+                <p>Align <code>.ab1</code> chromatograms and FASTA reads to a plasmid, with quality, mismatches
+                   and coverage, and judge each read.</p>
+            </div>
+            <div class="help-card">
+                <h3>Confirming a clone</h3>
+                <p>Confirming a plasmid from its reads makes its glycerol stock in Lab Stocks, so the tube is
+                   tied to the sequence that proved it.</p>
+            </div>
+        </div>
+    </section>
+
+    <section id="together">
+        <h2>With the other tools</h2>
+        <ul>
+            <li><b>MoClo Library Tool</b> &mdash; shares its library both ways (see below).</li>
+            <li><b>Lab Stocks</b> &mdash; confirming a clone makes its glycerol stock; primers are saved there and
+                read back to show which bind a plasmid.</li>
+            <li><b>Lab Notebook</b> &mdash; a plasmid linked with <code>@</code> in a page opens here.</li>
+            <li><b>Seed Bank</b> &mdash; from a plasmid, the lines made with it, their seeds and plants.</li>
+        </ul>
+    </section>
+
+    <section id="sees">
+        <h2>Who sees what</h2>
+        <p>A sequence you save is seen by your own labs. One ticked <b>public</b> is readable by every lab in
+           the suite, which is how a shared backbone is found. Sequencing reads follow the plasmid they belong
+           to. Everything is kept on the lab\'s own server and backed up each night with the rest of the
+           suite.</p>
+    </section>
+
+    <section id="attribution">
     <div class="card">
         <div class="card-title">Attribution</div>
         <p>
@@ -45,6 +104,9 @@
         </p>
     </div>
 
+    </section>
+
+    <section id="other">
     <div class="card">
         <div class="card-title">Other software used</div>
         <ul style="margin-left:1.1rem">
@@ -56,6 +118,9 @@
         </ul>
     </div>
 
+    </section>
+
+    <section id="moclo">
     <div class="card">
         <div class="card-title">How it fits with the MoClo Library Tool</div>
         <p>
@@ -79,6 +144,8 @@
         </p>
     </div>
 
-    <p style="text-align:center"><a href="/">Back to the editor</a></p>
+    </section>
+
+    <p style="text-align:center"><a href="{{ url_for('editor_page') }}">Back to the editor</a></p>
 </div>
 {% endblock %}

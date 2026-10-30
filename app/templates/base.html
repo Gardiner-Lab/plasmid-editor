@@ -30,12 +30,15 @@
         <nav class="tt-links">
             {% if suite_dashboard %}<a href="{{ suite_dashboard }}">Dashboard</a>{% endif %}
             {% if moclo.enabled %}<a href="{{ moclo.library }}">MoClo ↗</a>{% endif %}
+            <a href="{{ url_for('help_page') }}">Help</a>
+            <a href="{{ url_for('about_page') }}">About</a>
         </nav>
         <span class="tt-user">{{ session.get('username') }}</span>
         <a class="tt-logout" href="{{ url_for('logout_page') }}">Log out</a>
     {% else %}
         <nav class="tt-links">
             <a href="{{ url_for('login_page') }}">Log in</a>
+            <a href="{{ url_for('help_page') }}">Help</a>
             <a href="{{ url_for('about_page') }}">About</a>
         </nav>
     {% endif %}

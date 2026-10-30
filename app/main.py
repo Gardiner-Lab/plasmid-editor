@@ -194,6 +194,10 @@ def create_app() -> Flask:
     def about_page():
         return render_template('about.html')
 
+    @app.route('/help')
+    def help_page():
+        return render_template('help.html')
+
     @app.route('/health')
     def health():
         from app.services import moclo_bridge

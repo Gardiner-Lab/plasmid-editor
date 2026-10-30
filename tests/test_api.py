@@ -600,3 +600,12 @@ def test_sites_of_enzymes_cutting_at_most_n_times(user_client):
     # Cutting more often is still a cutter, not a non-cutter.
     assert ask(max_cuts=2).get_json()['non_cutters'] == []
     assert ask(max_cuts=0).status_code == 400 and ask(max_cuts='a few').status_code == 400
+
+
+def test_the_about_and_help_pages_are_there_and_point_at_each_other(client):
+    for path, heading in (('/about', 'Plasmid Editor'), ('/help', 'How to use the Plasmid Editor')):
+        r = client.get(path)
+        assert r.status_code == 200, path
+        assert heading in r.get_data(as_text=True)
+    assert '/help' in client.get('/about').get_data(as_text=True)
+    assert '/about' in client.get('/help').get_data(as_text=True)
