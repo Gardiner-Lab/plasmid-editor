@@ -11,6 +11,9 @@ and the project uses [semantic versioning](https://semver.org/).
   name, the one you are on marked, names shown where there is room and icons alone when it is narrow. The list
   is the suite's own (`/tools.json`), so a tool added there appears here too; on its own, outside the suite,
   nothing is added.
+- The bar is in two rows: the suite's on top — its tools, the dashboard, help, about and who is signed in —
+  and this tool's own pages on the row under it, as the MoClo tool and Lab Stocks already read. A page with no
+  pages of its own keeps a single row.
 
 ## [0.13.0] - 2026-10-30
 
