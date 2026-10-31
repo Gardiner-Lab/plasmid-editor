@@ -6,6 +6,8 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-10-31
+
 ### Fixed
 - Choosing a large enzyme set (**All REBASE**) hung the browser, and on a long sequence killed the tab
   outright. Three things were wrong, each fixed:
