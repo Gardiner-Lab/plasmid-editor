@@ -647,3 +647,17 @@ def test_a_huge_number_of_sites_is_counted_in_full_but_only_sampled(user_client)
     # Few enough sites: nothing is held back.
     small = user_client.post('/api/tools/sites', json={'document': doc, 'enzymes': ['EcoRI']}).get_json()
     assert small['truncated'] is False and len(small['sites']) == small['total_sites']
+
+
+def test_the_enzyme_filter_redraws_the_table_with_the_servers_own_counts():
+    """
+    Only a sample of the sites travels when an enzyme set cuts very often, so the table cannot count them
+    itself — it needs the counts the server sent. The filter redraws the table without asking again, and
+    once passed an empty {} it showed every enzyme cutting "6" times.
+    """
+    from pathlib import Path
+    js = Path('app/static/js/editor.js').read_text()
+    assert 'this.lastCounts = body.counts || {}' in js, 'the counts the server sent must be kept'
+    assert 'renderEnzymeTable(this.lastCounts || {}, this.lastNonCutters || [])' in js, \
+        'the filter must redraw with those counts, not with {}'
+    assert 'renderEnzymeTable({}, this.lastNonCutters' not in js, 'the old empty-counts redraw is back'

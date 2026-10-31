@@ -1320,7 +1320,10 @@ const Editor = {
 
   async refreshSites() {
     const doc = this.doc;
-    if (!doc || !doc.sequence) { this.sites = []; this.view.setSites([]); this.renderEnzymeTable({}, []); return; }
+    if (!doc || !doc.sequence) {
+      this.sites = []; this.lastCounts = {}; this.lastNonCutters = [];
+      this.view.setSites([]); this.renderEnzymeTable({}, []); return;
+    }
     const enzymes = this.currentEnzymes();
     if (!enzymes.length) return;
     // Searches can overlap (opening a sequence, then switching lists); only the
@@ -1346,7 +1349,11 @@ const Editor = {
           : '';
       }
       this.view.setSites(body.sites);
-      this.renderEnzymeTable(body.counts, body.non_cutters);
+      // Kept for the filter, which redraws the table without asking the server again. The counts matter:
+      // only a sample of the sites travels when there are many, so the table cannot count them itself.
+      this.lastCounts = body.counts || {};
+      this.lastNonCutters = body.non_cutters || [];
+      this.renderEnzymeTable(this.lastCounts, this.lastNonCutters);
       if (!document.getElementById('mapPane').hidden) this.map.render(doc, this.sites, this.view.selection);
     } catch (err) {
       toast(err.message, 'error');
@@ -1639,7 +1646,7 @@ const Editor = {
       document.getElementById('findQuery').value = '';
     });
     document.getElementById('enzymeFilter').addEventListener('input',
-      () => this.renderEnzymeTable({}, this.lastNonCutters || []));
+      () => this.renderEnzymeTable(this.lastCounts || {}, this.lastNonCutters || []));
     document.getElementById('chkNonCutters').addEventListener('change', () => this.refreshSites());
     document.getElementById('chkMaxCuts').addEventListener('change', () => this.refreshSites());
     // Changing the number turns the limit on: that is what typing it means.

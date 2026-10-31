@@ -6,6 +6,14 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.15.1] - 2026-10-31
+
+### Fixed
+- Typing in the enzyme filter made every count read as 6. Redrawing the table for the filter passed no
+  counts, which was harmless while every site was sent, but 0.15.0 sends only a sample of the sites when
+  there are very many — so the table had nothing to count. It now keeps the counts the server sent, and the
+  non-cutters with them, which the filter had also been dropping.
+
 ## [0.15.0] - 2026-10-31
 
 ### Fixed
