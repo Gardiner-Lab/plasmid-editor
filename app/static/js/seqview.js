@@ -11,6 +11,14 @@
  * and a double click (onFeatureDblClick, onSiteDblClick).
  */
 
+/*
+ * Past this many sites the sequence is not marked up. A large enzyme set cuts a plasmid tens of thousands
+ * of times — 30 kb against all of REBASE is over 120,000 sites — and a mark for each is both useless to
+ * read and far more than a browser can paint: it is what used to hang the page. The enzyme table still
+ * lists every one of them.
+ */
+const MAX_MARKED_SITES = 2000;
+
 class SeqView {
   constructor(container, opts = {}) {
     this.container = container;
@@ -78,6 +86,9 @@ class SeqView {
 
   setSites(sites) {
     this.sites = sites || [];
+    // Where each site sits in the list, for the labels: looking it up each time is far too slow with a
+    // large enzyme set.
+    this._siteIndex = new Map(this.sites.map((s, i) => [s, i]));
     this.render();
   }
 
@@ -412,6 +423,9 @@ class SeqView {
 
     const text = this.opts.uppercase ? sequence.toUpperCase() : sequence;
     const comp = this.opts.showComplement ? DNA.complement(text) : null;
+    // Which sites each block must draw, once for the whole sequence rather than per block.
+    const marking = this.opts.showEnzymes && this.sites.length <= MAX_MARKED_SITES;
+    const cuts = marking ? this._sitesByBlock(width, n, circular) : new Map();
 
     // Pre-compute per-feature lanes once for the whole document.
     const features = this.opts.showFeatures ? this.doc.features : [];
@@ -427,8 +441,8 @@ class SeqView {
       const block = el('div', { class: 'seqmap-block' });
       const rows = el('div', { class: 'seqmap-rows' });
 
-      if (this.opts.showEnzymes) {
-        const row = this._enzymeRow(start, end, n);
+      if (marking) {
+        const row = this._enzymeRow(start, end, n, cuts.get(start / width) || []);
         if (row) rows.appendChild(row);
       }
 
@@ -453,7 +467,7 @@ class SeqView {
       const compRow = comp ? el('div', { class: 'seqmap-row complement' }) : null;
       if (compRow) compRow.append(...this._styledBases(comp, start, end, sel, selLen, -1));
       if (compRow) rows.appendChild(compRow);
-      if (this.opts.showEnzymes) this._drawCuts(basesRow, compRow, start, end, n, circular);
+      if (marking) this._drawCuts(basesRow, compRow, start, end, n, circular, cuts.get(start / width) || []);
 
       // The user's translations, each amino acid under the codon that encodes it.
       for (const lane of translated.lanes) {
@@ -509,12 +523,12 @@ class SeqView {
    * Enzyme names over the block, each at its cut. Names that would collide
    * step down onto another line rather than overwriting each other.
    */
-  _enzymeRow(start, end, n) {
+  _enzymeRow(start, end, n, sites) {
     const labels = [];
-    this.sites.forEach((s, i) => {
+    for (const s of sites) {
       const at = s.cut_top ?? s.start;
-      if (this._cutInBlock(at, start, end, n)) labels.push({ i, col: at - start, text: s.enzyme });
-    });
+      if (this._cutInBlock(at, start, end, n)) labels.push({ i: this._siteIndex.get(s), col: at - start, text: s.enzyme });
+    }
     if (!labels.length) return null;
     labels.sort((a, b) => a.col - b.col);
     const cw = this._charWidth();
@@ -551,11 +565,40 @@ class SeqView {
    * overhang between the strands, and down through the bottom strand at
    * cut_bottom. A blunt cut is a straight line through both.
    */
-  _drawCuts(basesRow, compRow, start, end, n, circular) {
+  /**
+   * The sites each block has to draw, worked out once for the whole sequence. Without this every block
+   * looked at every site, which with a large enzyme set (REBASE cuts a plasmid tens of thousands of times)
+   * is blocks x sites of work and freezes the page. A site is listed against every block its cut marks or
+   * its overhang could fall in; the drawing still checks, so being generous here only costs a little.
+   */
+  _sitesByBlock(width, n, circular) {
+    const byBlock = new Map();
+    const put = (block, site) => {
+      let list = byBlock.get(block);
+      if (!list) byBlock.set(block, list = []);
+      if (list[list.length - 1] !== site) list.push(site);
+    };
+    const blockOf = (pos) => Math.floor(Math.min(Math.max(pos, 0), n) / width);
+    for (const s of this.sites) {
+      const ct = s.cut_top ?? s.start;
+      const blocks = new Set();
+      if (ct !== null && ct !== undefined) blocks.add(blockOf(ct));
+      if (s.cut_bottom !== null && s.cut_bottom !== undefined) {
+        blocks.add(blockOf(s.cut_bottom));
+        for (const [lo, hi] of this._overhangSpans(s.cut_top, s.cut_bottom, n, circular)) {
+          for (let b = blockOf(lo); b <= blockOf(Math.max(hi - 1, lo)); b++) blocks.add(b);
+        }
+      }
+      for (const b of blocks) put(b, s);
+    }
+    return byBlock;
+  }
+
+  _drawCuts(basesRow, compRow, start, end, n, circular, sites) {
     const cw = this._charWidth();
     const lower = compRow || basesRow;
     const lowerClass = compRow ? '' : ' no-comp';
-    for (const s of this.sites) {
+    for (const s of sites) {
       const ct = s.cut_top;
       const cb = s.cut_bottom;
       if (ct === null || ct === undefined) continue;
@@ -699,3 +742,5 @@ class SeqView {
     return el('div', { class: 'seqmap-row aa', text: line });
   }
 }
+
+SeqView.MAX_MARKED_SITES = MAX_MARKED_SITES;

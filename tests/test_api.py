@@ -616,3 +616,34 @@ def test_every_page_reaches_the_suite_and_its_other_tools():
     from pathlib import Path
     html = Path('app/templates/base.html').read_text()
     assert 'trellis/modules.js' in html, 'the other tools are not linked from the bar'
+
+
+def test_a_huge_number_of_sites_is_counted_in_full_but_only_sampled(user_client):
+    """
+    A large enzyme set cuts a long sequence hundreds of thousands of times. Sending every one is tens of
+    megabytes and used to hang the browser, so past max_sites only a sample travels — but the counts, which
+    are what the enzyme table shows, still cover every site.
+    """
+    import random
+    rng = random.Random(11)
+    doc = {'name': 'long', 'sequence': ''.join(rng.choice('ACGT') for _ in range(20000)), 'circular': True}
+    enzymes = ['EcoRI', 'BamHI', 'AluI', 'HaeIII', 'MboI', 'TaqI']
+
+    whole = user_client.post('/api/tools/sites', json={'document': doc, 'enzymes': enzymes, 'max_sites': 0}).get_json()
+    assert whole['truncated'] is False
+    assert len(whole['sites']) == whole['total_sites'] > 200, 'these enzymes cut a 20 kb sequence often'
+
+    capped = user_client.post('/api/tools/sites', json={'document': doc, 'enzymes': enzymes, 'max_sites': 50}).get_json()
+    assert capped['truncated'] is True
+    assert capped['total_sites'] == whole['total_sites'], 'the real total is still reported'
+    assert capped['counts'] == whole['counts'], 'every enzyme is counted in full'
+    assert len(capped['sites']) < len(whole['sites'])
+    # Every enzyme that cuts keeps a few example sites, so the table can show where its first cuts are.
+    for enzyme, n in capped['counts'].items():
+        shown = [s for s in capped['sites'] if s['enzyme'] == enzyme]
+        assert shown, f'{enzyme} has no example sites'
+        assert len(shown) == min(n, 6)
+
+    # Few enough sites: nothing is held back.
+    small = user_client.post('/api/tools/sites', json={'document': doc, 'enzymes': ['EcoRI']}).get_json()
+    assert small['truncated'] is False and len(small['sites']) == small['total_sites']

@@ -1334,6 +1334,17 @@ const Editor = {
       });
       if (ticket !== this._sitesTicket) return;
       this.sites = body.sites;
+      // Too many to mark up: the sequence and the map are left clear, and the table below lists them all.
+      const tooMany = document.getElementById('tooManySites');
+      if (tooMany) {
+        const found = body.total_sites ?? body.sites.length;
+        const over = body.truncated || found > SeqView.MAX_MARKED_SITES;
+        tooMany.hidden = !over;
+        tooMany.textContent = over
+          ? `${found.toLocaleString()} sites: too many to mark in the sequence, so it is left clear. Every `
+            + 'enzyme is counted below; choose fewer enzymes to see the cuts in the sequence itself.'
+          : '';
+      }
       this.view.setSites(body.sites);
       this.renderEnzymeTable(body.counts, body.non_cutters);
       if (!document.getElementById('mapPane').hidden) this.map.render(doc, this.sites, this.view.selection);
@@ -1513,11 +1524,19 @@ const Editor = {
     const filter = document.getElementById('enzymeFilter').value.trim().toLowerCase();
     const showNon = document.getElementById('chkNonCutters').checked;
     const byEnzyme = new Map();
-    for (const s of this.sites) byEnzyme.set(s.enzyme, (byEnzyme.get(s.enzyme) || []).concat(s));
+    // Grouped by pushing, not by rebuilding the list each time: with a large enzyme set that was the
+    // slowest thing on the page.
+    for (const s of this.sites) {
+      let list = byEnzyme.get(s.enzyme);
+      if (!list) byEnzyme.set(s.enzyme, list = []);
+      list.push(s);
+    }
     const rows = [];
     for (const [enzyme, sites] of [...byEnzyme].sort((a, b) => a[0].localeCompare(b[0]))) {
       if (filter && !enzyme.toLowerCase().includes(filter)) continue;
       const positions = sites.map((s) => s.cut_top ?? s.start);
+      // Where only a sample of the sites travelled, the count comes from the server's own tally.
+      const total = (counts && counts[enzyme]) || positions.length;
       rows.push(el('tr', {
         style: 'cursor:pointer',
         title: 'Click to highlight the recognition sites, double-click for details',
@@ -1528,9 +1547,9 @@ const Editor = {
         },
       },
         el('td', { text: enzyme }),
-        el('td', { class: 'num', text: String(positions.length) }),
+        el('td', { class: 'num', text: String(total) }),
         el('td', { class: 'mono', style: 'font-size:.75rem',
-          text: positions.slice(0, 6).map((p) => p + 1).join(', ') + (positions.length > 6 ? '…' : '') })));
+          text: positions.slice(0, 6).map((p) => p + 1).join(', ') + (total > positions.slice(0, 6).length ? '…' : '') })));
     }
     if (showNon) {
       for (const enzyme of nonCutters || []) {

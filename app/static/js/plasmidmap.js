@@ -62,7 +62,10 @@ class PlasmidMap {
 
   render(doc, sites = [], selection = null) {
     this.doc = doc;
-    this.sites = sites;
+    // As in the sequence view: past a certain number the sites are not worth drawing, and far more than
+    // the browser can paint. The enzyme table still lists them all.
+    this.sites = sites.length > PlasmidMap.MAX_MARKED_SITES ? [] : sites;
+    sites = this.sites;
     this.selection = selection;
     if (!doc || !doc.sequence) {
       this.container.replaceChildren(el('div', { class: 'empty' }, 'No sequence open.'));
@@ -392,3 +395,6 @@ class PlasmidMap {
     return `<?xml version="1.0" encoding="UTF-8"?>\n${clone.outerHTML}`;
   }
 }
+
+// Matches the sequence view's limit (seqview.js).
+PlasmidMap.MAX_MARKED_SITES = 2000;

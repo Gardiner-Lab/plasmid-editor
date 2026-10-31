@@ -171,8 +171,25 @@ def sites(user):
             return _bad(ValueError('max_cuts must be at least 1'))
         hits = [h for h in hits if counts[h['enzyme']] <= max_cuts]
         counts = {e: n for e, n in counts.items() if n <= max_cuts}
-    return jsonify({'sites': hits, 'counts': counts,
-                    'non_cutters': non_cutters}), 200
+    # A large enzyme set cuts a long sequence hundreds of thousands of times, which is tens of megabytes
+    # of sites nobody can read. Past max_sites only a sample travels; counts still covers every one, and
+    # the sample is enough to show where the first cuts of each enzyme are.
+    total = len(hits)
+    try:
+        cap = int(data.get('max_sites', 20000))
+    except (TypeError, ValueError):
+        return _bad(ValueError('max_sites must be a whole number'))
+    truncated = cap > 0 and total > cap
+    if truncated:
+        kept, seen = [], {}
+        for h in hits:                      # the first few of each enzyme, so every row has examples
+            n = seen.get(h['enzyme'], 0)
+            if n < 6:
+                seen[h['enzyme']] = n + 1
+                kept.append(h)
+        hits = kept
+    return jsonify({'sites': hits, 'counts': counts, 'non_cutters': non_cutters,
+                    'total_sites': total, 'truncated': truncated}), 200
 
 
 @tools_bp.route('/digest', methods=['POST'])

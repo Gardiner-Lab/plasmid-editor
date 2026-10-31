@@ -6,6 +6,19 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- Choosing a large enzyme set (**All REBASE**) hung the browser, and on a long sequence killed the tab
+  outright. Three things were wrong, each fixed:
+  - Every block of the sequence looked at every site, so the work grew with blocks × sites.
+  - A mark was drawn for each of them: 30 kb against all of REBASE is over 120,000 sites and a quarter of a
+    million marks, far more than a browser can paint and useless to read. Past 2,000 sites the sequence and
+    the map are left clear, and the panel says why; the enzyme table still counts every one.
+  - The whole list of sites travelled from the server — 55 MB for a 150 kb sequence. Past `max_sites` only a
+    few examples of each enzyme are sent, with the real totals alongside, so the table is unchanged.
+  - Grouping the sites by enzyme rebuilt its list for every site, which alone took half a minute.
+  On a 150 kb sequence against all of REBASE this is 76 seconds and a 55 MB download to under 4 seconds and
+  0.6 MB; 60 kb never finished at all before. Smaller enzyme sets behave exactly as they did.
+
 ## [0.14.0] - 2026-10-31
 
 ### Added
