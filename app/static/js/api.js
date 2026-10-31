@@ -59,10 +59,17 @@ const Stocks = {
             stocks ? choice('existing', 'A glycerol stock that already has a number', false) : null,
             el('div', { class: 'field', id: 'addExisting', style: stocks ? 'margin-left:1.6rem' : '' },
               el('label', { for: 'addCode' }, 'Glycerol stock number'),
-              el('input', { type: 'text', id: 'addCode', placeholder: 'e.g. GL-G-0118' }),
+              el('input', { type: 'text', id: 'addCode', placeholder: 'e.g. GL-G-0178, or gGL000179' }),
               el('span', { class: 'hint' },
-                'If Lab Stocks already has this number, it is linked to this plasmid so it is listed '
-                + 'here. A number from elsewhere is recorded as it is.')));
+                'A number Lab Stocks issued is linked to this plasmid. A number from the lab\'s older '
+                + 'list, or from a tube, is made into a stock of its own with the next number and that '
+                + 'label kept on it.'),
+              el('div', { class: 'field-row', style: 'margin-top:.4rem' },
+                el('div', { class: 'field' }, el('label', { for: 'addCodeHost' }, 'Strain'),
+                  el('input', { type: 'text', id: 'addCodeHost', placeholder: 'e.g. Agrobacterium (GV3101)' })),
+                el('div', { class: 'field' }, el('label', { for: 'addCodePlace' }, 'Kept in'),
+                  el('input', { type: 'text', id: 'addCodePlace', placeholder: 'e.g. −80 °C / box 7 / A2' }))),
+              el('span', { class: 'hint' }, 'Used only if a stock has to be made for that number.')));
           const sync = () => {
             const fresh = !stocks || body.querySelector('input[name=addHow]:checked')?.value === 'new';
             body.querySelector('#addExisting').hidden = fresh;
@@ -88,9 +95,12 @@ const Stocks = {
                 });
                 toast(`Added ${record.code}`, 'success', 4000);
               } else {
-                const code = body.querySelector('#addCode').value.trim().toUpperCase();
+                const code = body.querySelector('#addCode').value.trim();
                 if (!code) throw new Error('Give the number of the stock to add');
-                await this.linkExisting(plasmid, code);
+                await this.linkExisting(plasmid, code, {
+                  host: body.querySelector('#addCodeHost').value.trim(),
+                  location: body.querySelector('#addCodePlace').value.trim(),
+                });
               }
               if (onDone) await onDone();
             },
@@ -104,17 +114,48 @@ const Stocks = {
      * number named when the plasmid was confirmed is left alone: this adds a stock, it does not
      * replace that one, and nothing is renumbered.
      */
-    async linkExisting(plasmid, code) {
-      if (!this.enabled()) throw new Error('Lab Stocks is not available here');
-      let record = null;
-      try {
-        ({ record } = await this.call('GET', `/glycerol/${encodeURIComponent(code)}`));
-      } catch (err) {
-        record = null;
+    /**
+     * The spellings of a number worth trying: as typed, and with a Lab Stocks code's own padding.
+     * The lab's older lists write GL-G-00178 where the code here is GL-G-0178, and a number copied
+     * from a tube is as likely to carry a space or lower case.
+     */
+    spellings(code) {
+      const typed = String(code || '').trim().toUpperCase().replace(/\s+/g, '');
+      const out = [typed];
+      const m = /^([A-Z][A-Z0-9]{0,5})-([GOCAM])-0*(\d+)$/.exec(typed);
+      if (m) {
+        const padded = `${m[1]}-${m[2]}-${m[3].padStart(4, '0')}`;
+        if (!out.includes(padded)) out.push(padded);
       }
+      return out;
+    },
+
+    /** The stock with this number, whichever way it is spelled, or null if Lab Stocks has none. */
+    async find(code) {
+      for (const spelling of this.spellings(code)) {
+        try {
+          const { record } = await this.call('GET', `/glycerol/${encodeURIComponent(spelling)}`);
+          if (record) return record;
+        } catch (err) { /* not this spelling */ }
+      }
+      return null;
+    },
+
+    async linkExisting(plasmid, code, made = {}) {
+      if (!this.enabled()) throw new Error('Lab Stocks is not available here');
+      const typed = String(code || '').trim();
+      const record = await this.find(typed);
       if (!record) {
-        throw new Error(`Lab Stocks has no glycerol stock ${code}. Add it there first, or choose `
-          + "\"a new glycerol stock\" to have it numbered now.");
+        // Not a number Lab Stocks issued: a tube from before the suite, or from the lab's old list.
+        // It is made as a stock of its own with the next number, and what was typed is kept as the
+        // tube's label - which is how the rest of the lab's old list was brought over.
+        const { record: fresh } = await this.call('POST', '/glycerol', {
+          plasmid_id: plasmid.id, plasmid_name: plasmid.name,
+          host: made.host || '', location: made.location || '',
+          notes: `Tube label: ${typed}`,
+        });
+        toast(`Lab Stocks had no ${typed}, so it is now ${fresh.code}, labelled ${typed}`, 'success', 7000);
+        return;
       }
       if (record.plasmid_id && record.plasmid_id !== plasmid.id) {
         throw new Error(`${code} is already the stock of ${record.plasmid_name || 'another plasmid'}`);
@@ -122,9 +163,11 @@ const Stocks = {
       if (record.plasmid_id === plasmid.id) {
         throw new Error(`${code} is already a stock of this plasmid`);
       }
-      await this.call('PUT', `/glycerol/${encodeURIComponent(code)}`,
+      await this.call('PUT', `/glycerol/${encodeURIComponent(record.code)}`,
         { plasmid_id: plasmid.id, plasmid_name: plasmid.name });
-      toast(`${code} linked to this plasmid`, 'success', 4000);
+      toast(record.code === typed.toUpperCase()
+        ? `${record.code} linked to this plasmid`
+        : `${typed} is ${record.code} here; linked to this plasmid`, 'success', 5000);
     },
 
   /** A stock's number as a link to it in Lab Stocks when it is one of its codes; else just the text. */

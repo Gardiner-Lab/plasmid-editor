@@ -931,9 +931,25 @@ def test_the_editor_asks_lab_stocks_for_every_stock_of_a_plasmid():
     # The dialog lives on the shared Stocks helper, so both the sequencing page and the editor tab
     # offer it: a plasmid is looked at in the editor, not only when its reads are judged.
     api = Path('app/static/js/api.js').read_text()
-    assert 'addDialog(plasmid, onDone)' in api and 'async linkExisting(plasmid, code)' in api
+    assert 'addDialog(plasmid, onDone)' in api and 'async linkExisting(plasmid, code' in api
     assert 'Stocks.addDialog(' in js, 'the sequencing panel uses the shared dialog'
     assert 'Stocks.addDialog(' in Path('app/static/js/editor.js').read_text(), 'so does the editor tab'
     # Adding a stock must never rewrite the number the plasmid was confirmed with.
-    add = api[api.index('async linkExisting(plasmid, code)'):api.index("render(code) {")]
+    add = api[api.index('async linkExisting(plasmid, code'):api.index("render(code) {")]
     assert '/confirm' not in add, 'linking a stock must not re-confirm the plasmid'
+
+
+def test_a_stock_number_is_matched_however_it_is_padded_and_made_if_it_is_new():
+    """
+    The lab's older list writes GL-G-00178 where the code here is GL-G-0178, and tubes carry numbers
+    from before the suite (gGL000179) that Lab Stocks never issued. Neither should be a dead end:
+    the first is the same stock, and the second becomes one, keeping the tube's own label.
+    """
+    from pathlib import Path
+    api = Path('app/static/js/api.js').read_text()
+    assert 'spellings(code)' in api and "padStart(4, '0')" in api, 'zero-padding must be tolerated'
+    assert 'async find(code)' in api
+    link = api[api.index('async linkExisting(plasmid, code, made = {})'):api.index("A stock's number as a link")]
+    assert "await this.call('POST', '/glycerol'" in link, 'an unknown number makes a stock'
+    assert 'Tube label: ${typed}' in link, "and keeps what was typed as the tube's label"
+    assert 'Add it there first' not in link, 'the old dead end is gone'

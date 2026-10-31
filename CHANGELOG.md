@@ -6,6 +6,16 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-10-31
+
+### Added
+- **A stock number that Lab Stocks never issued now makes a stock** instead of being refused. A tube
+  from the lab's list from before the suite - `gGL000179` - becomes a glycerol stock with the next
+  number, keeping what was typed as its tube label, which is how the other 172 of that list were
+  brought over. The strain and place given in the dialog are used for it.
+- **Zero-padding no longer matters.** `GL-G-00178`, as the lab's older lists write it, finds
+  `GL-G-0178`; the answer says which number it turned out to be.
+
 ## [0.19.2] - 2026-10-31
 
 ### Added
