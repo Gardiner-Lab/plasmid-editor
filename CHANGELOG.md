@@ -6,6 +6,17 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.18.1] - 2026-10-31
+
+### Fixed
+- **Dates are written the European way everywhere in the editor.** Three places showed the server's raw
+  stamp (`2026-10-31 19:51`) instead of going through `localTime()`, which writes `31-10-2026 19:51` and
+  turns the stored UTC into the reader's own time: a plasmid's confirmation, a hand call, and the date
+  on a sequence in the library list. A test now keeps raw stamps out.
+- The chromatogram's call panel disappeared after calling a base, so the call just made - and the button
+  to undo it - were off the screen. Showing the read again had cleared the trace focus; it is now put
+  back where it was.
+
 ## [0.18.0] - 2026-10-31
 
 ### Added

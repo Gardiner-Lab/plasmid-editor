@@ -1328,7 +1328,7 @@ const Sequencing = {
         el('b', {}, 'Glycerol stock: '), Stocks.render(seq.glycerol_stock),
         seq.confirmed_clone ? ` · clone ${seq.confirmed_clone}` : '',
         seq.confirmed_by ? ` · confirmed by ${seq.confirmed_by}` : '',
-        seq.confirmed_at ? ` on ${String(seq.confirmed_at).slice(0, 16)}` : ''));
+        seq.confirmed_at ? ` on ${localTime(seq.confirmed_at)}` : ''));
       if (seq.can_change) parts.push(el('div', { class: 'btn-group', style: 'margin-top:.4rem' },
         el('button', {
           class: 'btn btn-sm btn-secondary',
@@ -1813,7 +1813,7 @@ const Sequencing = {
       call
         ? el('div', { class: 'trace-call-mine' },
           el('span', {}, 'Your call '), el('b', {}, call.base),
-          el('span', { class: 'hint' }, ` by ${call.by}${call.at ? ` on ${String(call.at).slice(0, 16)}` : ''}`),
+          el('span', { class: 'hint' }, ` by ${call.by}${call.at ? ` on ${localTime(call.at)}` : ''}`),
           el('button', {
             class: 'btn btn-sm btn-secondary', type: 'button', style: 'margin-left:.5rem',
             title: 'Put back what the instrument called, and align the read again',
@@ -1831,6 +1831,9 @@ const Sequencing = {
 
   /** Record a hand call (or withdraw one with base null) and take the new alignment. */
   async callBase(read, position, base) {
+    // Showing the read again clears the trace focus, which would take the panel - and the way back
+    // to the base just called - off the screen. Put it back where it was.
+    const col = this.traceFocus?.col;
     try {
       const { read: updated, clone_comparison: comparison } =
         await API.post(`/api/sequences/reads/${read.id}/call`, { position, base });
@@ -1842,7 +1845,8 @@ const Sequencing = {
       this.renderClones();
       const again = this.reads.find((r) => r.id === read.id);
       if (again) await this.showRead(again);
-      this.renderCallPanel();
+      if (col !== undefined) this.focusTrace(col);
+      else this.renderCallPanel();
       toast(base ? `Base ${fmt(position + 1)} called ${base}` : 'Call withdrawn', 'success', 2500);
     } catch (err) {
       toast(err.message, 'error');

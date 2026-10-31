@@ -76,7 +76,7 @@ const Library = {
         s.golden_gate ? el('span', { class: 'badge badge-gg', text: 'Golden Gate' }) : null,
         s.moclo_part_id ? el('span', { class: 'badge badge-moclo', text: 'in MoClo' }) : null,
         s.public ? el('span', { class: 'badge', text: 'public', title: 'Every lab can open it' }) : null),
-      el('td', { class: 'item-meta nowrap', text: (s.updated_at || '').slice(0, 16) }),
+      el('td', { class: 'item-meta nowrap', text: localTime(s.updated_at) }),
       el('td', { class: 'nowrap' },
         el('button', { class: 'tool-btn', title: 'Download GenBank (.gb)',
           onclick: () => downloadFrom(`/api/sequences/${s.id}/export/genbank`, `${s.name}.gb`).catch((e) => toast(e.message, 'error')) }, '⤓ gb'),

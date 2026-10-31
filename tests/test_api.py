@@ -891,3 +891,21 @@ def test_a_hand_call_is_checked(user_client, rand_dna):
                             json={'position': 99999, 'base': 'A'}).status_code == 400
     assert user_client.post(f'/api/sequences/reads/{rid}/call',
                             json={'base': 'A'}).status_code == 400
+
+
+def test_every_timestamp_the_editor_shows_goes_through_the_eu_date_helper():
+    """
+    Dates are written the European way across the suite (31-10-2026). The editor has one helper,
+    localTime(), which also turns the server's UTC into local time; three places were slicing the raw
+    SQLite stamp instead and so showed 2026-10-31 19:51.
+    """
+    from pathlib import Path
+    for name in ('sequencing.js', 'library.js', 'editor.js', 'admin.js'):
+        js = Path('app/static/js') / name
+        text = js.read_text()
+        for bad in ('.slice(0, 16)', '.slice(0,16)'):
+            assert bad not in text, f'{name} renders a raw timestamp with {bad}; use localTime()'
+    # The helper itself still writes day-month-year, and keeps its raw fallback.
+    helper = Path('app/static/js/api.js').read_text()
+    assert 'function localTime(stamp)' in helper
+    assert '${pad(d.getDate())}-${pad(d.getMonth() + 1)}-${d.getFullYear()}' in helper
