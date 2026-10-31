@@ -6,6 +6,19 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-10-31
+
+### Added
+- **A plasmid can have more than one glycerol stock.** It is normally kept in two strains - the one it
+  was cloned in and the one it was moved into - but confirming a plasmid names a single number, and
+  there was no way to record the second. Verification now lists every glycerol stock Lab Stocks holds
+  for the plasmid, with its strain and where the tube is kept, and **Add a stock** adds another: either
+  a new one for Lab Stocks to number, or one that already has a number, which is then linked to this
+  plasmid so it is listed too.
+- Nothing is renumbered or replaced. The number recorded when the plasmid was confirmed stays as it is,
+  each stock keeps its own code, and a number Lab Stocks does not have is refused rather than quietly
+  written onto the plasmid.
+
 ## [0.18.1] - 2026-10-31
 
 ### Fixed

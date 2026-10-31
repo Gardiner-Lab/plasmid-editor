@@ -909,3 +909,22 @@ def test_every_timestamp_the_editor_shows_goes_through_the_eu_date_helper():
     helper = Path('app/static/js/api.js').read_text()
     assert 'function localTime(stamp)' in helper
     assert '${pad(d.getDate())}-${pad(d.getMonth() + 1)}-${d.getFullYear()}' in helper
+
+
+def test_the_editor_asks_lab_stocks_for_every_stock_of_a_plasmid():
+    """
+    A plasmid is usually kept as more than one glycerol stock - the cloning strain's and the one it
+    was moved into - but the editor holds a single number, written when the plasmid was confirmed.
+    The list is therefore read from Lab Stocks, which allows many stocks per plasmid, each with its
+    host; these guard the two things that were wrong when it was first written.
+    """
+    from pathlib import Path
+    js = Path('app/static/js/sequencing.js').read_text()
+    # Lab Stocks answers a listing under the collection's name, not as `records`.
+    assert "({ glycerol: stocks = [] } = await Stocks.call('GET', `/glycerol?plasmid=" in js
+    # It must run after the panel is on the page, or getElementById finds nothing and it gives up.
+    attached = js.index('summary.replaceChildren(...parts);')
+    assert js.index('if (seq.confirmed) this.renderGlycerolStocks(seq);') > attached
+    # Adding a stock must never rewrite the number the plasmid was confirmed with.
+    add = js[js.index('async linkExistingStock'):js.index('renderVerification()')]
+    assert '/confirm' not in add, 'linking a stock must not re-confirm the plasmid'
