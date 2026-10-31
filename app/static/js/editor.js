@@ -1752,7 +1752,7 @@ const Editor = {
                 el('option', { value: t, text: t, selected: t === result.suggested_part_type })))),
             el('div', { class: 'field' },
               el('label', { for: 'cLab' }, 'Lab source'),
-              el('input', { type: 'text', id: 'cLab', placeholder: 'Gardiner Lab' }))),
+              el('input', { type: 'text', id: 'cLab', placeholder: 'e.g. Plant Developmental Biology' }))),
           el('div', { class: 'field' },
             el('label', { for: 'cDesc' }, 'Description'),
             el('input', { type: 'text', id: 'cDesc', value: doc.description || '' })),

@@ -16,6 +16,8 @@ and the project uses [semantic versioning](https://semver.org/).
   pages of its own keeps a single row.
 
 ## [0.13.0] - 2026-10-30
+- The pages no longer assume whose lab is running the suite: "the Gardiner Lab" and "the lab's own server"
+  are now "your lab" and "your own server", so they read correctly wherever it is deployed.
 
 ### Fixed
 - Searching a sequence that reads on the **reverse strand** found it, but marked it on the forward strand
