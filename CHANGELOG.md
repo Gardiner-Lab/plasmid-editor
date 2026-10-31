@@ -6,6 +6,26 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-10-31
+
+### Added
+- **Calling a base yourself, from the chromatogram.** A basecaller commits to a letter even where the
+  peak is obscured. Click a base in the alignment and the trace panel now shows what the machine called
+  and its quality, what the reference has, and buttons for what you read the trace as. The read is
+  aligned again at once, so a base called back to the reference stops being a mismatch in the
+  differences, the coverage and the clone comparison - and calling a base the basecaller read as the
+  reference records a real mutation it missed.
+- Nothing is overwritten: the read keeps the instrument's bases, with the hand call laid over them along
+  with the machine's letter, its quality, who called it and when. **Undo my call** restores it.
+- `POST /api/sequences/reads/<id>/call` makes or withdraws one call.
+
+### Fixed
+- **Re-align all no longer gives every read a new id**, which also means hand calls, and anything else
+  holding a read by id, survive it. It used to delete and remake each read; it now updates the alignment
+  in place, keeping the id, the clone and the verdict.
+- The new trace panel briefly rendered the text "null" where a hand call had not been made yet:
+  `replaceChildren` stringifies a null child, unlike `el()`.
+
 ## [0.17.0] - 2026-10-31
 
 ### Added

@@ -21,6 +21,7 @@
         <a href="#primers">Primers and PCR</a>
         <a href="#sequencing">Sequencing reads</a>
         <a href="#clones">Comparing the reads of a clone</a>
+        <a href="#calling">Calling a base yourself</a>
         <a href="#alignment">How the alignment works</a>
         <a href="#confirm">Confirming a clone</a>
         <a href="#moclo">MoClo and the rest of the suite</a>
@@ -204,6 +205,30 @@
         <p>Changing a clone number never changes a verdict. Saying which colony a read came from is not a
            judgement about the read, so a read already judged sufficient stays judged, by whoever judged it.
            Leave the box empty to take a read out of a clone again.</p>
+    </section>
+
+    <section id="calling">
+        <h2>Calling a base yourself</h2>
+        <p>A basecaller commits to a letter even where the peak is obscured, and it is often wrong near the
+           ends of a read or under a dye blob. If you look at the chromatogram and judge that the trace says
+           something else, you can say so.</p>
+        <ol class="steps">
+            <li>Open the read and click the base in the alignment. The <b>chromatogram</b> scrolls to it.</li>
+            <li>Under the trace it shows which base of the read this is, what the <b>basecaller</b> called
+                and its quality, and what the <b>reference</b> has there.</li>
+            <li>Press <b>A</b>, <b>C</b>, <b>G</b>, <b>T</b> or <b>N</b> for what you read the trace as.</li>
+        </ol>
+        <p>The read is aligned again straight away, so a base called back to the reference stops being a
+           mismatch &mdash; in the read's differences, in the coverage and in the clone comparison. Calling a
+           base the basecaller read as the reference works the same way and creates a difference, which is
+           how you record a real mutation it missed.</p>
+        <p><b>Nothing is overwritten.</b> The read keeps the bases exactly as the instrument gave them; your
+           call is laid over the top, with the letter the machine called, its quality, your name and the time.
+           <b>Undo my call</b> puts the instrument's letter back and aligns again. This is also why a hand
+           call survives <b>Re-align all</b>.</p>
+        <p>Calling a base changes the read, not the plasmid. To change the <i>plasmid</i> to what a read
+           shows &mdash; the other direction &mdash; use <b>Correct this one</b> or <b>Correct all to this
+           read</b> above the alignment, which saves a new version of the sequence.</p>
     </section>
 
     <section id="alignment">

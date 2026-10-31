@@ -454,21 +454,27 @@ def realign_reads(user, sequence_id):
                                                [r['alignment'] for r in results])}), 200
 
 
+def _align_one(doc, read):
+    """Align one read to the plasmid as its owner reads it - the instrument's bases with any hand
+    calls laid over them - and store where it landed."""
+    alignment = align.map_read(doc['sequence'], Read.called_bases(read), doc['circular'],
+                               read['quality'], read['name'])
+    Read.set_alignment(read['id'], alignment)
+    return alignment
+
+
 def _realign(doc):
-    """Align a sequence's reads again, keeping their clones and verdicts."""
-    sequence_id = doc['id']
+    """
+    Align a sequence's reads again, in place. Each read keeps its id, its clone, its verdict and its
+    hand-called bases; only the alignment is replaced. (It used to be deleted and remade, which gave
+    every read a new id and would have dropped the hand calls with it.)
+    """
     results = []
-    for r in Read.list_for(sequence_id):
-        full = Read.get(r['id'], include_trace=True)
-        alignment = align.map_read(doc['sequence'], full['bases'], doc['circular'],
-                                   full['quality'], full['name'])
-        Read.delete(r['id'])
-        Read.create(sequence_id, full['name'], full['bases'], full['quality'],
-                    full.get('trace'), alignment, full['uploaded_by'],
-                    clone_number=full.get('clone_number'), verdict=full.get('verdict'),
-                    verdict_note=full.get('verdict_note'), verdict_by=full.get('verdict_by'))
-        results.append({'name': full['name'], 'clone_number': full.get('clone_number'),
-                        'alignment': alignment})
+    for r in Read.list_for(doc['id']):
+        full = Read.get(r['id'], include_trace=False)
+        results.append({'id': full['id'], 'name': full['name'],
+                        'clone_number': full.get('clone_number'),
+                        'alignment': _align_one(doc, full)})
     return results
 
 
@@ -528,6 +534,42 @@ def restore_revision(user, sequence_id, number):
             moclo_note = str(exc)
     return jsonify({'sequence': updated, 'synced_to_moclo': synced,
                     'moclo_note': moclo_note}), 200
+
+
+@sequences_bp.route('/reads/<read_id>/call', methods=['POST'])
+@require_auth
+def call_read_base(user, read_id):
+    """
+    Call one base of a read by hand, from the chromatogram. A basecaller commits to a letter even
+    where the peak is obscured; someone reading the trace may judge it better. The instrument's own
+    bases are kept untouched - the call is laid over them - and the read is aligned again, so a base
+    called back to the reference stops being a difference everywhere it was counted. Send no base
+    (or null) to withdraw the call and have the instrument's letter back.
+    """
+    read = Read.get(read_id, include_trace=False)
+    if read is None:
+        return jsonify({'error': 'Read not found'}), 404
+    doc, err = _owned_or_404(read['sequence_id'], user, for_write=True)
+    if err:
+        return err
+    data = request.get_json(silent=True) or {}
+    try:
+        position = int(data.get('position'))
+    except (TypeError, ValueError):
+        return jsonify({'error': 'Give the position in the read as a whole number'}), 400
+    try:
+        Read.set_call(read_id, position, data.get('base') or None, user.username)
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 400
+    updated = Read.get(read_id, include_trace=False)
+    alignment = _align_one(doc, updated)
+    reads = Read.list_for(doc['id'])
+    return jsonify({
+        'read': dict(Read.get(read_id, include_trace=False), alignment=alignment),
+        'clone_comparison': clones.compare_clones(len(doc['sequence']), [
+            {'id': r['id'], 'name': r['name'], 'clone_number': r.get('clone_number'),
+             'alignment': r.get('alignment') or {}} for r in reads]),
+    }), 200
 
 
 @sequences_bp.route('/<sequence_id>/reads/clone', methods=['POST'])

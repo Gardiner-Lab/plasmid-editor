@@ -395,6 +395,71 @@ class Read:
         return {'id': rid, 'name': name, 'length': len(bases), 'clone_number': clone_number}
 
     @staticmethod
+    def set_alignment(read_id: str, alignment: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Store a read's alignment again, in place. The read keeps its id, its clone, its verdict
+        and its hand-called bases: only where it sits on the reference has changed."""
+        with get_connection() as conn:
+            cur = conn.execute('UPDATE reads SET alignment = ? WHERE id = ?',
+                               (json.dumps(alignment) if alignment else None, read_id))
+            if cur.rowcount == 0:
+                return None
+        return Read.get(read_id, include_trace=False)
+
+    @staticmethod
+    def called_bases(read: Dict[str, Any]) -> str:
+        """
+        The read as its owner reads it: the instrument's bases with any hand calls laid over them.
+        A chromatogram's peak can be obscured where the basecaller still commits to a letter, and
+        someone looking at the trace may judge it better; `bases` keeps what the machine said, so a
+        call can always be undone and the two can always be compared.
+        """
+        calls = read.get('calls') or {}
+        if not calls:
+            return read['bases']
+        out = list(read['bases'])
+        for pos, call in calls.items():
+            i = int(pos)
+            if 0 <= i < len(out):
+                out[i] = call['base']
+        return ''.join(out)
+
+    @staticmethod
+    def set_call(read_id: str, position: int, base: Optional[str], username: str) -> Optional[Dict[str, Any]]:
+        """
+        Record (or withdraw, with base None) one base called by hand. Calling a base back to what the
+        instrument said removes the call rather than storing a no-op, so the read shows a hand call
+        only where it still differs from the machine.
+        """
+        read = Read.get(read_id, include_trace=False)
+        if read is None:
+            return None
+        if not 0 <= position < len(read['bases']):
+            raise ValueError('That position is not in the read')
+        calls = dict(read.get('calls') or {})
+        key = str(position)
+        original = read['bases'][position].upper()
+        if base is not None:
+            base = base.upper()
+            if base not in ('A', 'C', 'G', 'T', 'N'):
+                raise ValueError('A base called by hand must be A, C, G, T or N')
+        with get_connection() as conn:
+            # Withdrawing a call, or calling a base back to what the instrument said, leaves no call
+            # behind: a read shows a hand call only where it still differs from the machine.
+            if base is None or base == original:
+                calls.pop(key, None)
+            else:
+                quality = read.get('quality') or []
+                now = conn.execute('SELECT CURRENT_TIMESTAMP AS t').fetchone()['t']
+                calls[key] = {'base': base, 'was': original,
+                              'quality': quality[position] if position < len(quality) else None,
+                              'by': username, 'at': now}
+            cur = conn.execute('UPDATE reads SET calls = ? WHERE id = ?',
+                               (json.dumps(calls) if calls else None, read_id))
+            if cur.rowcount == 0:
+                return None
+        return Read.get(read_id, include_trace=False)
+
+    @staticmethod
     def set_clone(read_id: str, clone_number: Optional[str]) -> Optional[Dict[str, Any]]:
         """
         Which colony a read came from, on its own. Grouping reads is not a judgement about them,
@@ -440,6 +505,7 @@ class Read:
         out = {'id': row['id'], 'sequence_id': row['sequence_id'], 'name': row['name'],
                'bases': row['bases'], 'length': len(row['bases']), 'quality': load('quality'),
                'alignment': load('alignment'), 'created_at': row['created_at'],
+               'calls': (load('calls') if 'calls' in keys else None) or {},
                'uploaded_by': row['uploaded_by'],
                'clone_number': row['clone_number'] if 'clone_number' in keys else None,
                'verdict': row['verdict'] if 'verdict' in keys else None,

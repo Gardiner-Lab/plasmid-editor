@@ -631,6 +631,8 @@ const Sequencing = {
   hideRead() {
     document.getElementById('readCard').hidden = true;
     document.getElementById('traceCard').hidden = true;
+    const call = document.getElementById('traceCall');
+    if (call) { call.hidden = true; call.replaceChildren(); }
     this.trace = null;
     this.traceFocus = null;
   },
@@ -1762,6 +1764,89 @@ const Sequencing = {
     if (!(cols.read[c] >= 0)) return;
     this.traceFocus = { index: cols.read[c], col, d, ref: cols.ref[col] };
     if (this.trace) this.drawTrace();
+    this.renderCallPanel();
+  },
+
+  /**
+   * Calling one base by hand. A basecaller commits to a letter even where the peak is obscured, and
+   * someone reading the trace may judge it better; this records what they say the trace shows. The
+   * instrument's own letter is kept and shown beside it, and the call can be withdrawn.
+   */
+  renderCallPanel() {
+    const panel = document.getElementById('traceCall');
+    if (!panel) return;
+    const read = this.activeRead;
+    const focus = this.traceFocus;
+    if (!read || !focus || !(focus.index >= 0) || !this.reference?.can_change) {
+      panel.hidden = true;
+      panel.replaceChildren();
+      return;
+    }
+    const i = focus.index;
+    const call = (read.calls || {})[String(i)] || null;
+    const machine = call ? call.was : (read.bases || '')[i];
+    const shown = call ? call.base : machine;
+    const quality = call ? call.quality : (read.quality || [])[i];
+    const refBase = focus.ref >= 0 ? (this.reference.sequence || '')[focus.ref] : null;
+
+    const button = (base) => el('button', {
+      class: `btn btn-sm${base === shown ? '' : ' btn-secondary'}`,
+      type: 'button', disabled: base === shown,
+      title: base === shown ? `The read already reads ${base} here` : `Call this base ${base}`,
+      onclick: () => this.callBase(read, i, base),
+    }, base);
+
+    panel.hidden = false;
+    // replaceChildren, unlike el(), turns a null child into the text "null", so the row that is only
+    // there once a call exists has to be left out rather than passed as null.
+    panel.replaceChildren(...[
+      el('div', { class: 'trace-call-where' },
+        el('b', {}, `Base ${fmt(i + 1)} of the read`),
+        refBase ? el('span', { class: 'hint' }, ` · reference ${refBase} at ${fmt(focus.ref + 1)}`) : null),
+      el('div', { class: 'trace-call-now' },
+        el('span', { class: 'hint' }, 'Basecaller '),
+        el('b', {}, machine || '?'),
+        quality !== undefined && quality !== null
+          ? el('span', { class: `hint${quality < 20 ? ' lowq-note' : ''}` },
+            ` Q${quality}${quality < 20 ? ' — low, the peak may be obscured' : ''}`)
+          : null),
+      call
+        ? el('div', { class: 'trace-call-mine' },
+          el('span', {}, 'Your call '), el('b', {}, call.base),
+          el('span', { class: 'hint' }, ` by ${call.by}${call.at ? ` on ${String(call.at).slice(0, 16)}` : ''}`),
+          el('button', {
+            class: 'btn btn-sm btn-secondary', type: 'button', style: 'margin-left:.5rem',
+            title: 'Put back what the instrument called, and align the read again',
+            onclick: () => this.callBase(read, i, null),
+          }, 'Undo my call'))
+        : null,
+      el('div', { class: 'trace-call-pick' },
+        el('span', { class: 'hint' }, 'Read it as '),
+        ...['A', 'C', 'G', 'T', 'N'].map(button)),
+      el('div', { class: 'hint' },
+        'The read is aligned again, so a base called back to the reference stops counting as a '
+        + 'difference. What the instrument called is always kept.'),
+    ].filter(Boolean));
+  },
+
+  /** Record a hand call (or withdraw one with base null) and take the new alignment. */
+  async callBase(read, position, base) {
+    try {
+      const { read: updated, clone_comparison: comparison } =
+        await API.post(`/api/sequences/reads/${read.id}/call`, { position, base });
+      const here = this.reads.find((r) => r.id === read.id);
+      if (here) Object.assign(here, { calls: updated.calls, alignment: updated.alignment });
+      Object.assign(read, { calls: updated.calls, alignment: updated.alignment });
+      this.clones = comparison || this.clones;
+      this.renderReads();
+      this.renderClones();
+      const again = this.reads.find((r) => r.id === read.id);
+      if (again) await this.showRead(again);
+      this.renderCallPanel();
+      toast(base ? `Base ${fmt(position + 1)} called ${base}` : 'Call withdrawn', 'success', 2500);
+    } catch (err) {
+      toast(err.message, 'error');
+    }
   },
 
   drawTrace() {

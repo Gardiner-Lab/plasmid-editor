@@ -227,6 +227,10 @@ _ADDED_COLUMNS = {
         ('verdict_note', 'TEXT'),
         ('verdict_by', 'TEXT'),
         ('verdict_at', 'TIMESTAMP'),
+        # Bases called by hand from the chromatogram, where someone judged the trace better than
+        # the basecaller did: {read position: {base, was, quality, by, at}}. The read's own `bases`
+        # stay exactly as the instrument gave them; these are laid over the top before aligning.
+        ('calls', 'TEXT'),
     ],
 }
 

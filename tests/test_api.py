@@ -780,3 +780,114 @@ def test_reads_of_another_sequence_cannot_be_put_into_this_ones_clone(user_clien
     assert r.status_code == 404
     kept = user_client.get(f'/api/sequences/{sid2}/reads').get_json()['reads'][0]
     assert kept['clone_number'] is None, 'nothing was changed'
+
+
+def _mismatch_read(seq, at, swap_to):
+    """A read off `seq` from 300 to 900 with one base changed, as a basecaller might misread it."""
+    bases = list(seq[300:900])
+    bases[at - 300] = swap_to
+    return ''.join(bases)
+
+
+def test_a_base_called_by_hand_stops_being_a_difference(user_client, rand_dna):
+    """
+    A basecaller commits to a letter even where the peak is obscured. Someone reading the trace may
+    judge it better, and their call must carry through everything the difference was counted in.
+    """
+    import io
+    seq = rand_dna(1600)
+    r = user_client.post('/api/sequences', json={'document': model.make_document('p', seq, True)})
+    sid = r.get_json()['sequence']['id']
+    want = 'A' if seq[600] != 'A' else 'C'
+    res = user_client.post(f'/api/sequences/{sid}/reads',
+                           data={'file': (io.BytesIO(f'>r1\n{_mismatch_read(seq, 600, want)}\n'.encode()), 'r1.fa'),
+                                 'clone_number': '1'},
+                           content_type='multipart/form-data')
+    read = res.get_json()['reads'][0]
+    rid = read['id']
+    assert [d['position'] for d in read['alignment']['differences']] == [600]
+    read_pos = 600 - 300                                  # where that base sits in the read itself
+
+    # Call it back to what the reference has: the mismatch goes.
+    r = user_client.post(f'/api/sequences/reads/{rid}/call',
+                         json={'position': read_pos, 'base': seq[600]})
+    assert r.status_code == 200, r.get_json()
+    body = r.get_json()
+    assert body['read']['alignment']['differences'] == []
+    assert body['clone_comparison'][0]['clean'] is True
+
+    # The instrument's own letter is kept, with who called it and when.
+    call = body['read']['calls'][str(read_pos)]
+    assert call['base'] == seq[600] and call['was'] == want
+    assert call['by'] and call['at']
+    stored = user_client.get(f'/api/sequences/reads/{rid}').get_json()['read']
+    assert stored['bases'][read_pos] == want, 'the read as the machine gave it is untouched'
+
+    # Withdrawing the call brings the difference back.
+    r = user_client.post(f'/api/sequences/reads/{rid}/call', json={'position': read_pos, 'base': None})
+    assert [d['position'] for d in r.get_json()['read']['alignment']['differences']] == [600]
+    assert r.get_json()['read']['calls'] == {}
+
+
+def test_a_hand_call_can_name_a_base_the_basecaller_missed(user_client, rand_dna):
+    """Any base may be called, not only one that already differs: a real mutation can be read as the
+    reference base just as easily as the other way round."""
+    import io
+    seq = rand_dna(1600)
+    r = user_client.post('/api/sequences', json={'document': model.make_document('p', seq, True)})
+    sid = r.get_json()['sequence']['id']
+    res = user_client.post(f'/api/sequences/{sid}/reads',
+                           data={'file': (io.BytesIO(f'>r1\n{seq[300:900]}\n'.encode()), 'r1.fa')},
+                           content_type='multipart/form-data')
+    rid = res.get_json()['reads'][0]['id']
+    assert res.get_json()['reads'][0]['alignment']['differences'] == []
+
+    want = 'A' if seq[600] != 'A' else 'C'
+    r = user_client.post(f'/api/sequences/reads/{rid}/call', json={'position': 300, 'base': want})
+    diffs = r.get_json()['read']['alignment']['differences']
+    assert [d['position'] for d in diffs] == [600] and diffs[0]['read'] == want
+
+
+def test_hand_calls_survive_realigning_and_reads_keep_their_ids(user_client, rand_dna):
+    """
+    Re-align all used to delete and remake every read, which gave them new ids and would now throw
+    away the hand calls with them.
+    """
+    import io
+    seq = rand_dna(1600)
+    r = user_client.post('/api/sequences', json={'document': model.make_document('p', seq, True)})
+    sid = r.get_json()['sequence']['id']
+    want = 'A' if seq[600] != 'A' else 'C'
+    res = user_client.post(f'/api/sequences/{sid}/reads',
+                           data={'file': (io.BytesIO(f'>r1\n{_mismatch_read(seq, 600, want)}\n'.encode()), 'r1.fa'),
+                                 'clone_number': '4'},
+                           content_type='multipart/form-data')
+    rid = res.get_json()['reads'][0]['id']
+    user_client.post(f'/api/sequences/reads/{rid}/verdict', json={'verdict': 'insufficient'})
+    user_client.post(f'/api/sequences/reads/{rid}/call', json={'position': 300, 'base': seq[600]})
+
+    r = user_client.post(f'/api/sequences/{sid}/reads/realign', json={})
+    assert r.status_code == 200
+    after = user_client.get(f'/api/sequences/{sid}/reads').get_json()['reads']
+    assert len(after) == 1
+    assert after[0]['id'] == rid, 'the read kept its id'
+    assert after[0]['calls'] != {}, 'the hand call survived'
+    assert after[0]['alignment']['differences'] == [], 'and is still applied'
+    assert after[0]['clone_number'] == '4' and after[0]['verdict'] == 'insufficient'
+
+
+def test_a_hand_call_is_checked(user_client, rand_dna):
+    import io
+    seq = rand_dna(1200)
+    sid = user_client.post('/api/sequences',
+                           json={'document': model.make_document('p', seq, True)}).get_json()['sequence']['id']
+    res = user_client.post(f'/api/sequences/{sid}/reads',
+                           data={'file': (io.BytesIO(f'>r1\n{seq[200:700]}\n'.encode()), 'r1.fa')},
+                           content_type='multipart/form-data')
+    rid = res.get_json()['reads'][0]['id']
+    assert user_client.post(f'/api/sequences/reads/{rid}/call',
+                            json={'position': 5, 'base': 'X'}).status_code == 400
+    assert user_client.post(f'/api/sequences/reads/{rid}/call',
+                            json={'position': 99999, 'base': 'A'}).status_code == 400
+    assert user_client.post(f'/api/sequences/reads/{rid}/call',
+                            json={'base': 'A'}).status_code == 400
