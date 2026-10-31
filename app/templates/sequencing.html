@@ -66,6 +66,14 @@
             <button class="btn btn-sm btn-secondary" id="btnRealign" title="Re-align every read to the current reference">Re-align all</button>
         </div>
     </div>
+    <div id="readBulk" class="read-bulk" hidden>
+        <span id="readBulkCount"></span>
+        <label for="bulkClone">Clone</label>
+        <input type="text" id="bulkClone" style="width:6rem" placeholder="e.g. 3">
+        <button class="btn btn-sm" id="btnBulkClone">Put in this clone</button>
+        <button class="btn btn-sm btn-secondary" id="btnBulkNone">Take out of any clone</button>
+        <button class="btn btn-sm btn-secondary" id="btnBulkClear">Clear selection</button>
+    </div>
     <div id="readMap"><div class="empty">Choose a reference sequence.</div></div>
 </div>
 

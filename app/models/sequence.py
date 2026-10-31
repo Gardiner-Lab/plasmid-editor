@@ -395,6 +395,20 @@ class Read:
         return {'id': rid, 'name': name, 'length': len(bases), 'clone_number': clone_number}
 
     @staticmethod
+    def set_clone(read_id: str, clone_number: Optional[str]) -> Optional[Dict[str, Any]]:
+        """
+        Which colony a read came from, on its own. Grouping reads is not a judgement about them,
+        so this leaves the verdict and who gave it exactly as they were: correcting a clone number
+        must not quietly withdraw someone's "sufficient".
+        """
+        value = (clone_number or '').strip() or None
+        with get_connection() as conn:
+            cur = conn.execute('UPDATE reads SET clone_number = ? WHERE id = ?', (value, read_id))
+            if cur.rowcount == 0:
+                return None
+        return Read.get(read_id, include_trace=False)
+
+    @staticmethod
     def set_verdict(read_id: str, verdict: Optional[str], username: str,
                     note: Optional[str] = None,
                     clone_number: Optional[str] = None) -> Optional[Dict[str, Any]]:

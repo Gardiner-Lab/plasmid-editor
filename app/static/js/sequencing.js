@@ -145,6 +145,9 @@ const Sequencing = {
   sequences: [],
   reference: null,
   reads: [],
+  clones: [],
+  /** Reads ticked in the map, for putting several into one clone at once. */
+  selected: new Set(),
   activeRead: null,
   traceScale: 2,
 
@@ -154,6 +157,16 @@ const Sequencing = {
   async init() {
     document.getElementById('readInput').addEventListener('change', (e) => this.upload(e.target.files));
     document.getElementById('btnRealign').addEventListener('click', () => this.realign());
+    document.getElementById('btnBulkClone').addEventListener('click',
+      () => this.setCloneOnSelected(document.getElementById('bulkClone').value.trim()));
+    document.getElementById('bulkClone').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') document.getElementById('btnBulkClone').click();
+    });
+    document.getElementById('btnBulkNone').addEventListener('click', () => this.setCloneOnSelected(''));
+    document.getElementById('btnBulkClear').addEventListener('click', () => {
+      this.selected.clear();
+      this.renderReads();
+    });
     document.getElementById('traceZoomIn').addEventListener('click', () => { this.traceScale *= 1.5; this.drawTrace(); });
     document.getElementById('traceZoomOut').addEventListener('click', () => { this.traceScale /= 1.5; this.drawTrace(); });
 
@@ -229,6 +242,7 @@ const Sequencing = {
       this.reference = null;
       this.reads = [];
       this.clones = [];
+      this.selected.clear();
       this.activeRead = null;
       this.hideRead();
       document.getElementById('refInfo').textContent = '';
@@ -242,6 +256,7 @@ const Sequencing = {
       // view rather than the plasmid itself, which may be private.
       const { sequence, reads, clone_comparison: comparison } = await API.get(`/api/sequences/${id}/sequencing`);
       const changed = this.reference?.id !== sequence.id;
+      if (changed) this.selected.clear();
       this.reference = sequence;
       this.reads = reads || [];
       this.clones = comparison || [];
@@ -308,7 +323,47 @@ const Sequencing = {
   },
 
   renderReads() {
+    // A read that has gone (removed, or a different plasmid chosen) must not stay selected.
+    for (const id of [...this.selected]) {
+      if (!this.reads.some((r) => r.id === id)) this.selected.delete(id);
+    }
     this.renderMap();
+    this.renderBulkBar();
+  },
+
+  /** The bar for putting several reads into one clone at once; hidden until some are picked. */
+  renderBulkBar() {
+    const bar = document.getElementById('readBulk');
+    if (!bar) return;
+    const n = this.selected.size;
+    bar.hidden = !n || !this.reference?.can_change;
+    if (bar.hidden) return;
+    document.getElementById('readBulkCount').textContent =
+      `${n} read${n === 1 ? '' : 's'} selected`;
+  },
+
+  /** Put every selected read into a clone, or take them out of one. */
+  async setCloneOnSelected(clone) {
+    const ids = [...this.selected];
+    if (!ids.length) return;
+    try {
+      const { clone_comparison: comparison } = await API.post(
+        `/api/sequences/${this.reference.id}/reads/clone`, { read_ids: ids, clone_number: clone });
+      for (const r of this.reads) if (this.selected.has(r.id)) r.clone_number = clone || null;
+      this.clones = comparison || this.clones;
+      this.selected.clear();
+      document.getElementById('bulkClone').value = '';
+      this.renderReads();
+      this.renderClones();
+      if (this.activeRead) {
+        const again = this.reads.find((r) => r.id === this.activeRead.id);
+        if (again) await this.showRead(again);
+      }
+      toast(clone ? `${ids.length} read(s) moved to clone ${clone}`
+                  : `${ids.length} read(s) taken out of their clone`, 'success', 3000);
+    } catch (err) {
+      toast(err.message, 'error');
+    }
   },
 
   /**
@@ -454,8 +509,19 @@ const Sequencing = {
       const active = this.activeRead?.id === r.id;
       const open = () => this.showRead(r);
       cells.push(el('div', { class: `rmap-label rmap-read${active ? ' active' : ''}`, onclick: (ev) => {
-        if (!ev.target.closest('button')) open();
+        if (!ev.target.closest('button, input, label')) open();
       }, title: `${r.name}${r.clone_number ? `, clone ${r.clone_number}` : ''}` },
+      this.reference.can_change
+        ? el('input', {
+          type: 'checkbox', class: 'rmap-pick', checked: this.selected.has(r.id),
+          title: 'Select this read, to put several into a clone at once',
+          'aria-label': `Select ${r.name}`,
+          onchange: (ev) => {
+            if (ev.target.checked) this.selected.add(r.id); else this.selected.delete(r.id);
+            this.renderBulkBar();
+          },
+        })
+        : null,
       r.clone_number ? el('span', { class: 'badge', text: `clone ${r.clone_number}` }) : null,
       el('span', { class: 'rmap-name', text: r.name }),
       r.verdict ? el('span', {
@@ -984,9 +1050,32 @@ const Sequencing = {
             + (read.verdict_by ? ` (judged by ${read.verdict_by})` : '')
           : 'Not judged yet');
     }
+    // Saved on its own, on Enter or on leaving the box: which colony a read came from is not a
+    // judgement about it, and before this the only way to set it was to judge the read as well.
+    const saveClone = async (input) => {
+      const want = input.value.trim();
+      if (want === (read.clone_number || '')) return;
+      try {
+        const { clone_comparison: comparison } = await API.post(
+          `/api/sequences/${this.reference.id}/reads/clone`,
+          { read_ids: [read.id], clone_number: want });
+        read.clone_number = want || null;
+        const here = this.reads.find((r) => r.id === read.id);
+        if (here) here.clone_number = read.clone_number;
+        this.clones = comparison || this.clones;
+        this.renderReads();
+        this.renderClones();
+        toast(want ? `Read moved to clone ${want}` : 'Read taken out of its clone', 'success', 2500);
+      } catch (err) {
+        input.value = read.clone_number || '';
+        toast(err.message, 'error');
+      }
+    };
     const clone = el('input', {
       type: 'text', value: read.clone_number || '', placeholder: 'clone',
-      style: 'width:6rem', title: 'Which colony this read came from',
+      style: 'width:6rem', title: 'Which colony this read came from. Saved as you leave the box.',
+      onkeydown: (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); ev.target.blur(); } },
+      onblur: (ev) => saveClone(ev.target),
     });
     const judge = async (verdict, extra = {}) => {
       const res = await API.post(`/api/sequences/reads/${read.id}/verdict`, {

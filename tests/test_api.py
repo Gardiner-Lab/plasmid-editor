@@ -714,3 +714,69 @@ def test_the_reads_of_a_clone_are_compared_against_each_other(user_client, rand_
 
 def test_comparing_clones_needs_an_account(client):
     assert client.get('/api/sequences/whatever/clones').status_code == 401
+
+
+def test_putting_reads_into_a_clone_leaves_their_verdicts_alone(user_client, rand_dna):
+    """
+    Grouping reads is not a judgement about them. Correcting a clone number must not withdraw a
+    verdict someone already gave, which was the only way to set a clone before.
+    """
+    import io
+    seq = rand_dna(1200)
+    r = user_client.post('/api/sequences', json={'document': model.make_document('p', seq, True)})
+    sid = r.get_json()['sequence']['id']
+
+    def upload(name, bases):
+        res = user_client.post(f'/api/sequences/{sid}/reads',
+                               data={'file': (io.BytesIO(f'>{name}\n{bases}\n'.encode()), f'{name}.fa')},
+                               content_type='multipart/form-data')
+        return res.get_json()['reads'][0]['id']
+
+    a = upload('a', seq[200:700])
+    b = upload('b', seq[400:900])
+    c = upload('c', seq[500:1000])
+
+    # One read is judged sufficient, which confirms the plasmid.
+    r = user_client.post(f'/api/sequences/reads/{a}/verdict',
+                         json={'verdict': 'sufficient', 'glycerol_stock': 'GL-G-0042'})
+    assert r.status_code == 200
+    before = next(x for x in user_client.get(f'/api/sequences/{sid}/reads').get_json()['reads'] if x['id'] == a)
+    assert before['verdict'] == 'sufficient' and before['verdict_by']
+
+    # Several reads into one clone in a single call.
+    r = user_client.post(f'/api/sequences/{sid}/reads/clone',
+                         json={'read_ids': [a, b], 'clone_number': '7'})
+    assert r.status_code == 200
+    reads = {x['id']: x for x in user_client.get(f'/api/sequences/{sid}/reads').get_json()['reads']}
+    assert reads[a]['clone_number'] == '7' and reads[b]['clone_number'] == '7'
+    assert reads[c]['clone_number'] is None, 'reads not named are left alone'
+
+    # The verdict, and who gave it, survived.
+    assert reads[a]['verdict'] == 'sufficient'
+    assert reads[a]['verdict_by'] == before['verdict_by']
+    assert reads[a]['verdict_at'] == before['verdict_at']
+    assert user_client.get(f'/api/sequences/{sid}').get_json()['sequence']['confirmed'] is True
+
+    # The answer carries the comparison, so the panel updates without asking again.
+    assert r.get_json()['clone_comparison'][0]['clone'] == '7'
+
+    # An empty clone number takes a read back out of its clone.
+    user_client.post(f'/api/sequences/{sid}/reads/clone', json={'read_ids': [b], 'clone_number': ''})
+    reads = {x['id']: x for x in user_client.get(f'/api/sequences/{sid}/reads').get_json()['reads']}
+    assert reads[b]['clone_number'] is None and reads[a]['clone_number'] == '7'
+
+
+def test_reads_of_another_sequence_cannot_be_put_into_this_ones_clone(user_client, rand_dna):
+    import io
+    one = user_client.post('/api/sequences', json={'document': model.make_document('one', rand_dna(900), True)})
+    two = user_client.post('/api/sequences', json={'document': model.make_document('two', rand_dna(900), True)})
+    sid1, sid2 = one.get_json()['sequence']['id'], two.get_json()['sequence']['id']
+    bases = user_client.get(f'/api/sequences/{sid2}').get_json()['sequence']['sequence'][100:500]
+    res = user_client.post(f'/api/sequences/{sid2}/reads',
+                           data={'file': (io.BytesIO(f'>r\n{bases}\n'.encode()), 'r.fa')},
+                           content_type='multipart/form-data')
+    other = res.get_json()['reads'][0]['id']
+    r = user_client.post(f'/api/sequences/{sid1}/reads/clone', json={'read_ids': [other], 'clone_number': '1'})
+    assert r.status_code == 404
+    kept = user_client.get(f'/api/sequences/{sid2}/reads').get_json()['reads'][0]
+    assert kept['clone_number'] is None, 'nothing was changed'

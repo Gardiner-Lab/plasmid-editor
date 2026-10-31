@@ -530,6 +530,33 @@ def restore_revision(user, sequence_id, number):
                     'moclo_note': moclo_note}), 200
 
 
+@sequences_bp.route('/<sequence_id>/reads/clone', methods=['POST'])
+@require_auth
+def set_reads_clone(user, sequence_id):
+    """
+    Put reads into a clone: one of them, or several at once. Saying which colony a read came from is
+    not a judgement about it, so the verdicts are left alone - correcting a clone number must not
+    withdraw someone's "sufficient". An empty clone number takes the reads out of any clone.
+    """
+    doc, err = _owned_or_404(sequence_id, user, for_write=True)
+    if err:
+        return err
+    data = request.get_json(silent=True) or {}
+    ids = data.get('read_ids')
+    if not isinstance(ids, list) or not ids:
+        return jsonify({'error': 'Name the reads to put into the clone'}), 400
+    clone = data.get('clone_number')
+    mine = {r['id'] for r in Read.list_for(sequence_id)}
+    missing = [i for i in ids if i not in mine]
+    if missing:
+        return jsonify({'error': 'Those reads are not on this sequence'}), 404
+    updated = [Read.set_clone(i, clone) for i in ids]
+    return jsonify({'reads': [r for r in updated if r],
+                    'clone_comparison': clones.compare_clones(len(doc['sequence']), [
+                        {'id': r['id'], 'name': r['name'], 'clone_number': r.get('clone_number'),
+                         'alignment': r.get('alignment') or {}} for r in Read.list_for(sequence_id)])}), 200
+
+
 @sequences_bp.route('/reads/<read_id>/verdict', methods=['POST'])
 @require_auth
 def set_read_verdict(user, read_id):

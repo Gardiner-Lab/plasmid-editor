@@ -269,6 +269,10 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .diff-chip.lowq { border-style: dashed; border-left-style: dashed; color: var(--text-secondary); }
 .diff-chip:hover { border-color: #111827; }
 .diff-chip.active { background: #f3f4f6; outline: 2px solid #111827; outline-offset: 1px; font-weight: 600; }
+.read-bulk { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; margin-bottom: .6rem;
+    padding: .45rem .6rem; border: 1px solid var(--border-color); border-radius: .4rem; background: var(--hover-bg, #f9fafb); }
+.read-bulk > span:first-child { font-weight: 600; margin-right: .2rem; }
+.rmap-pick { margin-right: .35rem; flex: none; }
 .diff-where { color: var(--text-secondary); }
 .diff-what { font-variant-numeric: tabular-nums; font-weight: 600; }
 

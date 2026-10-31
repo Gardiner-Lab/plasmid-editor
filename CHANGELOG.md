@@ -6,6 +6,24 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-10-31
+
+### Added
+- **Reads can be put into a clone after they are uploaded.** Tick reads in the map and a bar appears
+  above it: type a clone number and **Put in this clone** moves all of them at once, which is what a
+  batch back from the sequencing service needs. A single read can also be set from its own **Clone**
+  box, which now saves on Enter or on clicking away.
+- `POST /api/sequences/<id>/reads/clone` puts one or many reads into a clone, and answers with the
+  refreshed clone comparison.
+
+### Fixed
+- **Setting a read's clone no longer requires judging it.** The **Clone** box on a read was only saved
+  as part of a verdict, so the only way to group reads after uploading them was to press *Alignment is
+  sufficient* or *Not sufficient* on each - and *sufficient* confirms the whole plasmid and asks for a
+  glycerol stock. Clone and verdict are now separate: changing the clone leaves the verdict, and whoever
+  gave it, untouched. (Sending a clone through the verdict endpoint alone would have cleared the verdict,
+  so there was no way round it from the API either.)
+
 ## [0.16.1] - 2026-10-31
 
 ### Added
