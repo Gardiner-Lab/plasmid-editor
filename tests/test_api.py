@@ -609,3 +609,10 @@ def test_the_about_and_help_pages_are_there_and_point_at_each_other(client):
         assert heading in r.get_data(as_text=True)
     assert '/help' in client.get('/about').get_data(as_text=True)
     assert '/about' in client.get('/help').get_data(as_text=True)
+
+
+def test_every_page_reaches_the_suite_and_its_other_tools():
+    """The bar must carry the tool switcher, so every tool reaches every other one."""
+    from pathlib import Path
+    html = Path('app/templates/base.html').read_text()
+    assert 'trellis/modules.js' in html, 'the other tools are not linked from the bar'

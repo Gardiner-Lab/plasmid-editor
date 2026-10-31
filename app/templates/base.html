@@ -29,6 +29,7 @@
         </nav>
         <nav class="tt-links">
             {% if suite_dashboard %}<a href="{{ suite_dashboard }}">Dashboard</a>{% endif %}
+            {# MoClo may be a separate deployment (MOCLO_BASE_URL), which the tool switcher cannot know. #}
             {% if moclo.enabled %}<a href="{{ moclo.library }}">MoClo ↗</a>{% endif %}
             <a href="{{ url_for('help_page') }}">Help</a>
             <a href="{{ url_for('about_page') }}">About</a>
@@ -60,6 +61,7 @@
 
 <div class="toast-stack" id="toasts"></div>
 <script src="{{ url_for('static', filename='js/api.js') }}?v={{ app_version }}"></script>
+<script src="{{ url_for('static', filename='trellis/modules.js') }}?v={{ app_version }}" defer></script>
 {% block extra_js %}{% endblock %}
 </body>
 </html>
