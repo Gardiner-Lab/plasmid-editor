@@ -924,7 +924,10 @@ def test_the_editor_asks_lab_stocks_for_every_stock_of_a_plasmid():
     assert "({ glycerol: stocks = [] } = await Stocks.call('GET', `/glycerol?plasmid=" in js
     # It must run after the panel is on the page, or getElementById finds nothing and it gives up.
     attached = js.index('summary.replaceChildren(...parts);')
-    assert js.index('if (seq.confirmed) this.renderGlycerolStocks(seq);') > attached
+    assert js.index('this.renderGlycerolStocks(seq);', attached) > attached
+    # Stocks are listed on every plasmid, not only a confirmed one: a plasmid from before the suite
+    # has stocks in the freezer whether or not its sequence was ever confirmed here.
+    assert 'if (seq.confirmed) this.renderGlycerolStocks' not in js
     # Adding a stock must never rewrite the number the plasmid was confirmed with.
     add = js[js.index('async linkExistingStock'):js.index('renderVerification()')]
     assert '/confirm' not in add, 'linking a stock must not re-confirm the plasmid'

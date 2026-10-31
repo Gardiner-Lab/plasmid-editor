@@ -6,6 +6,15 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.19.1] - 2026-10-31
+
+### Fixed
+- **Glycerol stocks are listed on every plasmid, not only a confirmed one.** 0.19.0 put the list and
+  **Add a stock** inside the confirmed-only part of the panel, so a plasmid that was never confirmed by
+  sequencing here - which is most of them when a lab is moving its records over - had no way to record
+  the stocks sitting in its freezer. Which strains a plasmid is kept in does not depend on whether its
+  sequence was ever confirmed.
+
 ## [0.19.0] - 2026-10-31
 
 ### Added

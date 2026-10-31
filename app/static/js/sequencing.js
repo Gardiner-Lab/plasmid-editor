@@ -1319,10 +1319,7 @@ const Sequencing = {
       note ? el('span', { class: 'hint' }, ` · ${note}`) : null);
 
     box.replaceChildren(...[
-      el('div', {}, el('b', {}, stocks.length + (loose ? 1 : 0) > 1 ? 'Glycerol stocks' : 'Glycerol stock'),
-        seq.confirmed_clone ? el('span', { class: 'hint' }, ` · clone ${seq.confirmed_clone}`) : null,
-        seq.confirmed_by ? el('span', { class: 'hint' }, ` · confirmed by ${seq.confirmed_by}`) : null,
-        seq.confirmed_at ? el('span', { class: 'hint' }, ` on ${localTime(seq.confirmed_at)}`) : null),
+      el('div', {}, el('b', {}, stocks.length + (loose ? 1 : 0) === 1 ? 'Glycerol stock' : 'Glycerol stocks')),
       ...stocks.map((s) => line(s.code, s.host, s.location)),
       loose ? line(loose, null, null, 'recorded on this plasmid') : null,
       !stocks.length && !loose ? el('div', { class: 'hint' }, 'None recorded yet.') : null,
@@ -1461,10 +1458,10 @@ const Sequencing = {
 
     const parts = [];
     if (seq.confirmed) {
-      parts.push(el('div', { id: 'glycerolStocks' },
-        el('b', {}, 'Glycerol stock: '), Stocks.render(seq.glycerol_stock),
+      parts.push(el('div', {},
+        el('b', {}, 'Confirmed'),
         seq.confirmed_clone ? ` · clone ${seq.confirmed_clone}` : '',
-        seq.confirmed_by ? ` · confirmed by ${seq.confirmed_by}` : '',
+        seq.confirmed_by ? ` · by ${seq.confirmed_by}` : '',
         seq.confirmed_at ? ` on ${localTime(seq.confirmed_at)}` : ''));
 
       if (seq.can_change) parts.push(el('div', { class: 'btn-group', style: 'margin-top:.4rem' },
@@ -1488,6 +1485,9 @@ const Sequencing = {
           ? 'Judge an alignment sufficient to confirm this plasmid.'
           : 'Not confirmed yet; the owner judges the alignments.'));
     }
+    // Which strains the plasmid is kept in has nothing to do with whether its sequence was ever
+    // confirmed here: a plasmid from before the suite has stocks in the freezer all the same.
+    parts.push(el('div', { id: 'glycerolStocks', style: 'margin-top:.5rem' }));
     parts.push(el('div', { class: 'hint', style: 'margin-top:.35rem' },
       `${this.reads.length} read(s) · ${ok} sufficient · ${bad} not sufficient · `
       + `${diffs} with differences`));
@@ -1495,7 +1495,7 @@ const Sequencing = {
     // A plasmid is usually kept as more than one stock - the cloning strain and the one it was moved
     // into - so every stock Lab Stocks holds for it is listed, not just the one named when it was
     // confirmed. Once the panel is on the page, since this asks Lab Stocks and waits.
-    if (seq.confirmed) this.renderGlycerolStocks(seq);
+    this.renderGlycerolStocks(seq);
   },
 
   /**
