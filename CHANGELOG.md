@@ -6,6 +6,31 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-10-31
+
+### Added
+- **The reads of a clone, compared against each other.** One read cannot tell a real mutation from a
+  bad basecall: Sanger reads are ragged at the ends, and a wrong base there looks exactly like a point
+  mutation. Two reads covering the same base can tell them apart, so the sequencing page now groups a
+  clone's reads and judges each difference by the reads that actually cover it:
+  - **Confirmed** - every covering read shows it, and at least two do. The clone's own sequence.
+  - **Contradicted** - other covering reads show the reference instead, so one of them misread. Set
+    aside unless the reads showing it outnumber those that do not.
+  - **Only one read** - nothing else reaches that base. Still counted as a real difference, because
+    missing a genuine mutation is the worse mistake, and marked as resting on one read.
+
+  Each clone reports how much of the plasmid its reads reached, and reads as clean where every base
+  they cover matches. Clicking a difference opens a read that shows it, at that base.
+- Every difference now carries the quality of the read bases behind it (the worst of them, for a run),
+  so a disagreement between reads can be weighed against how confident each was. Reads uploaded before
+  this gain it on **Re-align all**.
+- `GET /api/sequences/<id>/clones` returns the same comparison for a plasmid.
+
+### Fixed
+- `tests/test_dnakit.py` seeded the global random module, so its alignment-edge assertions depended on
+  whatever else in the suite had drawn from it first - a multipart upload does, through Werkzeug's form
+  encoder. It now uses its own generator and is independent of test order.
+
 ## [0.15.1] - 2026-10-31
 
 ### Fixed

@@ -270,6 +270,17 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .diff-chip:hover { border-color: #111827; }
 .diff-chip.active { background: #f3f4f6; outline: 2px solid #111827; outline-offset: 1px; font-weight: 600; }
 .diff-where { color: var(--text-secondary); }
+.diff-what { font-variant-numeric: tabular-nums; font-weight: 600; }
+
+/* Clone by clone: the reads of one colony weighed against each other. */
+.clone-group { padding: .6rem 0; border-top: 1px solid var(--border-color); }
+.clone-group:first-child { border-top: 0; padding-top: .2rem; }
+.clone-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: .3rem; }
+.clone-section { margin-top: .45rem; }
+.clone-heading { font-size: .78rem; font-weight: 650; text-transform: uppercase; letter-spacing: .03em; }
+.clone-heading.clone-confirmed { color: var(--aln-mismatch); }
+.clone-heading.clone-disputed { color: var(--text-secondary); }
+.clone-heading.clone-unverified { color: var(--text-secondary); }
 .diff-q { color: var(--text-secondary); font-variant-numeric: tabular-nums; }
 .diff-nav { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; margin: 0 0 .5rem; }
 .diff-nav-fix { display: inline-flex; gap: .4rem; margin-left: auto; }

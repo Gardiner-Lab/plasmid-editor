@@ -228,6 +228,24 @@ def map_read(reference: str, read: str, circular: bool = False, quality: Optiona
     segments = _segments(aligner, target, q, main)
     top, bottom, start = _stitch(target, q, segments)
     ref_pos = start
+    # Where we are in q as well as in the reference, so each difference can carry the
+    # quality of the read bases behind it: comparing several reads of one clone needs to
+    # know whether a disagreement came from a confident base or a ragged one.
+    qpos = segments[0]['read_start']
+
+    def phred(q_start, q_end):
+        """The worst quality among the read bases behind a difference, so one bad call in a
+        run is not hidden by its neighbours. None where the read has no bases there (a
+        deletion) or the file carried no qualities (FASTA)."""
+        if quality is None or q_end <= q_start:
+            return None
+        scores = []
+        for j in range(q_start, q_end):
+            k = t0 + (len(q) - 1 - j) if rev else t0 + j   # q is the trimmed, maybe flipped core
+            if 0 <= k < len(quality):
+                scores.append(quality[k])
+        return min(scores) if scores else None
+
     diffs = []
     matches = cols = 0
     i, length = 0, len(top)
@@ -238,8 +256,10 @@ def map_read(reference: str, read: str, circular: bool = False, quality: Optiona
             if x == y:
                 matches += 1
             else:
-                diffs.append({'position': ref_pos % n, 'type': 'mismatch', 'ref': x, 'read': y, 'length': 1})
+                diffs.append({'position': ref_pos % n, 'type': 'mismatch', 'ref': x, 'read': y,
+                              'length': 1, 'quality': phred(qpos, qpos + 1)})
             ref_pos += 1
+            qpos += 1
             i += 1
             continue
         # A run of the reference's gap (insertion) or the read's (deletion),
@@ -248,14 +268,18 @@ def map_read(reference: str, read: str, circular: bool = False, quality: Optiona
         if x == '-':
             while i < length and top[i] == '-':
                 i += 1
+            run = i - run_start
             diffs.append({'position': ref_pos % n, 'type': 'insertion', 'ref': '-',
-                         'read': bottom[run_start:i], 'length': i - run_start})
+                         'read': bottom[run_start:i], 'length': run,
+                         'quality': phred(qpos, qpos + run)})
+            qpos += run
         else:
             while i < length and bottom[i] == '-':
                 i += 1
+            run = i - run_start
             diffs.append({'position': ref_pos % n, 'type': 'deletion', 'ref': top[run_start:i],
-                         'read': '-', 'length': i - run_start})
-            ref_pos += i - run_start
+                         'read': '-', 'length': run, 'quality': None})
+            ref_pos += run
     # Two measures of agreement. Where bases pair up, how many match: what
     # decides whether the read is this plasmid at all, so a read with a large
     # insertion still maps. And over every column, each inserted or deleted

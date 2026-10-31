@@ -661,3 +661,56 @@ def test_the_enzyme_filter_redraws_the_table_with_the_servers_own_counts():
     assert 'renderEnzymeTable(this.lastCounts || {}, this.lastNonCutters || [])' in js, \
         'the filter must redraw with those counts, not with {}'
     assert 'renderEnzymeTable({}, this.lastNonCutters' not in js, 'the old empty-counts redraw is back'
+
+
+def test_the_reads_of_a_clone_are_compared_against_each_other(user_client, rand_dna):
+    """
+    Two reads of one clone covering the same base settle between them whether a difference is
+    the clone's sequence or a bad call; a third clone's reads are judged on their own.
+    """
+    import io
+    seq = rand_dna(1600)
+    r = user_client.post('/api/sequences', json={'document': model.make_document('p', seq, True)})
+    sid = r.get_json()['sequence']['id']
+
+    def upload(name, bases, clone):
+        res = user_client.post(f'/api/sequences/{sid}/reads',
+                               data={'file': (io.BytesIO(f'>{name}\n{bases}\n'.encode()), f'{name}.fa'),
+                                     'clone_number': clone},
+                               content_type='multipart/form-data')
+        assert res.status_code == 201, res.get_json()
+
+    swap = 'A' if seq[600] != 'A' else 'C'
+    changed = seq[:600] + swap + seq[601:]
+
+    upload('c1_fwd', seq[300:900], '1')            # clone 1: both reads agree with the reference
+    upload('c1_rev', seq[500:1100], '1')
+    upload('c2_fwd', changed[300:900], '2')        # clone 2: both reads show the change
+    upload('c2_rev', changed[500:1100], '2')
+    upload('c3_fwd', changed[300:900], '3')        # clone 3: only one of two shows it
+    upload('c3_rev', seq[500:1100], '3')
+
+    body = user_client.get(f'/api/sequences/{sid}/clones').get_json()
+    by_clone = {c['clone']: c for c in body['clones']}
+    assert sorted(by_clone) == ['1', '2', '3']
+
+    assert by_clone['1']['differences'] == [] and by_clone['1']['clean'] is True
+
+    two = by_clone['2']
+    assert two['confirmed'] == 1 and two['clean'] is False
+    d = two['differences'][0]
+    assert d['position'] == 600 and d['read'] == swap
+    assert d['reads_showing'] == 2 and d['reads_covering'] == 2 and d['real'] is True
+
+    three = by_clone['3']
+    assert three['disputed'] == 1 and three['confirmed'] == 0
+    d = three['differences'][0]
+    assert d['reads_showing'] == 1 and d['reads_covering'] == 2
+    assert d['real'] is False and three['clean'] is True, 'one read against one is a bad call'
+
+    # Every clone reports how much of the plasmid its reads reached.
+    assert all(0 < c['covered_percent'] < 100 for c in body['clones'])
+
+
+def test_comparing_clones_needs_an_account(client):
+    assert client.get('/api/sequences/whatever/clones').status_code == 401

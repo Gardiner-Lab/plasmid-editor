@@ -9,7 +9,7 @@ from flask import Blueprint, jsonify, request, send_file
 from app.models.sequence import Read, StoredSequence
 from app.services import moclo_bridge
 from app.services.auth import require_auth
-from dnakit import align, goldengate, model, seqio
+from dnakit import align, clones, goldengate, model, seqio
 
 sequences_bp = Blueprint('sequences', __name__)
 
@@ -385,6 +385,25 @@ def list_reads(user, sequence_id):
     return jsonify({'reads': Read.list_for(sequence_id)}), 200
 
 
+@sequences_bp.route('/<sequence_id>/clones', methods=['GET'])
+@require_auth
+def compare_clones(user, sequence_id):
+    """
+    The reads of each clone, compared against each other. One read cannot tell a real
+    mutation from a bad basecall; where several reads of one clone cover the same base they
+    can, so each difference is reported with the reads that cover it and the reads that
+    show it.
+    """
+    doc, err = _sequencing_viewable_or_404(sequence_id, user)
+    if err:
+        return err
+    reads = []
+    for r in Read.list_for(sequence_id):
+        reads.append({'id': r['id'], 'name': r['name'], 'clone_number': r.get('clone_number'),
+                      'alignment': r.get('alignment') or {}})
+    return jsonify({'clones': clones.compare_clones(len(doc['sequence']), reads)}), 200
+
+
 @sequences_bp.route('/<sequence_id>/reads', methods=['POST'])
 @require_auth
 def upload_reads(user, sequence_id):
@@ -632,6 +651,11 @@ def sequencing_history(user, sequence_id):
         'sequence': sequence,
         'reads': reads,
         'clones': sorted({r['clone_number'] for r in reads if r.get('clone_number')}),
+        # Each clone's reads compared against each other, so a difference every covering read
+        # shows is told apart from one only a single read claims.
+        'clone_comparison': clones.compare_clones(len(doc['sequence']), [
+            {'id': r['id'], 'name': r['name'], 'clone_number': r.get('clone_number'),
+             'alignment': r.get('alignment') or {}} for r in reads]),
         'summary': {
             'reads': len(reads),
             'mapped': sum(1 for r in reads if (r.get('alignment') or {}).get('mapped')),

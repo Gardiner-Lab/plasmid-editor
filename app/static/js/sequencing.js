@@ -228,20 +228,23 @@ const Sequencing = {
     if (!id) {
       this.reference = null;
       this.reads = [];
+      this.clones = [];
       this.activeRead = null;
       this.hideRead();
       document.getElementById('refInfo').textContent = '';
       this.renderReads();
+      this.renderClones();
       this.renderVerification();
       return;
     }
     try {
       // Alignments are open to everyone, so this goes through the sequencing
       // view rather than the plasmid itself, which may be private.
-      const { sequence, reads } = await API.get(`/api/sequences/${id}/sequencing`);
+      const { sequence, reads, clone_comparison: comparison } = await API.get(`/api/sequences/${id}/sequencing`);
       const changed = this.reference?.id !== sequence.id;
       this.reference = sequence;
       this.reads = reads || [];
+      this.clones = comparison || [];
       // Re-point at the refreshed copy of the same read, or drop the selection
       // when a different plasmid is chosen.
       this.activeRead = changed ? null
@@ -252,6 +255,7 @@ const Sequencing = {
         + (sequence.can_change ? '' : ' · view only: the owner uploads, judges and confirms');
       this.applyPermissions();
       this.renderReads();
+      this.renderClones();
       this.renderVerification();
     } catch (err) {
       toast(err.message, 'error');
@@ -1118,6 +1122,82 @@ const Sequencing = {
         },
       ],
     });
+  },
+
+  /**
+   * Clone by clone: what its reads agree on. A difference every covering read shows is the
+   * clone's sequence; one that some covering reads contradict is a bad call in whichever read
+   * is in the minority. A difference only one read reaches still counts - missing a real
+   * mutation is the worse mistake - but it is marked as resting on that one read.
+   */
+  renderClones() {
+    const card = document.getElementById('clonesCard');
+    const list = document.getElementById('cloneList');
+    if (!card || !list) return;
+    const groups = (this.clones || []).filter((c) => c.reads > 1 || c.named);
+    card.hidden = !groups.length;
+    if (!groups.length) { list.replaceChildren(); return; }
+
+    const go = (d) => {
+      // Open a read that shows this difference, scrolled to it. showRead takes the
+      // difference's index within that read, so it has to be found there.
+      const read = this.reads.find((r) => d.showing.includes(r.name))
+        || this.reads.find((r) => d.covering.includes(r.name));
+      if (!read) return;
+      const own = (read.alignment?.differences || [])
+        .findIndex((x) => x.position === d.position && x.type === d.type);
+      this.showRead(read, own >= 0 ? own : null);
+    };
+
+    list.replaceChildren(...groups.map((c) => {
+      const rows = [];
+      const section = (verdict, heading, note) => {
+        const diffs = c.differences.filter((d) => d.verdict === verdict);
+        if (!diffs.length) return;
+        rows.push(el('div', { class: 'clone-section' },
+          el('div', { class: `clone-heading clone-${verdict}` }, heading,
+            el('span', { class: 'hint', style: 'font-weight:400' }, ` — ${note}`)),
+          el('div', { class: 'diff-list' }, ...diffs.map((d) => el('button', {
+            class: `diff-chip diff-${d.type}${d.verdict === 'disputed' && !d.real ? ' lowq' : ''}`,
+            type: 'button',
+            title: `${d.reads_showing} of ${d.reads_covering} read(s) covering this base show it`
+              + `${d.against.length ? `; ${d.against.join(', ')} show the reference instead` : ''}`
+              + `${Object.keys(d.qualities).length
+                ? `; read quality ${Object.entries(d.qualities).map(([n, q]) => `${n} ${q}`).join(', ')}` : ''}`
+              + '. Click to go to it.',
+            onclick: () => go(d),
+          },
+          `${fmt(d.position + 1)} `,
+          el('span', { class: 'diff-what' }, d.type === 'mismatch' ? `${d.ref}→${d.read}`
+            : d.type === 'insertion' ? `+${d.read.length > 6 ? `${d.read.length} bp` : d.read}`
+              : `−${d.length > 6 ? `${d.length} bp` : d.ref}`),
+          el('span', { class: 'hint' }, ` ${d.reads_showing}/${d.reads_covering}`))))));
+      };
+      section('confirmed', 'Confirmed', 'every read covering it shows it');
+      section('disputed', 'Contradicted', 'other reads covering it show the reference — a bad call in one of them');
+      section('unverified', 'Only one read', 'counted as real, but nothing else covers it yet');
+
+      return el('div', { class: 'clone-group' },
+        el('div', { class: 'clone-head' },
+          el('b', {}, c.named ? `Clone ${c.clone}` : c.read_names[0]),
+          el('span', { class: 'hint' },
+            ` · ${c.mapped_reads} of ${c.reads} read(s) aligned · ${fmt(c.covered_bases)} bp covered (${c.covered_percent}%)`),
+          c.clean
+            ? el('span', { class: 'badge badge-confirmed', style: 'margin-left:.4rem' }, '✓ clean where covered')
+            : el('span', { class: 'badge', style: 'margin-left:.4rem' },
+              `${c.real_differences} real difference${c.real_differences === 1 ? '' : 's'}`),
+          c.disputed
+            ? el('span', { class: 'hint', style: 'margin-left:.4rem' },
+              `${c.disputed} set aside as bad call${c.disputed === 1 ? '' : 's'}`)
+            : null),
+        c.unmapped.length
+          ? el('div', { class: 'hint' }, `Did not align: ${c.unmapped.join(', ')}`)
+          : null,
+        c.mapped_reads === 1
+          ? el('div', { class: 'hint' }, 'Only one read aligned, so nothing can be cross-checked yet.')
+          : null,
+        ...rows);
+    }));
   },
 
   renderVerification() {

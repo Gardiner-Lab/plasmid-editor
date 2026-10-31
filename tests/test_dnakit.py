@@ -6,10 +6,14 @@ import pytest
 
 from dnakit import align, assembly, features, model, primers, restriction, seqio, snapgene, translate
 
-random.seed(1)
+# This file's own generator, not the global one. Several tests here assert on an alignment's
+# exact edges, which depend on the bases drawn; seeding the global random module left those
+# assertions at the mercy of anything else in the suite that happened to draw from it first
+# (a multipart upload in the API tests does, through Werkzeug's form encoder).
+_rng = random.Random(1)
 
 
-def rand_dna(n, avoid=('GAATTC', 'GGTCTC', 'GAGACC', 'GGATCC'), rng=random):
+def rand_dna(n, avoid=('GAATTC', 'GGTCTC', 'GAGACC', 'GGATCC'), rng=_rng):
     while True:
         s = ''.join(rng.choice('ACGT') for _ in range(n))
         if not any(a in s for a in avoid):
