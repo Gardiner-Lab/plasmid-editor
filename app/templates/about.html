@@ -45,7 +45,9 @@
             <div class="help-card">
                 <h3>Sequencing</h3>
                 <p>Align <code>.ab1</code> chromatograms and FASTA reads to a plasmid, with quality, mismatches
-                   and coverage, and judge each read.</p>
+                   and coverage, and judge each read. Several reads of one clone are compared against each
+                   other, so a bad basecall is told apart from a real mutation.
+                   <a href="{{ url_for('help_page') }}#alignment">How the alignment works &rarr;</a></p>
             </div>
             <div class="help-card">
                 <h3>Confirming a clone</h3>

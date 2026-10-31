@@ -6,6 +6,16 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.16.1] - 2026-10-31
+
+### Added
+- The help page explains **how the alignment works**: quality trimming (Mott-style, Q20 over a 10-base
+  window), trying both strands, the local affine-gap alignment itself (Biopython's `PairwiseAligner`,
+  which uses Gotoh's algorithm) with the exact scores used, how a circular plasmid's origin is handled,
+  how a large insertion is recovered from the read's leftover flanks, what makes a read count as mapped,
+  and why two identity figures are reported.
+- A section on **comparing the reads of a clone**, which 0.16.0 added without documenting.
+
 ## [0.16.0] - 2026-10-31
 
 ### Added

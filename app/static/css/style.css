@@ -567,6 +567,7 @@ tr.clickable:hover td { background: var(--bg-color); }
 .help { max-width: 900px; margin: 0 auto; padding: 1.5rem 1.5rem 5rem; line-height: 1.6; }
 .help h1 { font-size: 1.8rem; margin-bottom: .3rem; }
 .help h2 { margin-top: 2.2rem; padding-top: .5rem; border-top: 1px solid var(--border-color); font-size: 1.3rem; }
+.help h3 { margin-top: 1.3rem; font-size: 1rem; }
 .help .lead { font-size: 1.05rem; color: var(--text-color); }
 .help code { background: var(--bg-color); padding: 0 .3rem; border-radius: .25rem; }
 .help-toc { display: flex; flex-wrap: wrap; gap: .4rem; margin: 1rem 0; }

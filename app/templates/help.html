@@ -20,6 +20,8 @@
         <a href="#gateway">Gateway, Cre-lox and FRT</a>
         <a href="#primers">Primers and PCR</a>
         <a href="#sequencing">Sequencing reads</a>
+        <a href="#clones">Comparing the reads of a clone</a>
+        <a href="#alignment">How the alignment works</a>
         <a href="#confirm">Confirming a clone</a>
         <a href="#moclo">MoClo and the rest of the suite</a>
         <a href="#mistakes">Fixing mistakes</a>
@@ -159,8 +161,92 @@
             <li>Each read is aligned and shown against the reference, with its chromatogram, its quality, and
                 every mismatch marked. The coverage across the plasmid shows what the reads reached and what
                 they did not.</li>
+            <li>Give each read its <b>clone number</b> as you upload it. That is what lets the reads of one
+                colony be compared with each other, below.</li>
             <li>Judge each read: whether it is good enough, and what it says about the clone.</li>
         </ol>
+    </section>
+
+    <section id="clones">
+        <h2>Comparing the reads of a clone</h2>
+        <p>A single read cannot tell a real mutation from a bad basecall. Sanger reads are ragged at both
+           ends, and one wrong base there looks exactly like a point mutation. Two reads that cover the same
+           base can tell them apart, so <b>Clone by clone</b> groups the reads by the clone number you gave
+           them and judges every difference by the reads that actually reach it:</p>
+        <ul>
+            <li><b>Confirmed</b> &mdash; every read covering that base shows the difference, and at least two
+                do. This is the clone's own sequence.</li>
+            <li><b>Contradicted</b> &mdash; other reads covering the base show the reference instead, so one
+                of them misread. It is set aside, unless the reads showing it outnumber those that do not.</li>
+            <li><b>Only one read</b> &mdash; nothing else reaches that base. It still counts as a real
+                difference, because missing a genuine mutation is the worse mistake, but it is marked as
+                resting on that one read: sequence the other strand before trusting it.</li>
+        </ul>
+        <p>Each clone shows how much of the plasmid its reads reached between them, and reads as <b>clean
+           where covered</b> when every base they reach matches. &ldquo;Clean&rdquo; is only ever a statement
+           about the covered part &mdash; a clone read over 40% of its length says nothing about the other
+           60%. Click any difference to open a read that shows it, at that base.</p>
+        <p>The comparison needs the clone number: two reads with none are not treated as evidence about each
+           other, since nothing says they came from the same colony.</p>
+    </section>
+
+    <section id="alignment">
+        <h2>How the alignment works</h2>
+        <p>Every read goes through the same four steps.</p>
+        <ol class="steps">
+            <li><b>Trimming.</b> A chromatogram's ragged ends are cut off first, Mott-style: the longest
+                stretch whose mean quality over a 10-base window stays at <b>Q20 or better</b> (about one
+                expected error in 100 bases) is kept, and the rest discarded. FASTA reads carry no quality,
+                so they are aligned whole. A read with fewer than 20 bases left is reported as too short
+                rather than forced into an alignment.</li>
+            <li><b>Both strands.</b> The read and its reverse complement are each aligned, and whichever
+                scores better is kept, so it does not matter which primer the read came from.</li>
+            <li><b>The alignment itself.</b> A <b>local</b> alignment with <b>affine gap costs</b>, computed
+                by <a href="https://biopython.org/docs/latest/api/Bio.Align.html" rel="noopener">Biopython</a>'s
+                <code>PairwiseAligner</code>, which uses <b>Gotoh's algorithm</b> for affine gaps &mdash; the
+                local case being the Smith&ndash;Waterman family. Local, not global, because a read covers
+                part of a plasmid and should align over that part without being punished for the rest.
+                Affine, because one long gap is far likelier than many short ones, so opening a gap is
+                charged heavily and continuing it cheaply. The scores are
+                <b>match +2, mismatch &minus;3, gap open &minus;5, gap extend &minus;2</b>.</li>
+            <li><b>Differences</b> are then read off the aligned columns in <b>reference coordinates</b>, so
+                they match the positions shown everywhere else. A run of inserted or deleted bases is held as
+                one difference with its length, not one per base, and each carries the quality of the read
+                bases behind it &mdash; the worst of them, for a run &mdash; which is what the clone
+                comparison weighs when two reads disagree.</li>
+        </ol>
+
+        <h3>Circular plasmids</h3>
+        <p>A read that runs off the end of a circular plasmid and back to the start would otherwise align as
+           two broken pieces. The reference is temporarily extended past its own end before aligning (by
+           twice the read's length, or the whole plasmid, whichever is less), so such a read aligns in one
+           piece; its coordinates are then wrapped back into the plasmid.</p>
+
+        <h3>Large insertions</h3>
+        <p>A local alignment stops at the first gap too expensive to cross, which silently drops whichever
+           side of a large insertion scores less. So after the main alignment, each leftover end of the read
+           is aligned again on its own. A leftover piece is accepted as a genuine second part of the read
+           only if it is at least <b>25 bases</b> long and at least <b>80% identical</b>, and only if it
+           reaches reference the main alignment did not already cover; below that, contamination or adapter
+           read-through starts clearing the bar by chance. The pieces are then stitched into one alignment,
+           with the insertion between them reported as a single difference.</p>
+
+        <h3>When a read counts as mapped</h3>
+        <p>A read is called mapped when at least <b>20 bases</b> aligned and at least <b>80%</b> of the bases
+           that paired up match. A read failing that is shown as &ldquo;did not align&rdquo; rather than
+           being drawn against a reference it does not belong to &mdash; usually the wrong plasmid, the wrong
+           tube, or a failed reaction.</p>
+        <p>Two identity figures are reported, because one number cannot say both things. <b>Base identity</b>
+           counts only the positions where a base pairs with a base, which is what decides whether the read
+           is this plasmid at all &mdash; a read with a clean 60&nbsp;bp insertion is still the right plasmid.
+           <b>Identity</b> counts every column, each inserted or deleted base against it, so that same read
+           does not report as 100%.</p>
+
+        <h3>Elsewhere in the editor</h3>
+        <p>The same aligner does the pairwise comparison of two sequences, in <b>global</b> mode with free end
+           gaps (semi-global), so one sequence may be shorter without its overhanging ends being charged for.
+           Protein comparisons use <b>BLOSUM62</b> with gap costs of &minus;10 to open and &minus;0.5 to
+           extend.</p>
     </section>
 
     <section id="confirm">
