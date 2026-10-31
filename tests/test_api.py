@@ -928,6 +928,12 @@ def test_the_editor_asks_lab_stocks_for_every_stock_of_a_plasmid():
     # Stocks are listed on every plasmid, not only a confirmed one: a plasmid from before the suite
     # has stocks in the freezer whether or not its sequence was ever confirmed here.
     assert 'if (seq.confirmed) this.renderGlycerolStocks' not in js
+    # The dialog lives on the shared Stocks helper, so both the sequencing page and the editor tab
+    # offer it: a plasmid is looked at in the editor, not only when its reads are judged.
+    api = Path('app/static/js/api.js').read_text()
+    assert 'addDialog(plasmid, onDone)' in api and 'async linkExisting(plasmid, code)' in api
+    assert 'Stocks.addDialog(' in js, 'the sequencing panel uses the shared dialog'
+    assert 'Stocks.addDialog(' in Path('app/static/js/editor.js').read_text(), 'so does the editor tab'
     # Adding a stock must never rewrite the number the plasmid was confirmed with.
-    add = js[js.index('async linkExistingStock'):js.index('renderVerification()')]
+    add = api[api.index('async linkExisting(plasmid, code)'):api.index("render(code) {")]
     assert '/confirm' not in add, 'linking a stock must not re-confirm the plasmid'

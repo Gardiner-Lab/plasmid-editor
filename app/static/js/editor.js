@@ -625,10 +625,19 @@ const Editor = {
     try {
       const { glycerol } = await Stocks.call('GET', `/glycerol?plasmid=${encodeURIComponent(doc.id)}`);
       if (this._stocksFor !== doc.id) return;
-      box.replaceChildren(...glycerol.map((g) => el('a', {
-        class: `badge badge-stock ${g.status !== 'in stock' ? 'faded' : ''}`, href: Stocks.link(g.code), target: '_blank', rel: 'noopener',
-        title: `Glycerol stock${g.clone ? `, clone ${g.clone}` : ''}${g.host ? ` in ${g.host}` : ''}${g.location ? `, kept in ${g.location}` : ''} · ${g.status}`,
-      }, glyph('stocks'), ` ${g.code}`)));
+      box.replaceChildren(...[
+        ...glycerol.map((g) => el('a', {
+          class: `badge badge-stock ${g.status !== 'in stock' ? 'faded' : ''}`, href: Stocks.link(g.code), target: '_blank', rel: 'noopener',
+          title: `Glycerol stock${g.clone ? `, clone ${g.clone}` : ''}${g.host ? ` in ${g.host}` : ''}${g.location ? `, kept in ${g.location}` : ''} · ${g.status}`,
+        }, glyph('stocks'), ` ${g.code}`)),
+        // A plasmid is kept in more than one strain, so another can be recorded from here too -
+        // this is where a plasmid is looked at, rather than the sequencing page.
+        doc.can_change === false ? null : el('button', {
+          class: 'badge badge-add', type: 'button',
+          title: 'Record another glycerol stock of this plasmid, in another strain',
+          onclick: () => Stocks.addDialog(doc, async () => { this._stocksFor = null; await this.showStocks(doc); }),
+        }, '+ stock'),
+      ].filter(Boolean));
     } catch (err) {
       box.replaceChildren();          // Lab Stocks not reachable: nothing to show
     }

@@ -35,6 +35,98 @@ const Stocks = {
     return m ? (m[1] === 'G' ? 'glycerol' : 'primer') : null;
   },
   link(code) { return `${STOCKS}/#${this.kind(code)}=${encodeURIComponent(String(code).trim().toUpperCase())}`; },
+    /**
+     * Another glycerol stock of this plasmid. Either a new one, which Lab Stocks numbers, or one that
+     * already has a number - a tube from before the suite, or brought over from eLab - which is then
+     * linked to this plasmid so it is listed with the others. Nothing is renumbered either way.
+     */
+    addDialog(plasmid, onDone) {
+      const stocks = this.enabled();
+      modal({
+        title: 'Add a glycerol stock',
+        build: (body) => {
+          const choice = (value, label, checked) => el('label', { class: 'checkbox' },
+            el('input', { type: 'radio', name: 'addHow', value, checked }), el('span', {}, label));
+          body.append(
+            el('p', {}, 'A plasmid is usually kept as more than one stock — the cloning strain and the '
+              + 'one it was moved into. Record another for ', el('b', { text: plasmid.name }), '.'),
+            stocks ? choice('new', "A new glycerol stock in Lab Stocks, with the lab's next number", true) : null,
+            stocks ? el('div', { class: 'field-row', id: 'addNew', style: 'margin:.3rem 0 .3rem 1.6rem' },
+              el('div', { class: 'field' }, el('label', { for: 'addHost' }, 'Strain'),
+                el('input', { type: 'text', id: 'addHost', placeholder: 'e.g. GV3101, DH5α' })),
+              el('div', { class: 'field' }, el('label', { for: 'addPlace' }, 'Kept in'),
+                el('input', { type: 'text', id: 'addPlace', placeholder: 'e.g. −80 °C / box 7 / A2' }))) : null,
+            stocks ? choice('existing', 'A glycerol stock that already has a number', false) : null,
+            el('div', { class: 'field', id: 'addExisting', style: stocks ? 'margin-left:1.6rem' : '' },
+              el('label', { for: 'addCode' }, 'Glycerol stock number'),
+              el('input', { type: 'text', id: 'addCode', placeholder: 'e.g. GL-G-0118' }),
+              el('span', { class: 'hint' },
+                'If Lab Stocks already has this number, it is linked to this plasmid so it is listed '
+                + 'here. A number from elsewhere is recorded as it is.')));
+          const sync = () => {
+            const fresh = !stocks || body.querySelector('input[name=addHow]:checked')?.value === 'new';
+            body.querySelector('#addExisting').hidden = fresh;
+            if (body.querySelector('#addNew')) body.querySelector('#addNew').hidden = !fresh;
+          };
+          for (const r of body.querySelectorAll('input[name=addHow]')) r.addEventListener('change', sync);
+          sync();
+          setTimeout(() => body.querySelector('#addHost:not([hidden]), #addCode')?.focus(), 0);
+        },
+        buttons: [
+          { label: 'Cancel', kind: 'secondary' },
+          {
+            label: 'Add the stock',
+            onClick: async ({ body }) => {
+              const fresh = this.enabled()
+                && body.querySelector('input[name=addHow]:checked')?.value === 'new';
+              if (fresh) {
+                const { record } = await this.call('POST', '/glycerol', {
+                  plasmid_id: plasmid.id, plasmid_name: plasmid.name, source: 'sequencing',
+                  clone: plasmid.confirmed_clone || '',
+                  host: body.querySelector('#addHost').value.trim(),
+                  location: body.querySelector('#addPlace').value.trim(),
+                });
+                toast(`Added ${record.code}`, 'success', 4000);
+              } else {
+                const code = body.querySelector('#addCode').value.trim().toUpperCase();
+                if (!code) throw new Error('Give the number of the stock to add');
+                await this.linkExisting(plasmid, code);
+              }
+              if (onDone) await onDone();
+            },
+          },
+        ],
+      });
+    },
+
+    /**
+     * Link a stock that already has a number to this plasmid, so it is listed with the others. The
+     * number named when the plasmid was confirmed is left alone: this adds a stock, it does not
+     * replace that one, and nothing is renumbered.
+     */
+    async linkExisting(plasmid, code) {
+      if (!this.enabled()) throw new Error('Lab Stocks is not available here');
+      let record = null;
+      try {
+        ({ record } = await this.call('GET', `/glycerol/${encodeURIComponent(code)}`));
+      } catch (err) {
+        record = null;
+      }
+      if (!record) {
+        throw new Error(`Lab Stocks has no glycerol stock ${code}. Add it there first, or choose `
+          + "\"a new glycerol stock\" to have it numbered now.");
+      }
+      if (record.plasmid_id && record.plasmid_id !== plasmid.id) {
+        throw new Error(`${code} is already the stock of ${record.plasmid_name || 'another plasmid'}`);
+      }
+      if (record.plasmid_id === plasmid.id) {
+        throw new Error(`${code} is already a stock of this plasmid`);
+      }
+      await this.call('PUT', `/glycerol/${encodeURIComponent(code)}`,
+        { plasmid_id: plasmid.id, plasmid_name: plasmid.name });
+      toast(`${code} linked to this plasmid`, 'success', 4000);
+    },
+
   /** A stock's number as a link to it in Lab Stocks when it is one of its codes; else just the text. */
   render(code) {
     if (!code) return '—';

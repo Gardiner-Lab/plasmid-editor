@@ -6,6 +6,14 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.19.2] - 2026-10-31
+
+### Added
+- **A stock can be added from the editor tab too**, next to the glycerol stock chips already shown
+  there, as **+ stock**. That is where a plasmid is looked at; until now the only way in was the
+  sequencing page, so anyone seeing a plasmid's stock had nowhere to add the second one. The dialog
+  now lives on the shared Lab Stocks helper and both pages use the one implementation.
+
 ## [0.19.1] - 2026-10-31
 
 ### Fixed

@@ -427,6 +427,9 @@ tr.clickable { cursor: pointer; }
 tr.clickable:hover td { background: var(--bg-color); }
 .badge-stock { background: color-mix(in srgb, var(--tt-stocks) 12%, white); color: var(--tt-stocks); border-color: color-mix(in srgb, var(--tt-stocks) 35%, white); text-decoration: none; margin-left: .2rem; }
 .badge-stock.faded { opacity: .55; }
+.badge-add { background: transparent; color: var(--text-secondary); border: 1px dashed var(--border-color);
+    cursor: pointer; font: inherit; font-size: .72rem; margin-left: .2rem; padding: .05rem .4rem; border-radius: .3rem; }
+.badge-add:hover { color: var(--tt-stocks); border-color: var(--tt-stocks); }
 .badge-confirmed { background: var(--tt-green-soft); color: var(--tt-green-ink); border-color: var(--tt-green-line); }
 .badge-unsequenced { background: #fff7ed; color: #9a3412; border-color: #fed7aa; }
 /* A tag that opens something: the sequencing of a plasmid. */
