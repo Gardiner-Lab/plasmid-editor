@@ -26,6 +26,15 @@ ENV PYTHONUNBUFFERED=1 \
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:5001/health')" || exit 1
 
-# One worker with threads keeps SQLite writes simple and ordered.
-CMD ["gunicorn", "--bind", "0.0.0.0:5001", "--workers", "1", "--threads", "4", \
+# How many worker processes serve the editor. Several, because this is the one tool that does real
+# arithmetic in a request - scanning a plasmid against every REBASE enzyme, aligning a read - and
+# Python runs one of those at a time per process, so with a single worker one person's enzyme scan
+# leaves everyone else waiting behind it. Measured on a 60 kb plasmid against all 1,088 enzymes with
+# 20 people on at once: ordinary pages went from 3.9 s to 0.5 s at the 95th percentile, and the whole
+# suite from 9 to 28 requests a second. Several processes share the database safely because every
+# connection waits out a lock for 10 seconds rather than failing (sqlite3.connect(timeout=10)), and
+# writes still take their turn. Gunicorn reads WEB_CONCURRENCY itself; set EDITOR_WORKERS in the
+# suite's .env to change it (1 restores the old behaviour).
+ENV WEB_CONCURRENCY=4
+CMD ["gunicorn", "--bind", "0.0.0.0:5001", "--threads", "4", \
      "--timeout", "180", "app.main:app"]

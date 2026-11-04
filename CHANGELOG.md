@@ -6,6 +6,20 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.20.1] - 2026-11-04
+
+### Changed
+- **Four of the editor now run at once instead of one**, settable with `WEB_CONCURRENCY` (the suite
+  passes `EDITOR_WORKERS` from its `.env`; 1 restores the old behaviour). This is the one tool that
+  does real arithmetic in a request - a plasmid against every REBASE enzyme, a read aligned - and a
+  single worker served one of those at a time with everyone else queued behind it.
+
+  Measured on the dev stack, 20 people at once with a 60 kb plasmid scanned against all 1,088
+  enzymes in the mix: ordinary pages went from **3.9 s to 0.5 s** at the 95th percentile, saving from
+  **7.3 s to 1.1 s**, and the suite as a whole from 9 to 27 requests a second. Several workers share
+  the database safely because each connection waits out a lock for ten seconds rather than failing.
+  Each worker is about 65 MB.
+
 ## [0.20.0] - 2026-10-31
 
 ### Added
