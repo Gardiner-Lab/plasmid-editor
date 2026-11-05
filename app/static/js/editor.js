@@ -590,7 +590,7 @@ const Editor = {
     if (!doc.id) {
       modal({
         title: 'Save it first',
-        build: (body) => body.append(el('p', {}, 'Sequencing reads are kept with plasmids in the lab library. ',
+        build: (body) => body.append(el('p', {}, 'Sequencing reads are kept with sequences in the lab library. ',
           'Save this one there first, then add its reads on the Sequencing page.')),
         buttons: [{ label: 'Cancel', kind: 'secondary' },
           { label: 'Save and open sequencing', onClick: async () => { if (await this.save()) go(); } }],
@@ -600,7 +600,7 @@ const Editor = {
     if (!this.dirty) { go(); return; }
     modal({
       title: 'Save your changes first?',
-      build: (body) => body.append(el('p', {}, 'Reads are aligned to the saved plasmid. ',
+      build: (body) => body.append(el('p', {}, 'Reads are aligned to the saved sequence. ',
         'Save your changes so they are aligned to it as it is now, or open the version saved before them. ',
         'Your unsaved changes stay in this tab either way.')),
       buttons: [{ label: 'Cancel', kind: 'secondary' },

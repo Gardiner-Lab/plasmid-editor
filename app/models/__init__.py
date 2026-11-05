@@ -1,4 +1,4 @@
-"""Data models for the Plasmid Editor."""
+"""Data models for the Sequence Editor."""
 
 from app.models.database import get_connection, initialize_database
 from app.models.sequence import Read, StoredSequence

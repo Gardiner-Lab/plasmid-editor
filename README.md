@@ -1,4 +1,4 @@
-# Plasmid Editor
+# Sequence Editor
 
 A Docker-containerised web application for editing, annotating and analysing plasmid
 sequences, and for aligning sequencing reads against them. It is the general-purpose

@@ -173,10 +173,10 @@ const Sequencing = {
     // A lab can hold hundreds of plasmids, so the reference is searched rather
     // than scrolled: best matches first, then the most recently created.
     this.combo = new Combobox(document.getElementById('refCombo'), {
-      placeholder: 'Search plasmids by name or description…',
+      placeholder: 'Search sequences by name or description…',
       fields: ['name', 'description'],
       dateField: 'created_at',
-      emptyText: 'No plasmid matches. Save one in the editor first.',
+      emptyText: 'No sequence matches. Save one in the editor first.',
       // The plasmids open in the editor come first: most often the one to check.
       pinned: (s) => (this.open.has(s.id) ? this.open.get(s.id) : -1),
       label: (s) => s.name,
@@ -603,7 +603,7 @@ const Sequencing = {
       + (gaps.length > 4 ? ` and ${fmt(gaps.length - 4)} more` : '');
     cells.push(el('div', { class: 'rmap-summary' },
       el('div', {},
-        el('b', {}, `${((total / n) * 100).toFixed(1)}% of the plasmid`),
+        el('b', {}, `${((total / n) * 100).toFixed(1)}% of the sequence`),
         ` is covered by ${fmt(mapped.length)} mapped read${mapped.length === 1 ? '' : 's'}`,
         gaps.length ? `; not covered: ${gapText}.` : ': every base.'),
       uncovered.length ? el('div', {}, 'Features no read covers completely: ',
@@ -729,7 +729,7 @@ const Sequencing = {
         el('b', {}, 'Sequence not in the reference'),
         el('span', { class: 'hint' }, unaligned.length
           ? ` · ${fmt(total)} bp in ${fmt(unaligned.length)} stretch${unaligned.length === 1 ? '' : 'es'}`
-            + (a.mapped && a.strand === -1 ? ' · reverse-complemented, as the plasmid reads it' : '')
+            + (a.mapped && a.strand === -1 ? ' · reverse-complemented, as the sequence reads it' : '')
           : ' · every base the read kept aligned; only its low-quality ends were trimmed')),
       ...unaligned.map((s) => this.stretchItem(read, s, go)),
       trimmed.length ? el('details', { class: 'unaligned-trimmed' },
@@ -770,7 +770,7 @@ const Sequencing = {
     if (s.kind === 'unaligned' && a.mapped && (s.side === 'before' || s.side === 'after') && this.reference.can_change) {
       actions.push(el('button', {
         class: 'btn btn-sm', type: 'button',
-        title: 'Add these bases to the plasmid where the read leaves it',
+        title: 'Add these bases to the sequence where the read leaves it',
         onclick: () => this.insertStretch(read, s),
       }, `Insert into reference ${s.side === 'before' ? `before ${fmt(s.at + 1)}` : `after ${fmt(s.at)}`}`));
     }
@@ -789,7 +789,7 @@ const Sequencing = {
   /**
    * Ask, then insert a stretch of a read into the reference where the read
    * leaves it, through the same correction as a difference: features move
-   * with it, it is kept in the plasmid's history, and every read is aligned
+   * with it, it is kept in the sequence's history, and every read is aligned
    * again - so the stretch then aligns, or shows how it still differs.
    */
   insertStretch(read, s) {
@@ -805,9 +805,9 @@ const Sequencing = {
         el('p', { class: 'hint' },
           'Nothing is removed. If the read has these bases in place of some of the reference\'s own (another '
           + 'backbone, say), remove those in the editor afterwards. Features and translations move with the change, '
-          + 'it is kept in the plasmid\'s history, and every read is aligned again. Check the trace first: an error '
-          + 'in the read would be written into the plasmid.'),
-        ...(seq.confirmed ? [el('p', { class: 'hint' }, 'The plasmid stays confirmed: its reads keep their verdicts.')] : [])),
+          + 'it is kept in the sequence\'s history, and every read is aligned again. Check the trace first: an error '
+          + 'in the read would be written into the sequence.'),
+        ...(seq.confirmed ? [el('p', { class: 'hint' }, 'The sequence stays confirmed: its reads keep their verdicts.')] : [])),
       buttons: [
         { label: 'Cancel', kind: 'secondary' },
         {
@@ -826,7 +826,7 @@ const Sequencing = {
   /** Say so when the last sufficient verdict went and took the confirmation with it. */
   noteWithdrawn(res) {
     if (res?.confirmation_withdrawn) {
-      toast('No read is judged sufficient any more, so the plasmid is no longer confirmed as sequenced',
+      toast('No read is judged sufficient any more, so the sequence is no longer confirmed',
             'info', 6000);
     }
     if (res?.moclo_note) toast(res.moclo_note, 'error', 8000);
@@ -886,8 +886,8 @@ const Sequencing = {
       summary.replaceChildren(el('div', { class: 'alert alert-warning' },
         el('div', { class: 'aln-headline' }, 'This read did not align to the reference'),
         el('div', {}, a.reason ? `${a.reason[0].toUpperCase()}${a.reason.slice(1)}.`
-          : `At best ${fmt(a.aligned_length ?? 0)} bp of the ${fmt(a.read_length ?? 0)} bp read matched anywhere on the plasmid: `
-            + 'a different plasmid, a mixed colony, or a failed reaction.')));
+          : `At best ${fmt(a.aligned_length ?? 0)} bp of the ${fmt(a.read_length ?? 0)} bp read matched anywhere on the sequence: `
+            + 'a different sequence, a mixed colony, or a failed reaction.')));
       box.replaceChildren();
       this.renderUnaligned(read, null);
     } else {
@@ -940,9 +940,9 @@ const Sequencing = {
       el('div', {}, pastEnds
         ? `It runs past the end${a.ref_start - before < 0 && a.ref_end + after > n ? 's' : ''} of this ${fmt(n)} bp reference. `
           + 'If the reference is only part of what was sequenced (an insert or a PCR product, say), that is expected; '
-          + 'otherwise it is a bigger insert, another backbone, or another plasmid.'
+          + 'otherwise it is a bigger insert, another backbone, or another sequence.'
         : `Only ${span} of the reference is in it. The rest may be a bigger insert than planned, `
-          + 'another backbone, or another plasmid.'),
+          + 'another backbone, or another sequence.'),
       el('div', {}, 'Its sequence is below, to BLAST, or to insert into the reference if it belongs there.'),
       el('div', { style: 'margin-top:.3rem' }, diffs.length
         ? `Where it does align (${span}): ${fmt(diffs.length)} difference${diffs.length === 1 ? '' : 's'}`
@@ -1088,8 +1088,8 @@ const Sequencing = {
       if (updated) await this.showRead(updated);
       if (res.confirmation_withdrawn) this.noteWithdrawn(res);
       else if (verdict === 'sufficient') {
-        toast(res.synced_to_moclo ? 'Sufficient: plasmid confirmed, and recorded as sequenced in MoClo'
-                                  : 'Sufficient: plasmid confirmed as sequenced', 'success', 5000);
+        toast(res.synced_to_moclo ? 'Sufficient: confirmed, and recorded as sequenced in MoClo'
+                                  : 'Sufficient: confirmed as sequenced', 'success', 5000);
         if (res.moclo_note) toast(res.moclo_note, 'error', 9000);
         this.refreshList();
       } else toast('Marked not sufficient', 'success', 2500);
@@ -1140,7 +1140,7 @@ const Sequencing = {
     // a number from before (or another scheme) can still be typed.
     const stocks = Stocks.enabled();
     modal({
-      title: onConfirm ? 'Alignment sufficient: confirm the plasmid' : 'Confirm this plasmid as sequenced',
+      title: onConfirm ? 'Alignment sufficient: confirm the sequence' : 'Confirm this sequence from its reads',
       build: (body) => {
         const choice = (value, label, checked) => el('label', { class: 'checkbox' },
           el('input', { type: 'radio', name: 'glyHow', value, checked }), el('span', {}, label));
@@ -1164,7 +1164,7 @@ const Sequencing = {
             el('label', { for: 'glyStock' }, 'Glycerol stock number'),
             el('input', { type: 'text', id: 'glyStock', placeholder: 'e.g. GL-G-0012, or GS-2026-041',
               value: seq.glycerol_stock || '' }),
-            el('span', { class: 'hint' }, 'Recorded with the plasmid so the stock can be found later.')));
+            el('span', { class: 'hint' }, 'Recorded with the sequence so the stock can be found later.')));
         const sync = () => {
           const fresh = stocks && body.querySelector('input[name=glyHow]:checked')?.value === 'new';
           body.querySelector('#glyExisting').hidden = fresh;
@@ -1177,7 +1177,7 @@ const Sequencing = {
       buttons: [
         { label: onConfirm ? 'Cancel' : 'Not yet', kind: 'secondary' },
         {
-          label: onConfirm ? 'Mark sufficient and confirm' : 'Confirm plasmid',
+          label: onConfirm ? 'Mark sufficient and confirm' : 'Confirm sequence',
           onClick: async ({ body }) => {
             let stock = body.querySelector('#glyStock').value.trim();
             if (stocks && body.querySelector('input[name=glyHow]:checked')?.value === 'new') {
@@ -1205,7 +1205,7 @@ const Sequencing = {
             });
             toast(res.synced_to_moclo
               ? 'Confirmed, and recorded as sequenced in MoClo'
-              : 'Plasmid confirmed as sequenced', 'success', 5000);
+              : 'Confirmed as sequenced', 'success', 5000);
             await this.selectReference(seq.id);
             this.refreshList();
             return true;
@@ -1321,7 +1321,7 @@ const Sequencing = {
     box.replaceChildren(...[
       el('div', {}, el('b', {}, stocks.length + (loose ? 1 : 0) === 1 ? 'Glycerol stock' : 'Glycerol stocks')),
       ...stocks.map((s) => line(s.code, s.host, s.location)),
-      loose ? line(loose, null, null, 'recorded on this plasmid') : null,
+      loose ? line(loose, null, null, 'recorded on this sequence') : null,
       !stocks.length && !loose ? el('div', { class: 'hint' }, 'None recorded yet.') : null,
       seq.can_change
         ? el('button', {
@@ -1349,7 +1349,7 @@ const Sequencing = {
     badge.replaceChildren(
       el('button', {
         class: 'btn btn-sm btn-secondary', type: 'button', style: 'margin-right:.4rem',
-        title: 'Every saved version of this plasmid, and rolling back to one',
+        title: 'Every saved version of this sequence, and rolling back to one',
         onclick: () => showHistory(seq.id, {
           onRestored: async () => {
             const shown = this.activeRead;
@@ -1390,7 +1390,7 @@ const Sequencing = {
       parts.push(el('div', {}, !this.reads.length
         ? 'No reads yet.'
         : seq.can_change
-          ? 'Judge an alignment sufficient to confirm this plasmid.'
+          ? 'Judge an alignment sufficient to confirm this sequence.'
           : 'Not confirmed yet; the owner judges the alignments.'));
     }
     // Which strains the plasmid is kept in has nothing to do with whether its sequence was ever
@@ -1461,14 +1461,14 @@ const Sequencing = {
       this.reference?.can_change ? el('span', { class: 'diff-nav-fix' },
         el('button', {
           class: 'btn btn-sm btn-secondary', type: 'button',
-          title: 'Change the plasmid at the difference shown to what this read has',
+          title: 'Change the sequence at the difference shown to what this read has',
           onclick: () => (nav.at < 0
             ? toast('Choose a difference first: click it, or use Next', 'error')
             : this.correctFromRead(read, [nav.at])),
         }, 'Correct this one'),
         el('button', {
           class: 'btn btn-sm btn-secondary', type: 'button',
-          title: 'Change the plasmid to what this read has at every difference',
+          title: 'Change the sequence to what this read has at every difference',
           onclick: () => this.correctFromRead(read, a.differences.map((_, k) => k)),
         }, 'Correct all to this read')) : null);
     return nav;
@@ -1503,7 +1503,7 @@ const Sequencing = {
       : `insert ${d.length > 1 ? `${fmt(d.length)} bp` : d.read} before ${fmt(d.position + 1)}`);
     const seq = this.reference;
     modal({
-      title: chosen.length === 1 ? 'Correct the plasmid to this read' : `Correct ${fmt(chosen.length)} differences to this read`,
+      title: chosen.length === 1 ? 'Correct the sequence to this read' : `Correct ${fmt(chosen.length)} differences to this read`,
       build: (body) => body.append(
         el('p', {}, 'Changes ', el('b', { text: seq.name }), ` to what ${read.name} has:`),
         el('ul', { class: 'fix-list' },
@@ -1511,8 +1511,8 @@ const Sequencing = {
           chosen.length > 12 ? el('li', { class: 'hint' }, `and ${fmt(chosen.length - 12)} more`) : null),
         el('p', { class: 'hint' },
           'Features and translations move with the changed bases, so they keep marking the same parts. '
-          + 'Every read is then aligned again. Check the trace first: an error in the read would be written into the plasmid.'),
-        ...(seq.confirmed ? [el('p', { class: 'hint' }, 'The plasmid stays confirmed: its reads keep their verdicts.')] : [])),
+          + 'Every read is then aligned again. Check the trace first: an error in the read would be written into the sequence.'),
+        ...(seq.confirmed ? [el('p', { class: 'hint' }, 'The sequence stays confirmed: its reads keep their verdicts.')] : [])),
       buttons: [
         { label: 'Cancel', kind: 'secondary' },
         {

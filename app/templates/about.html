@@ -1,10 +1,10 @@
 {% extends "base.html" %}
-{% block title %}About &middot; Plasmid Editor{% endblock %}
+{% block title %}About &middot; Sequence Editor{% endblock %}
 {% block container_class %}{% endblock %}
 
 {% block content %}
 <div class="help">
-    <h1>Plasmid Editor {{ app_version }}</h1>
+    <h1>Sequence Editor {{ app_version }}</h1>
     <p class="lead">Sequence editing, annotation, restriction analysis, cloning simulation and sequencing
        alignment. It is the general-purpose companion to the <b>MoClo Library Tool</b>: the MoClo tool for a
        Golden Gate parts library and modular assemblies, and this editor whenever the work is not MoClo based.
@@ -40,11 +40,11 @@
             <div class="help-card">
                 <h3>Primers and PCR</h3>
                 <p>Design primers to a melting temperature, simulate the PCR, and see which of the lab\'s own
-                   primers bind a plasmid.</p>
+                   primers bind a sequence.</p>
             </div>
             <div class="help-card">
                 <h3>Sequencing</h3>
-                <p>Align <code>.ab1</code> chromatograms and FASTA reads to a plasmid, with quality, mismatches
+                <p>Align <code>.ab1</code> chromatograms and FASTA reads to a sequence, with quality, mismatches
                    and coverage, and judge each read. Several reads of one clone are compared against each
                    other, so a bad basecall is told apart from a real mutation.
                    <a href="{{ url_for('help_page') }}#alignment">How the alignment works &rarr;</a></p>
@@ -62,7 +62,7 @@
         <ul>
             <li><b>MoClo Library Tool</b> &mdash; shares its library both ways (see below).</li>
             <li><b>Lab Stocks</b> &mdash; confirming a clone makes its glycerol stock; primers are saved there and
-                read back to show which bind a plasmid.</li>
+                read back to show which bind a sequence.</li>
             <li><b>Lab Notebook</b> &mdash; a plasmid linked with <code>@</code> in a page opens here.</li>
             <li><b>Seed Bank</b> &mdash; from a plasmid, the lines made with it, their seeds and plants.</li>
         </ul>
@@ -71,7 +71,7 @@
     <section id="sees">
         <h2>Who sees what</h2>
         <p>A sequence you save is seen by your own labs. One ticked <b>public</b> is readable by every lab in
-           the suite, which is how a shared backbone is found. Sequencing reads follow the plasmid they belong
+           the suite, which is how a shared backbone is found. Sequencing reads follow the sequence they belong
            to. Everything is kept on the lab\'s own server and backed up each night with the rest of the
            suite.</p>
     </section>
@@ -131,11 +131,11 @@
             editing or read alignment.
         </p>
         <p style="margin-top:.75rem">
-            In the other direction, any plasmid in this editor can be ticked as
+            In the other direction, any sequence in this editor can be ticked as
             <b>Golden Gate ready</b>. The editor then checks that a single Type IIS enzyme releases
             exactly one clean insert with two 4&nbsp;bp fusion sites, and offers to add it to the
             shared MoClo parts library — stored the way the MoClo tool expects, with both fusion
-            sites included, so it is immediately usable in assemblies there. Plasmids that are not
+            sites included, so it is immediately usable in assemblies there. Sequences that are not
             Golden Gate compatible stay in this editor only, and the reason they cannot be
             contributed is reported.
         </p>

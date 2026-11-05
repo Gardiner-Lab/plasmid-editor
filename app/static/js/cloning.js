@@ -263,7 +263,7 @@ const Cloning = {
     }
     return PlasmidMap.section(p, [], {
       kind: 'cloning-product', title: `Cloning product: ${p.name}`,
-      lead: `<p>${Notebook.esc(method)} of ${parts.join(', ')}, simulated in the Plasmid Editor`
+      lead: `<p>${Notebook.esc(method)} of ${parts.join(', ')}, simulated in the Sequence Editor`
         + `${note ? ` (${Notebook.esc(note)})` : ''}.</p>`,
       extra,
     });

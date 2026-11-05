@@ -55,7 +55,7 @@ const Library = {
       el('td', {}, s.read_count
         ? el('a', {
             href: url(`/sequencing?sequence=${s.id}`),
-            title: 'View the sequencing alignments for this plasmid',
+            title: 'View the sequencing alignments for this sequence',
           },
             `${s.read_count} read${s.read_count === 1 ? '' : 's'}`,
             s.reads_bad ? el('span', { class: 'verdict-bad', text: ` ✗${s.reads_bad}` }) : null,

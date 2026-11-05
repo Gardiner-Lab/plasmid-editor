@@ -1,11 +1,11 @@
 # Sharing databases with the MoClo Library Tool
 
-The Plasmid Editor and the [MoClo Library Tool](https://github.com/Gardiner-Lab/moclo-library-tool)
+The Sequence Editor and the [MoClo Library Tool](https://github.com/Gardiner-Lab/moclo-library-tool)
 run as two containers on the same server and share the MoClo data volume. This document
 describes exactly what is shared, who owns what, and how to keep the two tools working as
 each is updated.
 
-Nothing in the Plasmid Editor repository modifies the MoClo Library Tool. The integration
+Nothing in the Sequence Editor repository modifies the MoClo Library Tool. The integration
 is entirely on the editor's side.
 
 ## What is shared

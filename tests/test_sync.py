@@ -68,7 +68,7 @@ def test_editing_a_linked_sequence_updates_moclo(user_client, moclo_parts_db, ra
     assert row['name'] == 'pPart renamed'
     assert row['overhang_5prime'] == 'AATG' and row['overhang_3prime'] == 'GCTT'
     assert 'newCDS' in row['features'] and 'old' not in row['features']
-    assert 'Plasmid Editor' in (row['comments'] or ''), 'the change is attributed in MoClo'
+    assert 'Sequence Editor' in (row['comments'] or ''), 'the change is attributed in MoClo'
 
     status = user_client.get(f'/api/sequences/{sid}/moclo').get_json()
     assert status['moclo_changed'] is False and status['local_changed'] is False

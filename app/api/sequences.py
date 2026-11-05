@@ -23,7 +23,7 @@ def _owned_or_404(sequence_id, user, for_write=False):
     if for_write and doc['owner_id'] != user.id and not user.oversees(doc['owner_id']):
         return None, (jsonify({'error': 'Only the owner can change this sequence'}), 403)
     if not user.can_see_sequence(doc['owner_id'], doc.get('public', False)):
-        return None, (jsonify({'error': 'This plasmid belongs to another lab'}), 403)
+        return None, (jsonify({'error': 'This sequence belongs to another lab'}), 403)
     return doc, None
 
 
@@ -37,7 +37,7 @@ def _sequencing_viewable_or_404(sequence_id, user):
     if doc is None:
         return None, (jsonify({'error': 'Sequence not found'}), 404)
     if not user.can_see_sequence(doc['owner_id'], doc.get('public', False)):
-        return None, (jsonify({'error': 'This plasmid belongs to another lab'}), 403)
+        return None, (jsonify({'error': 'This sequence belongs to another lab'}), 403)
     return doc, None
 
 
@@ -350,7 +350,7 @@ def contribute_to_moclo(user, sequence_id):
     if err:
         return err
     if not doc['golden_gate']:
-        return jsonify({'error': 'Mark this plasmid as Golden Gate ready before contributing it'}), 400
+        return jsonify({'error': 'Mark this sequence as Golden Gate ready before contributing it'}), 400
     data = request.get_json(silent=True) or {}
     lab_source = (data.get('lab_source') or user.lab_source or '').strip()
     if not lab_source:

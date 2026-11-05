@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Plasmid Editor{% endblock %}</title>
+    <title>{% block title %}Sequence Editor{% endblock %}</title>
     <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='trellis/editor.svg') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='trellis/trellis.css') }}?v={{ app_version }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v={{ app_version }}">
@@ -14,7 +14,7 @@
     {% if suite_home %}
         <a class="tt-home" href="{{ suite_home }}" title="All of Trellis Tools"><img src="{{ url_for('static', filename='trellis/trellis.svg') }}" alt=""><span>Trellis Tools</span></a>
     {% endif %}
-    <a class="tt-module" href="{{ url_for('editor_page') if session.get('user_id') else url_for('login_page') }}"><img src="{{ url_for('static', filename='trellis/editor.svg') }}" alt="">Plasmid Editor</a>
+    <a class="tt-module" href="{{ url_for('editor_page') if session.get('user_id') else url_for('login_page') }}"><img src="{{ url_for('static', filename='trellis/editor.svg') }}" alt="">Sequence Editor</a>
     {% if session.get('user_id') %}
         {% set page = request.endpoint %}
         <nav class="tt-tabs">
@@ -53,7 +53,7 @@
 
 <footer class="footer">
     <div class="container container-wide">
-        Plasmid Editor v{{ app_version }} &middot; Trellis Tools &middot;
+        Sequence Editor v{{ app_version }} &middot; Trellis Tools &middot;
         functionality modelled on <a href="{{ url_for('about_page') }}">ApE (A Plasmid Editor)</a> &middot;
         companion to the MoClo Library Tool
     </div>

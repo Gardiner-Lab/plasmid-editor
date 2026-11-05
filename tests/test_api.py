@@ -603,7 +603,7 @@ def test_sites_of_enzymes_cutting_at_most_n_times(user_client):
 
 
 def test_the_about_and_help_pages_are_there_and_point_at_each_other(client):
-    for path, heading in (('/about', 'Plasmid Editor'), ('/help', 'How to use the Plasmid Editor')):
+    for path, heading in (('/about', 'Sequence Editor'), ('/help', 'How to use the Sequence Editor')):
         r = client.get(path)
         assert r.status_code == 200, path
         assert heading in r.get_data(as_text=True)

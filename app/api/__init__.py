@@ -1,4 +1,4 @@
-"""API blueprints for the Plasmid Editor."""
+"""API blueprints for the Sequence Editor."""
 
 from app.api.admin import admin_bp
 from app.api.auth import auth_bp

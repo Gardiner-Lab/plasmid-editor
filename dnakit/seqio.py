@@ -27,7 +27,10 @@ _DROP_QUALIFIERS = {'ApEinfo_fwdcolor', 'ApEinfo_revcolor', 'ApEinfo_graphicform
 # A translation the user made goes out as a CDS feature with this note, which
 # other programs show as an ordinary CDS with its protein, and comes back in
 # as a translation rather than a feature.
-TRANSLATION_NOTE = 'Plasmid Editor translation'
+TRANSLATION_NOTE = 'Sequence Editor translation'
+# What the tool was called before, still read so translations in files saved then come back as
+# translations rather than as an ordinary CDS feature.
+TRANSLATION_NOTES = (TRANSLATION_NOTE, 'Plasmid Editor translation')
 
 _EXT_FORMAT = {
     '.gb': 'genbank', '.gbk': 'genbank', '.genbank': 'genbank', '.ape': 'genbank', '.gbff': 'genbank',
@@ -92,7 +95,7 @@ def record_to_document(record: SeqRecord, fallback_name: str = 'Untitled') -> Di
         if feat.location is None:
             continue
         feature = _feature_from_bio(feat, len(seq), circular)
-        if feat.type == 'CDS' and TRANSLATION_NOTE in (feat.qualifiers.get('note') or []):
+        if feat.type == 'CDS' and any(n in TRANSLATION_NOTES for n in (feat.qualifiers.get('note') or [])):
             doc['translations'].append({'id': feature['id'], 'name': feature['name'],
                                         'start': feature['start'], 'end': feature['end'],
                                         'strand': feature['strand']})

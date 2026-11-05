@@ -1,5 +1,5 @@
 """
-SQLite storage for the Plasmid Editor: users, sequences, sequencing reads.
+SQLite storage for the Sequence Editor: users, sequences, sequencing reads.
 
 This database belongs to the editor. The MoClo Library Tool's own databases
 are reached through app.services.moclo_bridge and are never modified here,

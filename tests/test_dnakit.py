@@ -70,7 +70,7 @@ def test_translations_go_out_as_cds_and_come_back_as_translations():
     gb = seqio.write_genbank(doc)
     # Other programs see an ordinary CDS with its protein (the stop left out).
     assert '/translation="MASKGEELFTGVVPILVELDGD"' in gb
-    assert gb.count('/note="Plasmid Editor translation"') == 3
+    assert gb.count('/note="Sequence Editor translation"') == 3
     assert 'complement(' in gb and 'join(' in gb
 
     back = seqio.read_sequences(gb.encode(), 'pT.gb')[0]

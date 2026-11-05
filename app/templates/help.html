@@ -1,14 +1,14 @@
 {% extends "base.html" %}
-{% block title %}Help &middot; Plasmid Editor{% endblock %}
+{% block title %}Help &middot; Sequence Editor{% endblock %}
 {% block container_class %}{% endblock %}
 
 {% block content %}
 <div class="help">
-    <h1>How to use the Plasmid Editor</h1>
+    <h1>How to use the Sequence Editor</h1>
     <p class="lead">Everything here works on a <b>sequence</b>: your own, one from the MoClo library, or one
        pasted in. This page covers getting a sequence in, editing and annotating it, restriction analysis,
        the cloning simulations, primers and PCR, judging sequencing reads, and what to do when something looks
-       wrong. <a href="{{ url_for('about_page') }}">What the Plasmid Editor is →</a></p>
+       wrong. <a href="{{ url_for('about_page') }}">What the Sequence Editor is →</a></p>
 
     <nav class="help-toc">
         <a href="#rules">Golden rules</a>
@@ -35,7 +35,7 @@
             <li><b>Save a sequence before you work on it.</b> An unsaved sequence is yours alone and goes when
                 the tab does. <b>Save as…</b> puts it in <i>My sequences</i>, where the rest of the suite can
                 reach it.</li>
-            <li><b>Annotate once, properly.</b> A plasmid with its promoter, CDS and terminator marked explains
+            <li><b>Annotate once, properly.</b> A sequence with its promoter, CDS and terminator marked explains
                 itself to everyone later; one with a bare sequence explains nothing.</li>
             <li><b>Simulate before you clone.</b> A digest, a PCR or an assembly takes a minute here and saves a
                 failed week at the bench.</li>
@@ -43,7 +43,7 @@
                 still have the wrong insert in it.</li>
             <li><b>Confirm a clone from its reads,</b> not from a gel alone. Confirming makes the glycerol stock
                 in Lab Stocks, so the tube in the freezer is tied to the sequence that proved it.</li>
-            <li><b>Keep one plasmid, not five copies.</b> Edit the saved one; its history keeps what it was.</li>
+            <li><b>Keep one sequence, not five copies.</b> Edit the saved one; its history keeps what it was.</li>
         </ol>
     </section>
 
@@ -58,7 +58,7 @@
                 the same library.</li>
             <li><b>New</b> starts an empty sequence to type or paste into.</li>
         </ul>
-        <p>Mark a plasmid <b>circular</b> if it is: it changes restriction mapping, PCR across the origin, and
+        <p>Mark a sequence <b>circular</b> if it is: it changes restriction mapping, PCR across the origin, and
            how reads are aligned.</p>
     </section>
 
@@ -74,7 +74,7 @@
             <li><b>Translate</b> adds the protein of the selection, in the reading frame you choose.</li>
             <li><b>Sequence</b> and <b>Map</b> switch between the bases and the circular or linear map.</li>
         </ul>
-        <p>Every save keeps the version before it, so editing a saved plasmid is safe: <b>History</b> shows what
+        <p>Every save keeps the version before it, so editing a saved sequence is safe: <b>History</b> shows what
            it was.</p>
     </section>
 
@@ -148,7 +148,7 @@
                 added for the cloning method you are using.</li>
             <li><b>Simulate PCR</b> with a forward and reverse primer, allowing mismatches, to see the product
                 and its size before ordering anything.</li>
-            <li><b>Lab primers</b> shows which of the lab's primers, from Lab Stocks, bind the open plasmid and
+            <li><b>Lab primers</b> shows which of the lab's primers, from Lab Stocks, bind the open sequence and
                 where &mdash; so a sequencing primer you already own is found before a new one is ordered.</li>
             <li>A designed primer can be saved straight to Lab Stocks, keeping the sequence exactly as
                 designed.</li>
@@ -158,10 +158,10 @@
     <section id="sequencing">
         <h2>Sequencing reads</h2>
         <ol class="steps">
-            <li><b>Sequencing</b> tab: choose the plasmid the reads are of.</li>
+            <li><b>Sequencing</b> tab: choose the sequence the reads are of.</li>
             <li>Upload the reads &mdash; <code>.ab1</code> chromatograms or FASTA &mdash; or paste them.</li>
             <li>Each read is aligned and shown against the reference, with its chromatogram, its quality, and
-                every mismatch marked. The coverage across the plasmid shows what the reads reached and what
+                every mismatch marked. The coverage across the sequence shows what the reads reached and what
                 they did not.</li>
             <li>Give each read its <b>clone number</b> as you upload it. That is what lets the reads of one
                 colony be compared with each other, below.</li>
@@ -184,7 +184,7 @@
                 difference, because missing a genuine mutation is the worse mistake, but it is marked as
                 resting on that one read: sequence the other strand before trusting it.</li>
         </ul>
-        <p>Each clone shows how much of the plasmid its reads reached between them, and reads as <b>clean
+        <p>Each clone shows how much of the sequence its reads reached between them, and reads as <b>clean
            where covered</b> when every base they reach matches. &ldquo;Clean&rdquo; is only ever a statement
            about the covered part &mdash; a clone read over 40% of its length says nothing about the other
            60%. Click any difference to open a read that shows it, at that base.</p>
@@ -227,7 +227,7 @@
            call is laid over the top, with the letter the machine called, its quality, your name and the time.
            <b>Undo my call</b> puts the instrument's letter back and aligns again. This is also why a hand
            call survives <b>Re-align all</b>.</p>
-        <p>Calling a base changes the read, not the plasmid. To change the <i>plasmid</i> to what a read
+        <p>Calling a base changes the read, not the sequence. To change the <i>sequence</i> to what a read
            shows &mdash; the other direction &mdash; use <b>Correct this one</b> or <b>Correct all to this
            read</b> above the alignment, which saves a new version of the sequence.</p>
     </section>
@@ -247,7 +247,7 @@
                 by <a href="https://biopython.org/docs/latest/api/Bio.Align.html" rel="noopener">Biopython</a>'s
                 <code>PairwiseAligner</code>, which uses <b>Gotoh's algorithm</b> for affine gaps &mdash; the
                 local case being the Smith&ndash;Waterman family. Local, not global, because a read covers
-                part of a plasmid and should align over that part without being punished for the rest.
+                part of a sequence and should align over that part without being punished for the rest.
                 Affine, because one long gap is far likelier than many short ones, so opening a gap is
                 charged heavily and continuing it cheaply. The scores are
                 <b>match +2, mismatch &minus;3, gap open &minus;5, gap extend &minus;2</b>.</li>
@@ -258,11 +258,11 @@
                 comparison weighs when two reads disagree.</li>
         </ol>
 
-        <h3>Circular plasmids</h3>
-        <p>A read that runs off the end of a circular plasmid and back to the start would otherwise align as
+        <h3>Circular sequences</h3>
+        <p>A read that runs off the end of a circular sequence and back to the start would otherwise align as
            two broken pieces. The reference is temporarily extended past its own end before aligning (by
-           twice the read's length, or the whole plasmid, whichever is less), so such a read aligns in one
-           piece; its coordinates are then wrapped back into the plasmid.</p>
+           twice the read's length, or the whole sequence, whichever is less), so such a read aligns in one
+           piece; its coordinates are then wrapped back into the sequence.</p>
 
         <h3>Large insertions</h3>
         <p>A local alignment stops at the first gap too expensive to cross, which silently drops whichever
@@ -276,11 +276,11 @@
         <h3>When a read counts as mapped</h3>
         <p>A read is called mapped when at least <b>20 bases</b> aligned and at least <b>80%</b> of the bases
            that paired up match. A read failing that is shown as &ldquo;did not align&rdquo; rather than
-           being drawn against a reference it does not belong to &mdash; usually the wrong plasmid, the wrong
+           being drawn against a reference it does not belong to &mdash; usually the wrong sequence, the wrong
            tube, or a failed reaction.</p>
         <p>Two identity figures are reported, because one number cannot say both things. <b>Base identity</b>
            counts only the positions where a base pairs with a base, which is what decides whether the read
-           is this plasmid at all &mdash; a read with a clean 60&nbsp;bp insertion is still the right plasmid.
+           is this sequence at all &mdash; a read with a clean 60&nbsp;bp insertion is still the right sequence.
            <b>Identity</b> counts every column, each inserted or deleted base against it, so that same read
            does not report as 100%.</p>
 
@@ -293,10 +293,10 @@
 
     <section id="confirm">
         <h2>Confirming a clone</h2>
-        <p>When the reads say the clone is right, <b>confirm</b> the plasmid and name the clone you confirmed.
+        <p>When the reads say the clone is right, <b>confirm</b> the sequence and name the clone you confirmed.
            Two things follow:</p>
         <ul>
-            <li>The plasmid is marked confirmed, with who confirmed it and from which reads.</li>
+            <li>The sequence is marked confirmed, with who confirmed it and from which reads.</li>
             <li>Its <b>glycerol stock appears in Lab Stocks</b> with the next code, already linked to this
                 plasmid. Fill in the strain and where the tube is, and print its label.</li>
         </ul>
@@ -354,9 +354,9 @@
                 enzyme site, or two overhangs are the same.</li>
             <li><b>A product is the right size but wrong inside:</b> open it and look at the features. For a
                 recombination, check which product you saved &mdash; the by-product is listed too.</li>
-            <li><b>Edited the wrong plasmid:</b> open <b>History</b> and restore the version before your
+            <li><b>Edited the wrong sequence:</b> open <b>History</b> and restore the version before your
                 change.</li>
-            <li><b>Reads will not align:</b> check the plasmid is marked circular if it is, and that you chose
+            <li><b>Reads will not align:</b> check the sequence is marked circular if it is, and that you chose
                 the right reference.</li>
             <li><b>An enzyme is missing from the list:</b> the chosen enzyme set may be a short one. Use
                 <b>Choose…</b> to widen it.</li>

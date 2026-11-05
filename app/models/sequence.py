@@ -294,14 +294,14 @@ class StoredSequence:
         can be confirmed: the user's verdict is what the confirmation rests on.
         """
         if not (glycerol_stock or '').strip():
-            raise ValueError('A glycerol stock number is required to confirm a plasmid')
+            raise ValueError('A glycerol stock number is required to confirm a sequence')
         with get_connection() as conn:
             if not conn.execute(
                     "SELECT 1 FROM reads WHERE sequence_id = ? AND verdict = 'sufficient' LIMIT 1",
                     (sequence_id,)).fetchone():
                 if not conn.execute('SELECT 1 FROM sequences WHERE id = ?', (sequence_id,)).fetchone():
                     return None
-                raise ValueError('Judge a sequencing read sufficient before confirming this plasmid')
+                raise ValueError('Judge a sequencing read sufficient before confirming this sequence')
             cur = conn.execute(
                 'UPDATE sequences SET confirmed_at = CURRENT_TIMESTAMP, confirmed_by = ?, '
                 'confirmed_clone = ?, glycerol_stock = ? WHERE id = ?',

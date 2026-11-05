@@ -260,7 +260,7 @@ def contribute_part(doc: Dict[str, Any], contributor: str, lab_source: str,
             'description': (description if description is not None else doc.get('description')) or None,
             'size': len(doc['sequence']),
             'features': json.dumps(features) if features else None,
-            'comments': f"Contributed from the Plasmid Editor; insert released by {best['enzyme']}.",
+            'comments': f"Contributed from the Sequence Editor; insert released by {best['enzyme']}.",
         }
         for key in ('plasmid_id', 'location_80', 'location_96_plate', 'antibiotic', 'level', 'unit',
                     'donor_organism', 'reference', 'host_strain', 'sequenced', 'ori_ecoli', 'ori_agro',
@@ -426,7 +426,7 @@ def push_to_moclo(link: str, doc: Dict[str, Any], expected_hash: Optional[str],
         if 'description' in cols and doc.get('description') is not None:
             update['description'] = doc.get('description') or None
 
-        note = (f'Edited in the Plasmid Editor'
+        note = (f'Edited in the Sequence Editor'
                 f'{" by " + editor_user if editor_user else ""} on '
                 f'{datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")}.')
         if 'comments' in cols:
@@ -500,7 +500,7 @@ def record_verification(link: str, doc: Dict[str, Any]) -> Optional[Dict[str, An
             update['sequenced'] = summary
         if 'comments' in cols:
             update['comments'] = summary + (f' (confirmed by {doc.get("confirmed_by")}'
-                                            ' in the Plasmid Editor).'
+                                            ' in the Sequence Editor).'
                                             if doc.get('confirmed_by') else '.')
         if not update:
             return None

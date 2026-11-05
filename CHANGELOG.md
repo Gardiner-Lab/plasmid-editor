@@ -1,10 +1,24 @@
 # Changelog
 
-All notable changes to the Plasmid Editor are recorded here.
+All notable changes to the Sequence Editor (the Plasmid Editor before 0.21.0) are recorded here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.21.0] - 2026-11-05
+
+### Changed
+- **The tool is now called the Sequence Editor.** It holds linear fragments and reads as well as plasmids,
+  so the old name was too narrow. What it holds is called a *sequence* throughout the pages, where it was
+  called a plasmid. Nothing moves: the address stays `/editor/`, the published image is still
+  `plasmid-editor`, and the database and its records are untouched.
+- **"plasmid" is kept where it still means a plasmid**: glycerol stocks in Lab Stocks, parts, backbones and
+  assembled plasmids in MoClo, lines in the Seed Bank, and links from the Lab Notebook.
+- Translations exported to GenBank are now noted as `Sequence Editor translation`. Files saved before this
+  release carry `Plasmid Editor translation`, which is still read back as a translation.
+- The attribution to **ApE (A Plasmid Editor)** by M. Wayne Davis, which this tool's feature set is
+  modelled on, is unchanged: that is the name of someone else's program.
 
 ## [0.20.1] - 2026-11-04
 

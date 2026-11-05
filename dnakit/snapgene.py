@@ -3,7 +3,7 @@ SnapGene (.dna) files: written from, and read into, Biopython records.
 
 Biopython reads SnapGene files but cannot write them, and drops feature
 colours when it reads. This module adds both. It needs only Biopython, and the
-same file serves both lab tools: the Plasmid Editor (dnakit/snapgene.py) and
+same file serves both lab tools: the Sequence Editor (dnakit/snapgene.py) and
 the MoClo Library Tool (app/services/snapgene.py). Keep the two copies identical.
 
 A SnapGene file is a series of packets: one byte giving the packet's type, a

@@ -1,5 +1,5 @@
 """
-Plasmid Editor - Flask application entry point.
+Sequence Editor - Flask application entry point.
 
 A companion to the MoClo Library Tool: general-purpose plasmid editing,
 annotation, restriction analysis, cloning simulation and sequencing alignment,
@@ -11,7 +11,7 @@ from datetime import timedelta
 
 from flask import Flask, redirect, render_template, request, session, url_for
 
-APP_VERSION = '0.20.1'
+APP_VERSION = '0.21.0'
 
 _DEFAULT_SECRET = 'dev-secret-key-change-in-production'
 

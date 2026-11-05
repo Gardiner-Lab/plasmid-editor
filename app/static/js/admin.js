@@ -41,9 +41,9 @@ const Admin = {
         + 'change it; ask one if it needs changing.';
     document.getElementById('usersTitle').textContent = this.isAdmin ? 'Accounts' : 'Your lab\'s members';
     document.getElementById('usersHint').textContent = this.isAdmin
-      ? 'Lab leads can act as administrators for their own lab\'s members and plasmids, and see '
+      ? 'Lab leads can act as administrators for their own lab\'s members and sequences, and see '
         + 'their lab\'s code, but cannot change codes or roles.'
-      : 'As lab lead you can open and change your lab members\' plasmids, as an administrator can.';
+      : 'As lab lead you can open and change your lab members\' sequences, as an administrator can.';
 
     const notice = document.getElementById('adminNotice');
     notice.replaceChildren(d.codes_required ? '' : el('div', { class: 'alert alert-warning' },

@@ -387,7 +387,7 @@ const Tools = {
         type: 'section', title: `PCR: ${doc.name || 'Untitled'} → ${res.products.map((p) => `${fmt(p.length)} bp`).join(', ')}`,
         source: { kind: 'pcr', id: doc.id || '', name: doc.name || '' },
         blocks: [
-          { type: 'text', html: `<p>PCR on ${Notebook.plasmid(doc)}, simulated in the Plasmid Editor (at least `
+          { type: 'text', html: `<p>PCR on ${Notebook.plasmid(doc)}, simulated in the Sequence Editor (at least `
             + `${Notebook.esc(document.getElementById('pcrAnneal').value)} nt of 3&#39; match, `
             + `${Notebook.esc(document.getElementById('pcrMis').value)} mismatches allowed).</p>`
             + Notebook.picture(0, `Where the products lie on ${doc.name || 'the template'}`) },
@@ -425,7 +425,7 @@ const Tools = {
       source: { kind: 'virtual-digest', id: lanes.length === 1 && lanes[0].doc.id ? lanes[0].doc.id : '',
                 name: lanes.map((l) => name(l.doc)).filter((v, i, all) => all.indexOf(v) === i).join(', ') },
       blocks: [
-        { type: 'text', html: `<p>Virtual digest from the Plasmid Editor: ${cuts.join('; ')}, beside the ${esc(ladder)}.</p>` },
+        { type: 'text', html: `<p>Virtual digest from the Sequence Editor: ${cuts.join('; ')}, beside the ${esc(ladder)}.</p>` },
         { type: 'gel', title: 'Virtual gel', attachment: 'picture', order: 'rows',
           lanes: [
             { ...wells[0], label: `Ladder: ${ladder}`, note: `${expected(gel.ladder.bands)} bp` },
