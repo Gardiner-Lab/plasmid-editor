@@ -7,6 +7,7 @@ import zipfile
 from flask import Blueprint, jsonify, request, send_file
 
 from app.models.sequence import Read, StoredSequence
+from app.models.user import User
 from app.services import moclo_bridge
 from app.services.auth import require_auth
 from dnakit import align, clones, goldengate, model, seqio
@@ -22,22 +23,21 @@ def _owned_or_404(sequence_id, user, for_write=False):
         return None, (jsonify({'error': 'Sequence not found'}), 404)
     if for_write and doc['owner_id'] != user.id and not user.oversees(doc['owner_id']):
         return None, (jsonify({'error': 'Only the owner can change this sequence'}), 403)
-    if not user.can_see_sequence(doc['owner_id'], doc.get('public', False)):
-        return None, (jsonify({'error': 'This sequence belongs to another lab'}), 403)
+    if not user.can_see_sequence(doc['owner_id']):
+        return None, (jsonify({'error': 'This sequence belongs to a lab outside your chair group'}), 403)
     return doc, None
 
 
 def _sequencing_viewable_or_404(sequence_id, user):
     """
     Sequencing results (reads and their alignments) are seen by whoever sees
-    the plasmid: its owner's labs, or every lab when it is public. Changing
-    them stays with the owner.
+    the plasmid: its owner's chair group. Changing them stays with the owner.
     """
     doc = StoredSequence.get(sequence_id)
     if doc is None:
         return None, (jsonify({'error': 'Sequence not found'}), 404)
-    if not user.can_see_sequence(doc['owner_id'], doc.get('public', False)):
-        return None, (jsonify({'error': 'This sequence belongs to another lab'}), 403)
+    if not user.can_see_sequence(doc['owner_id']):
+        return None, (jsonify({'error': 'This sequence belongs to a lab outside your chair group'}), 403)
     return doc, None
 
 
@@ -47,8 +47,13 @@ def _can_change(doc, user) -> bool:
 
 
 def _can_add_reads(doc, user) -> bool:
-    # The owner's labs add reads; a public plasmid's other viewers look.
-    return _can_change(doc, user) or user.can_see_sequence(doc['owner_id'], False)
+    # The owner's own labs add reads (and contribute it to MoClo); the rest of
+    # the chair group looks.
+    return _can_change(doc, user) or user.same_lab(User.get_by_id(doc['owner_id']))
+
+
+def _not_your_labs():
+    return jsonify({'error': "Only the owner's lab adds to this sequence; the rest of the chair group sees it read-only"}), 403
 
 
 @sequences_bp.route('/parse', methods=['POST'])
@@ -97,8 +102,8 @@ def create_sequence(user):
                                       golden_gate=bool(data.get('golden_gate')),
                                       golden_gate_enzyme=data.get('golden_gate_enzyme'),
                                       origin=data.get('origin'),
-                                      # Seen by the owner's labs; by every lab once "Public" is ticked.
-                                      public=data.get('public') is True,
+                                      # Seen by the owner's chair group; a "public" an
+                                      # older page still sends is ignored.
                                       created_by=user.username)
     except ValueError as exc:
         return jsonify({'error': str(exc)}), 400
@@ -156,7 +161,6 @@ def update_sequence(user, sequence_id):
             golden_gate=data.get('golden_gate'),
             golden_gate_enzyme=data.get('golden_gate_enzyme'),
             shared=data.get('shared'),
-            public=data.get('public'),
             changed_by=user.username, revision_kind=kind,
             revision_note=str(revision.get('note') or '')[:500] or None)
     except ValueError as exc:
@@ -349,6 +353,8 @@ def contribute_to_moclo(user, sequence_id):
     doc, err = _owned_or_404(sequence_id, user)
     if err:
         return err
+    if not _can_add_reads(doc, user):
+        return _not_your_labs()
     if not doc['golden_gate']:
         return jsonify({'error': 'Mark this sequence as Golden Gate ready before contributing it'}), 400
     data = request.get_json(silent=True) or {}
@@ -411,6 +417,8 @@ def upload_reads(user, sequence_id):
     doc, err = _owned_or_404(sequence_id, user)
     if err:
         return err
+    if not _can_add_reads(doc, user):
+        return _not_your_labs()
     files = request.files.getlist('file')
     if not files:
         return jsonify({'error': 'No file uploaded'}), 400

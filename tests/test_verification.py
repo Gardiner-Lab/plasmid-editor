@@ -295,22 +295,14 @@ def test_another_labs_alignments_stay_in_that_lab(user_client, client, rand_dna)
     assert client.get('/api/sequences?sequencing=true').get_json()['sequences'] == []
 
 
-def test_anyone_signed_in_can_view_alignments_of_a_public_plasmid(user_client, client, rand_dna):
+def test_the_old_public_setting_opens_nothing_to_another_lab(user_client, client, rand_dna):
+    # "public" once meant every lab; a plasmid is now its chair group's, so a
+    # page that still sends it changes nothing (see test_lab_visibility).
     sid, read, seq = _private_with_a_read(user_client, client, rand_dna, public=True)
-
-    history = client.get(f'/api/sequences/{sid}/sequencing')
-    assert history.status_code == 200
-    body = history.get_json()
-    assert body['sequence']['sequence'] == seq, 'the alignment view needs the reference bases'
-    assert body['sequence']['can_change'] is False
-    assert body['sequence']['can_add_reads'] is False
-    assert body['reads'][0]['alignment']['mapped']
-    assert body['reads'][0]['verdict'] == 'sufficient'
-
-    assert client.get(f'/api/sequences/{sid}/reads').status_code == 200
-    assert client.get(f"/api/sequences/reads/{read['id']}?trace=true").status_code == 200
-    listed = client.get('/api/sequences?sequencing=true').get_json()['sequences']
-    assert [s['id'] for s in listed] == [sid]
+    assert client.get(f'/api/sequences/{sid}/sequencing').status_code == 403
+    assert client.get(f'/api/sequences/{sid}/reads').status_code == 403
+    assert client.get(f"/api/sequences/reads/{read['id']}?trace=true").status_code == 403
+    assert client.get('/api/sequences?sequencing=true').get_json()['sequences'] == []
 
 
 def test_viewing_does_not_open_the_plasmid_itself(user_client, client, rand_dna):

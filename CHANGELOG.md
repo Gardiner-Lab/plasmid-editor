@@ -6,6 +6,29 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.22.0] - 2026-11-06
+
+### Changed
+- **A sequence is its chair group's.** Inside the suite, the labs in a chair group (set by an administrator
+  on the dashboard's Labs tab) see each other's sequences and their sequencing, read-only, as they already
+  see each other's stocks and seeds. A lab in no chair group keeps its sequences to itself. Changing a
+  sequence stays with its owner, their lab leads and administrators; adding sequencing reads, and
+  contributing it to MoClo, with the owner's own labs. The library is now headed *Chair group sequence
+  library*.
+- **The MoClo library card follows the MoClo Library Tool's rule** (its 1.20.0): a part, backbone or
+  assembled plasmid is seen by the chair group of whoever added it, by the chair groups that group shares
+  its MoClo library with, and by every lab when it is a reference record (the built-in toolkit, or one an
+  administrator marks). Opening or importing one from outside that answers 403.
+
+### Removed
+- **"Public".** A sequence can no longer be shown to every lab on the server, now that a server may be
+  reachable from outside the lab. Sequences ticked public before are seen by their chair group like any
+  other; the column stays in the database, unread, and a page that still sends `public` changes nothing.
+
+### Fixed
+- Uploading sequencing reads checked only that someone could see the sequence, so anyone who could see a
+  public sequence could add reads to it. Only the owner's labs add reads now.
+
 ## [0.21.0] - 2026-11-05
 
 ### Changed

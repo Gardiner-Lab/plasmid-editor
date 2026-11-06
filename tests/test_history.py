@@ -17,8 +17,7 @@ def _doc(name, seq, features=()):
 
 
 def _save(user_client, doc):
-    # Public, so anyone may look at its history (a plasmid is otherwise its owner's labs').
-    r = user_client.post('/api/sequences', json={'document': doc, 'public': True})
+    r = user_client.post('/api/sequences', json={'document': doc})
     assert r.status_code == 201, r.get_json()
     return r.get_json()['sequence']
 
@@ -133,7 +132,9 @@ def test_only_those_who_may_change_it_can_roll_it_back(user_client, rand_dna):
     sid = _save(user_client, _doc('pShared', seq))['id']
     _put(user_client, sid, _doc('pShared', seq + 'A'))
     user_client.post('/api/auth/logout')
-    user_client.post('/api/auth/register', json={'username': 'other', 'password': 'password123'})
+    # A lab mate: sees the plasmid and its history, but does not own it.
+    user_client.post('/api/auth/register', json={'username': 'other', 'password': 'password123',
+                                                 'lab_source': 'Gardiner Lab'})
 
     body = _history(user_client, sid)
     assert body['can_restore'] is False and len(body['revisions']) == 2

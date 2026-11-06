@@ -4,6 +4,7 @@ from flask import Blueprint, jsonify, request
 
 from app.models.sequence import StoredSequence
 from app.services import moclo_bridge
+from app.services.moclo_access import MocloViewer
 from app.services.auth import require_auth
 
 moclo_bp = Blueprint('moclo', __name__)
@@ -23,7 +24,17 @@ def status(user):
 def parts(user):
     return jsonify({'parts': moclo_bridge.list_parts(
         search=request.args.get('search', ''),
-        part_type=request.args.get('part_type', ''))}), 200
+        part_type=request.args.get('part_type', ''),
+        visible=MocloViewer(user).sees)}), 200
+
+
+NOT_YOURS = 'This belongs to a lab outside your chair group'
+
+
+def _seen(user, doc):
+    """An opened MoClo record, if this person sees it (their chair group's, shared with it, or reference)."""
+    source = (doc or {}).get('source') or {}
+    return doc is not None and MocloViewer(user).sees(source.get('kind'), source.get('id'), source.get('owner'))
 
 
 @moclo_bp.route('/parts/<part_id>', methods=['GET'])
@@ -32,13 +43,15 @@ def part(user, part_id):
     doc = moclo_bridge.open_part(part_id)
     if doc is None:
         return jsonify({'error': 'Part not found in the MoClo library'}), 404
+    if not _seen(user, doc):
+        return jsonify({'error': NOT_YOURS}), 403
     return jsonify({'document': doc}), 200
 
 
 @moclo_bp.route('/plasmids', methods=['GET'])
 @require_auth
 def plasmids(user):
-    return jsonify({'plasmids': moclo_bridge.list_plasmids()}), 200
+    return jsonify({'plasmids': moclo_bridge.list_plasmids(visible=MocloViewer(user).sees)}), 200
 
 
 @moclo_bp.route('/plasmids/<kind>/<plasmid_id>', methods=['GET'])
@@ -49,6 +62,8 @@ def plasmid(user, kind, plasmid_id):
     doc = moclo_bridge.open_plasmid(kind, plasmid_id)
     if doc is None:
         return jsonify({'error': 'Not found in the MoClo database'}), 404
+    if not _seen(user, doc):
+        return jsonify({'error': NOT_YOURS}), 403
     return jsonify({'document': doc}), 200
 
 
@@ -66,6 +81,8 @@ def import_into_editor(user):
         return jsonify({'error': 'kind must be part, plasmid or backbone'}), 400
     if doc is None:
         return jsonify({'error': 'Not found in the MoClo databases'}), 404
+    if not _seen(user, doc):
+        return jsonify({'error': NOT_YOURS}), 403
     # Linked, not merely copied: later edits here are written back to MoClo.
     record = moclo_bridge.read_record(kind, item_id)
     try:

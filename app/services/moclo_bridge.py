@@ -76,7 +76,9 @@ def _columns(conn: sqlite3.Connection, table: str) -> List[str]:
 # Reading
 # ---------------------------------------------------------------------------
 
-def list_parts(search: str = '', part_type: str = '', limit: int = 500) -> List[Dict[str, Any]]:
+def list_parts(search: str = '', part_type: str = '', limit: int = 500,
+               visible=None) -> List[Dict[str, Any]]:
+    """MoClo parts; visible(kind, id, owner) keeps only those a person sees (app/services/moclo_access.py)."""
     conn = _connect(parts_db_path())
     if conn is None:
         return []
@@ -92,9 +94,11 @@ def list_parts(search: str = '', part_type: str = '', limit: int = 500) -> List[
         if part_type:
             sql += ' AND part_type = ?'
             args.append(part_type)
-        sql += ' ORDER BY name LIMIT ?'
-        args.append(limit)
-        return [dict(r) for r in conn.execute(sql, args)]
+        sql += ' ORDER BY name'
+        rows = [dict(r) for r in conn.execute(sql, args)]
+        if visible is not None:
+            rows = [r for r in rows if visible('part', r['id'], r['contributor'])]
+        return rows[:limit]
     finally:
         conn.close()
 
@@ -132,6 +136,7 @@ def open_part(part_id: str) -> Optional[Dict[str, Any]]:
                             _features_to_documents(row['features'] if 'features' in keys else None, len(seq)),
                             description=row['description'] or '')
         doc['source'] = {'tool': 'moclo', 'kind': 'part', 'id': row['id'],
+                         'owner': row['contributor'],
                          'part_type': row['part_type'],
                          'overhang_5prime': row['overhang_5prime'],
                          'overhang_3prime': row['overhang_3prime']}
@@ -141,8 +146,8 @@ def open_part(part_id: str) -> Optional[Dict[str, Any]]:
         conn.close()
 
 
-def list_plasmids() -> List[Dict[str, Any]]:
-    """Assembled plasmids and backbones from the MoClo main database."""
+def list_plasmids(visible=None) -> List[Dict[str, Any]]:
+    """Assembled plasmids and backbones from the MoClo main database; visible as for list_parts."""
     conn = _connect(moclo_db_path())
     if conn is None:
         return []
@@ -155,8 +160,11 @@ def list_plasmids() -> List[Dict[str, Any]]:
             seq_col = 'assembled_sequence' if 'assembled_sequence' in cols else 'sequence'
             if seq_col not in cols:
                 continue
-            sql = f'SELECT id, name, length({seq_col}) AS length FROM {table} ORDER BY name'
+            owner = 'owner_id' if 'owner_id' in cols else 'NULL'
+            sql = f'SELECT id, name, length({seq_col}) AS length, {owner} AS owner FROM {table} ORDER BY name'
             for r in conn.execute(sql):
+                if visible is not None and not visible(kind, r['id'], r['owner']):
+                    continue
                 out.append({'id': r['id'], 'name': r['name'], 'length': r['length'], 'kind': kind})
     finally:
         conn.close()
@@ -181,7 +189,8 @@ def open_plasmid(kind: str, plasmid_id: str) -> Optional[Dict[str, Any]]:
         feats = _features_to_documents(row['features'] if 'features' in keys else None, len(seq))
         doc = make_document(row['name'], seq, True, feats,
                             description=(row['description'] if 'description' in keys else '') or '')
-        doc['source'] = {'tool': 'moclo', 'kind': kind, 'id': row['id']}
+        doc['source'] = {'tool': 'moclo', 'kind': kind, 'id': row['id'],
+                         'owner': row['owner_id'] if 'owner_id' in keys else None}
         return doc
     finally:
         conn.close()

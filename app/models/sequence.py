@@ -138,7 +138,6 @@ class StoredSequence:
             'glycerol_stock': row['glycerol_stock'] if 'glycerol_stock' in row.keys() else None,
             'confirmed': bool(row['confirmed_at'] if 'confirmed_at' in row.keys() else None),
             'owner_id': row['owner_id'], 'shared': bool(row['shared']),
-            'public': bool(row['public']) if 'public' in row.keys() else False,
             'origin': row['origin'],
             'created_at': row['created_at'], 'updated_at': row['updated_at'],
             'revision': (row['revision'] or 0) if 'revision' in row.keys() else 0,
@@ -147,7 +146,7 @@ class StoredSequence:
     @staticmethod
     def create(doc: Dict[str, Any], owner_id: str, golden_gate: bool = False,
                golden_gate_enzyme: Optional[str] = None, origin: Optional[str] = None,
-               shared: bool = False, public: bool = False, moclo_link: Optional[str] = None,
+               shared: bool = False, moclo_link: Optional[str] = None,
                moclo_synced_hash: Optional[str] = None,
                created_by: Optional[str] = None,
                revision_kind: str = 'created') -> Dict[str, Any]:
@@ -160,14 +159,14 @@ class StoredSequence:
         with get_connection() as conn:
             conn.execute(
                 'INSERT INTO sequences (id, name, sequence, circular, description, features, '
-                'translations, golden_gate, golden_gate_enzyme, owner_id, shared, public, origin, moclo_link, '
+                'translations, golden_gate, golden_gate_enzyme, owner_id, shared, origin, moclo_link, '
                 'moclo_synced_hash, moclo_synced_at) '
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
                 "CASE WHEN ? IS NULL THEN NULL ELSE CURRENT_TIMESTAMP END)",
                 (sid, doc['name'], doc['sequence'], 1 if doc['circular'] else 0, doc['description'],
                  json.dumps(doc['features']), json.dumps(doc['translations']),
                  1 if golden_gate else 0, golden_gate_enzyme,
-                 owner_id, 1 if shared else 0, 1 if public else 0, origin, moclo_link, moclo_synced_hash,
+                 owner_id, 1 if shared else 0, origin, moclo_link, moclo_synced_hash,
                  moclo_synced_hash))
             record_revision(conn, sid, created_by, revision_kind)
             row = conn.execute('SELECT * FROM sequences WHERE id = ?', (sid,)).fetchone()
@@ -185,13 +184,14 @@ class StoredSequence:
                      with_sequenced: bool = False) -> List[Dict[str, Any]]:
         """
         The plasmids this person may see (User.can_see_sequence): their labs'
-        (theirs and their lab mates'), and public ones. with_sequenced is kept
-        for callers; a lab's plasmids are always seen within it.
+        (theirs and their lab mates'), and those of the other labs in their
+        chair group. with_sequenced is kept for callers; a lab's plasmids are
+        always seen within it.
         """
         from app.models.user import User
         user_id = user.id
         sql = ('SELECT id, name, length(sequence) AS length, circular, description, golden_gate, '
-               'golden_gate_enzyme, moclo_part_id, moclo_link, owner_id, shared, public, origin, '
+               'golden_gate_enzyme, moclo_part_id, moclo_link, owner_id, shared, origin, '
                'created_at, updated_at, confirmed_at, confirmed_by, confirmed_clone, '
                'glycerol_stock, '
                '(SELECT COUNT(*) FROM reads WHERE reads.sequence_id = sequences.id) AS read_count, '
@@ -213,16 +213,17 @@ class StoredSequence:
             sql += ' AND golden_gate = 1'
         sql += ' ORDER BY updated_at DESC, name'
         owners = {u.id: u for u in User.get_all()}
+        seen_labs = user.chair_group_labs()
         with get_connection() as conn:
             return [dict(r, circular=bool(r['circular']), golden_gate=bool(r['golden_gate']),
-                         shared=bool(r['shared']), public=bool(r['public']), confirmed=bool(r['confirmed_at']))
+                         shared=bool(r['shared']), confirmed=bool(r['confirmed_at']))
                     for r in conn.execute(sql, args)
-                    if user.can_see_sequence(r['owner_id'], bool(r['public']), owners)]
+                    if user.can_see_sequence(r['owner_id'], owners, seen_labs)]
 
     @staticmethod
     def update(sequence_id: str, doc: Optional[Dict[str, Any]] = None,
                golden_gate: Optional[bool] = None, golden_gate_enzyme: Optional[str] = None,
-               shared: Optional[bool] = None, public: Optional[bool] = None,
+               shared: Optional[bool] = None,
                moclo_part_id: Optional[str] = None,
                moclo_link: Optional[str] = None,
                moclo_synced_hash: Optional[str] = None,
@@ -252,9 +253,6 @@ class StoredSequence:
         if shared is not None:
             sets.append('shared = ?')
             args.append(1 if shared else 0)
-        if public is not None:
-            sets.append('public = ?')
-            args.append(1 if public else 0)
         if moclo_part_id is not None:
             sets.append('moclo_part_id = ?')
             args.append(moclo_part_id or None)

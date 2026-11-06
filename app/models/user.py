@@ -22,7 +22,8 @@ MIN_PASSWORD_LENGTH = 8
 #   admin     everything, including the labs, their registration codes and roles
 #   lab_lead  an administrator for their own lab's members and plasmids, and can
 #             see (not change) their lab's registration code
-#   member    their own work, their lab mates' plasmids, and public plasmids
+#   member    their own work and their lab mates' plasmids; the plasmids of the
+#             other labs in their chair group, read-only
 #
 # Inside the lab suite someone may be in several labs, with a role in each
 # (labs); a lead oversees the members of the labs they lead.
@@ -76,15 +77,26 @@ class User:
         other = User.get_by_id(owner_id)
         return bool(other is not None and led & other.lab_names())
 
-    def can_see_sequence(self, owner_id: str, public: bool, owners: Optional[Dict[str, 'User']] = None) -> bool:
+    def chair_group_labs(self) -> set:
+        """Their labs and every lab in a chair group with one of them (casefolded names)."""
+        return suite_labs.chair_group_labs(self.lab_names())
+
+    def can_see_sequence(self, owner_id: str, owners: Optional[Dict[str, 'User']] = None,
+                         seen_labs: Optional[set] = None) -> bool:
         """
-        A plasmid: always its owner's labs' (the owner, their lab mates, and so
-        their leads); an admin's; and, when it is public, every lab's.
+        A plasmid: its owner's chair group's, read-only beyond the owner's own
+        labs (the owner, their lab mates, and so their leads); an admin's. A lab
+        in no chair group keeps its plasmids to itself. Nothing is seen by every
+        lab: the old "public" setting is no longer read. seen_labs is
+        self.chair_group_labs(), passed in when checking many plasmids at once.
         """
-        if owner_id == self.id or self.is_admin or public:
+        if owner_id == self.id or self.is_admin:
             return True
         other = (owners or {}).get(owner_id) if owners is not None else User.get_by_id(owner_id)
-        return bool(other is not None and self.lab_names() & other.lab_names())
+        if other is None:
+            return False
+        labs = seen_labs if seen_labs is not None else self.chair_group_labs()
+        return bool(labs & other.lab_names())
 
     def to_dict(self) -> Dict[str, Any]:
         return {'id': self.id, 'username': self.username, 'lab_source': self.lab_source,
