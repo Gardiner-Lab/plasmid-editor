@@ -95,3 +95,22 @@ def test_a_shared_library_is_seen_by_the_other_chair_group(library, client):
     assert 'anaCDS' in _parts(client, 'tom')
     # One way only.
     assert 'tomCDS' not in _parts(client, 'ana')
+
+
+def test_the_demo_sees_its_own_and_the_shipped_kits(library, client):
+    """Microbiology as the suite's teaching demo: no administrator-marked part, nothing shared in."""
+    conn = sqlite3.connect(library['moclo'])
+    conn.execute("INSERT INTO library_shares (from_group, to_group) VALUES ('plant', 'microbe')")
+    conn.execute("UPDATE library_reference SET marked_by = 'boss'")
+    conn.execute("INSERT INTO library_reference (kind, record_id, marked_by) VALUES ('part', 'p-ana-old', 'system')")
+    conn.execute("INSERT INTO library_reference (kind, record_id, marked_by) VALUES ('part', 'p-ana', 'boss')")
+    conn.commit()
+    conn.close()
+    suite = sqlite3.connect(f"{library['dir']}/suite.db")
+    suite.execute('CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT)')
+    suite.execute("INSERT INTO settings VALUES ('demo.chair_group', 'microbe')")
+    suite.commit()
+    suite.close()
+    # Its own (markedKit is Tom's), the toolkit and a shipped kit; not Ana's, marked by an administrator.
+    assert _parts(client, 'tom') == {'tomCDS', 'markedKit', 'toolkitFiller', 'anaOld'}
+    assert 'anaCDS' in _parts(client, 'zoe')

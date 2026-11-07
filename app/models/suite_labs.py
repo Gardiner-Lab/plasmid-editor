@@ -93,6 +93,19 @@ def chair_groups() -> Dict[str, Optional[str]]:
         return _groups_cache[1]
 
 
+def demo_group() -> Optional[str]:
+    """The teaching demo's chair group id (suite.db settings 'demo.chair_group', set by the suite's demo), or None."""
+    try:
+        conn = sqlite3.connect(f'file:{_path()}?mode=ro', uri=True, timeout=5)
+        try:
+            row = conn.execute("SELECT value FROM settings WHERE key = 'demo.chair_group'").fetchone()
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        return None
+    return row[0] if row and row[0] else None
+
+
 def chair_group_labs(lab_names) -> set:
     """These labs (casefolded names) and every lab in a chair group with any of them."""
     names = {n.casefold() for n in lab_names if n}

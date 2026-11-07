@@ -6,6 +6,11 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.23.0] - 2026-11-08
+
+### Demo
+- **The teaching demo sees only the demo's.** On the MoClo library card, someone in the suite's demo sees the demo's records and the kits MoClo ships with, not another chair group's library shared with it nor a part an administrator added or marked, as in MoClo.
+
 ## [0.22.0] - 2026-11-06
 
 ### Changed

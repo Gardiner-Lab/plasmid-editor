@@ -12,6 +12,9 @@ assembled plasmid belongs to the labs of whoever added it, and is seen by:
   owner "system") or one marked in MoClo's `library_reference` table;
 * administrators.
 
+The suite's teaching demo (suite.db setting 'demo.chair_group') sees its own
+records and the kits MoClo ships with (marked by 'system'), nothing more.
+
 Outside the suite (no labs to go by), everyone sees everything, as before.
 """
 
@@ -36,8 +39,10 @@ def _read_moclo():
         if moclo_bridge._table_exists(conn, 'users'):
             names = {r[0]: r[1] for r in conn.execute('SELECT id, username FROM users')}
         if moclo_bridge._table_exists(conn, 'library_reference'):
-            for kind, record_id in conn.execute('SELECT kind, record_id FROM library_reference'):
+            for kind, record_id, by in conn.execute('SELECT kind, record_id, marked_by FROM library_reference'):
                 reference.setdefault(kind, set()).add(record_id)
+                if by == SYSTEM:      # a kit MoClo ships with, marked by MoClo itself
+                    reference.setdefault('kit:' + kind, set()).add(record_id)
         if moclo_bridge._table_exists(conn, 'library_shares'):
             shares = conn.execute('SELECT from_group, to_group FROM library_shares').fetchall()
     except sqlite3.Error:
@@ -57,13 +62,17 @@ class MocloViewer:
         self._labs_of = {name: {lab.casefold() for lab, _ in entry.get('labs', []) if lab}
                          for name, entry in people.items()}
         self._names, self._reference, shares = _read_moclo()
+        self.demo = False
         if self.everything:
             self.labs: Set[str] = set()
             return
         group_of = suite_labs.chair_groups()
         own = self._labs_of.get(self.username, set())
         mine = {group_of.get(lab) for lab in own} - {None}
-        seen_groups = mine | {frm for frm, to in shares if to in mine}
+        demo = suite_labs.demo_group()
+        # The suite's teaching demo: its own records and the shipped kits only (as in MoClo).
+        self.demo = bool(demo and own) and all(group_of.get(lab) == demo for lab in own)
+        seen_groups = mine if self.demo else mine | {frm for frm, to in shares if to in mine}
         self.labs = own | {lab for lab, group in group_of.items() if group in seen_groups}
 
     def sees(self, kind: str, record_id: str, owner: Optional[str]) -> bool:
@@ -71,7 +80,8 @@ class MocloViewer:
         if self.everything:
             return True
         username = self._names.get(owner, owner) if owner else None
-        if username == SYSTEM or record_id in self._reference.get(kind, set()):
+        marked = self._reference.get(('kit:' + kind) if self.demo else kind, set())
+        if username == SYSTEM or record_id in marked:
             return True
         if username and username == self.username:
             return True
