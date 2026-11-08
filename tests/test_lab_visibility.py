@@ -131,3 +131,19 @@ def test_sequencing_is_seen_by_the_chair_group_and_added_by_the_owners_labs(chai
     added = client.post(f"/api/sequences/{made['id']}/reads", headers=who('zoe'),
                         data={'file': (io.BytesIO(READ), 'r2.fasta')}, content_type='multipart/form-data')
     assert added.status_code == 403
+
+
+def test_feature_entries_of_someone_who_left_reach_their_labs_lead(chair, client):
+    """A person's own feature-library entries are theirs, until they are archived: then their lab's leads see them."""
+    added = client.post('/api/library', headers=who('ana'),
+                        json={'entries': [{'name': 'anaTag', 'sequence': 'GATTACAGATTACA', 'type': 'misc_feature'}]})
+    assert added.status_code in (200, 201), added.get_json()
+    names = lambda name: {e['name'] for e in client.get('/api/library', headers=who(name)).get_json()['custom']}
+    assert 'anaTag' in names('ana') and 'anaTag' not in names('lead')
+    conn = sqlite3.connect(f"{chair['dir']}/suite.db")
+    conn.execute('CREATE TABLE archived (username TEXT PRIMARY KEY, archived_at TEXT, archived_by TEXT)')
+    conn.execute("INSERT INTO archived VALUES ('ana', '2026-11-08', 'lead')")
+    conn.commit()
+    conn.close()
+    assert 'anaTag' in names('lead') and 'anaTag' in names('boss')
+    assert 'anaTag' not in names('ben') and 'anaTag' not in names('tom')

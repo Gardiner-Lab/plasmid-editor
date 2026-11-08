@@ -25,21 +25,44 @@ def builtin_library() -> List[Dict[str, Any]]:
     return _cache
 
 
-def stored_library(owner_id: Optional[str] = None) -> List[Dict[str, Any]]:
+def stored_library(owner_id: Optional[str] = None, also: Optional[List[str]] = None) -> List[Dict[str, Any]]:
+    """The lab's entries and this person's own; also: other owners' (people who left, for their leads)."""
     sql = 'SELECT id, name, sequence, type, color FROM feature_library'
     args: List[Any] = []
     if owner_id:
-        sql += ' WHERE owner_id IS NULL OR owner_id = ?'
-        args.append(owner_id)
+        owners = [owner_id] + list(also or [])
+        sql += f' WHERE owner_id IS NULL OR owner_id IN ({", ".join("?" * len(owners))})'
+        args += owners
     sql += ' ORDER BY name'
     with get_connection() as conn:
         return [dict(r) for r in conn.execute(sql, args)]
 
 
-def default_library(owner_id: Optional[str] = None) -> List[Dict[str, Any]]:
+def overseen_owners(user) -> List[str]:
+    """
+    The account ids of people who have left (archived) whose own feature entries this person now
+    sees: an administrator, everyone archived; a lab lead or lab admin, those of the labs they lead.
+    """
+    from app.models import suite_labs
+    from app.models.user import User
+    gone = suite_labs.archived()
+    if not gone or user is None:
+        return []
+    led = user.lab_names(led_only=True)
+    found = []
+    for name in sorted(gone):
+        other = User.get_by_username(name)
+        if other is None or other.id == user.id:
+            continue
+        if user.is_admin or (led and led & other.lab_names()):
+            found.append(other.id)
+    return found
+
+
+def default_library(owner_id: Optional[str] = None, also: Optional[List[str]] = None) -> List[Dict[str, Any]]:
     """The built-in set plus anything the lab has added."""
     combined = {(e['name'], e['sequence']): e for e in builtin_library()}
-    for e in stored_library(owner_id):
+    for e in stored_library(owner_id, also):
         combined[(e['name'], e['sequence'])] = e
     return list(combined.values())
 

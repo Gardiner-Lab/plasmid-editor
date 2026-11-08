@@ -6,6 +6,11 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.24.0] - 2026-11-08
+
+### Changed
+- **A feature-library entry of someone who left opens to their lab.** When a person is archived on the suite's dashboard, the feature-library entries they kept for themselves are shown to the lab leads and lab admins of their labs, and to administrators. Their plasmids were already their chair group's.
+
 ## [0.23.0] - 2026-11-08
 
 ### Demo

@@ -93,6 +93,18 @@ def chair_groups() -> Dict[str, Optional[str]]:
         return _groups_cache[1]
 
 
+def archived() -> set:
+    """Usernames of people who have left (archived on the suite's dashboard, suite.db: archived)."""
+    try:
+        conn = sqlite3.connect(f'file:{_path()}?mode=ro', uri=True, timeout=5)
+        try:
+            return {r[0] for r in conn.execute('SELECT username FROM archived')}
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        return set()
+
+
 def demo_group() -> Optional[str]:
     """The teaching demo's chair group id (suite.db settings 'demo.chair_group', set by the suite's demo), or None."""
     try:

@@ -16,7 +16,8 @@ MAX_LIBRARY_BYTES = 8 * 1024 * 1024
 @require_auth
 def list_entries(user):
     return jsonify({'builtin': library_service.builtin_library(),
-                    'custom': library_service.stored_library(user.id)}), 200
+                    # Their own, the lab's, and those of people from their lab who have left.
+                    'custom': library_service.stored_library(user.id, library_service.overseen_owners(user))}), 200
 
 
 @library_bp.route('', methods=['POST'])
@@ -59,7 +60,7 @@ def import_library(user):
 @library_bp.route('/export', methods=['GET'])
 @require_auth
 def export_library(user):
-    entries = library_service.default_library(user.id)
+    entries = library_service.default_library(user.id, library_service.overseen_owners(user))
     buf = io.BytesIO(features.write_library(entries).encode('utf-8'))
     return send_file(buf, mimetype='text/tab-separated-values', as_attachment=True,
                      download_name='feature_library.txt')
