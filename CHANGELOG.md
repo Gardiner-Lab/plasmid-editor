@@ -6,6 +6,27 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.25.0] - 2026-11-11
+
+### Fixed
+- **A Gateway LR of two real plasmids found nothing.** Recombination asked for at least 20 bp shared between
+  the two sites, on the belief that "att cores are 21-25 bp". That is the length of a whole attB site; an attL
+  and its attR share only the att core, which is **15 bp** at att1 and **19 bp** at att2. So every real LR and BP
+  pair fell below the threshold and no product was offered. The default is now 15 bp, and real entry clones and
+  destination vectors work as they are.
+- **A shared backbone outranked the real crossover.** Two plasmids also have backbone in common (a pUC origin, a
+  marker), and such a stretch is often longer than an att core, so products that crossed over there were listed
+  above the expression clone. Products whose crossovers both fall inside features named as recombination sites
+  (att, lox, FRT, in either parent) now come first and carry `at_sites`; the others are listed below and say they
+  are not through a labelled site.
+
+### Changed
+- **Recombination says what a "core" is.** The page explains that the core is the short stretch of identical DNA
+  two partner sites share, where the crossover happens, and that it is much shorter than the site around it
+  (attL/attR: 100+ bp each, 15 or 19 bp shared; loxP and FRT: all 34 bp). The two boxes are now *Shortest core*
+  and *Longest core*, and each product says where it crossed over and whether both crossovers were in labelled
+  sites.
+
 ## [0.24.0] - 2026-11-08
 
 ### Changed

@@ -124,13 +124,23 @@
 
     <section id="gateway">
         <h2>Gateway, Cre-lox and FRT</h2>
-        <p><b>Recombination</b> covers a double crossover through two shared core sequences: Gateway
-           <b>LR</b> (attL × attR) and <b>BP</b> (attB × attP), and loxP or FRT exchange.</p>
+        <p><b>Recombination</b> covers a double crossover: Gateway <b>LR</b> (attL × attR) and
+           <b>BP</b> (attB × attP), and loxP or FRT exchange.</p>
+        <p>Each recombination site contains a <b>core</b>: the short stretch of DNA that it and its partner
+           site carry identically, and where the two molecules actually cross over. The core is much shorter
+           than the site around it &mdash; a Gateway attL and attR run to 100 bp and more each, yet share only
+           <b>15 bp</b> at att1 and <b>19 bp</b> at att2; loxP and FRT share all <b>34 bp</b>. The tool works by
+           finding those shared cores, which is why it asks how short a core may be.</p>
         <ol class="steps">
             <li>Pick the <b>donor</b> first (the entry clone, or the attB PCR product), then the
                 <b>acceptor</b> (the destination vector, or pDONR).</li>
-            <li>Leave the <b>minimum core</b> at 20 bp. Real cores are larger &mdash; att cores are 21&ndash;25 bp,
-                loxP and FRT 34 bp &mdash; and a shorter setting starts matching by chance.</li>
+            <li>Leave the <b>shortest core</b> at 15 bp, which is the smallest real one (Gateway att1).
+                Below about 12 bp two sequences match here and there by chance, and the matches look like
+                crossovers.</li>
+            <li>Two plasmids also share whatever <b>backbone</b> they have in common &mdash; a pUC origin, a
+                marker &mdash; and such a stretch is often longer than an att core. So products whose
+                crossovers both sit inside features your files label <i>att</i>, <i>lox</i> or <i>FRT</i> are
+                listed first and say so; a product that says otherwise is worth a second look.</li>
             <li><b>Both products</b> of the crossover are listed, as the reaction really gives: in an LR, the
                 <b>expression clone</b> first, then the by-product carrying ccdB and the entry backbone. Each
                 says how many bases came from the donor and how many from the acceptor.</li>

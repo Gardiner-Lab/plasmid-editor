@@ -3,7 +3,7 @@
 const HELP = {
   gibson: 'Pick fragments in the order they should be joined. Each neighbouring pair must share terminal homology; a fragment is flipped automatically if only its reverse complement overlaps.',
   ligate: 'Pick exactly two sequences: the vector first, then the insert. Choose the enzymes for each and which fragment to use.',
-  recombine: 'Pick the donor first, then the acceptor. A double crossover through two shared core sequences (attL×attR, attB×attP, loxP, FRT) swaps the donor segment into the acceptor. Both products are listed: in a Gateway LR, the expression clone and the by-product.',
+  recombine: 'Pick the donor first, then the acceptor. The donor segment is swapped into the acceptor at two places where their recombination sites (attL×attR, attB×attP, loxP, FRT) carry the same short stretch of DNA - the core, where the crossover happens. Both products are listed: in a Gateway LR, the expression clone and the by-product.',
 };
 
 const Cloning = {
@@ -136,11 +136,17 @@ const Cloning = {
       box.replaceChildren(
         el('div', { class: 'field-row' },
           el('div', { class: 'field' },
-            el('label', { for: 'recMin' }, 'Minimum core (bp)'),
-            el('input', { type: 'number', id: 'recMin', value: '20', min: '8', title: 'att cores are 21–25 bp, loxP and FRT 34 bp; below about 20 bp, chance matches look like crossovers' })),
+            el('label', { for: 'recMin' }, 'Shortest core (bp)'),
+            el('input', { type: 'number', id: 'recMin', value: '15', min: '8', title: 'Shorter than about 12 bp, two sequences match here and there by chance and the matches look like crossovers' })),
           el('div', { class: 'field' },
-            el('label', { for: 'recMax' }, 'Maximum core (bp)'),
-            el('input', { type: 'number', id: 'recMax', value: '60', min: '20' }))));
+            el('label', { for: 'recMax' }, 'Longest core (bp)'),
+            el('input', { type: 'number', id: 'recMax', value: '60', min: '20',
+                          title: 'Longer shared stretches are backbone the two plasmids have in common (an origin, a marker), not recombination sites' }))),
+        el('p', { class: 'hint' },
+          'The ', el('b', {}, 'core'), ' is the short stretch of identical DNA that two partner sites share, '
+          + 'where the strands cross over. It is much shorter than the site around it: a Gateway attL and attR '
+          + 'are 100+ bp each but share only 15 bp at att1 and 19 bp at att2, while loxP and FRT share all 34 bp. '
+          + 'Leave these as they are unless nothing is found.'));
     }
   },
 
@@ -176,14 +182,17 @@ const Cloning = {
         const res = await API.post('/api/tools/recombine', {
           donor: this.payload(this.picked[0]),
           acceptor: this.payload(this.picked[1]),
-          min_core: Number(document.getElementById('recMin').value) || 20,
+          min_core: Number(document.getElementById('recMin').value) || 15,
           max_core: Number(document.getElementById('recMax').value) || 60,
         });
         // Both halves of a double crossover come back (in Gateway LR: the expression clone and the
         // by-product), so each says how much of it came from where.
         this.showProducts(res.products.map((r) => r.document), null,
           res.products.map((r) => `${r.length} bp · ${r.from_donor} bp from the donor, `
-            + `${r.from_acceptor} bp from the acceptor · cores ${r.core_1.slice(0, 12)}… / ${r.core_2.slice(0, 12)}…`));
+            + `${r.from_acceptor} bp from the acceptor · crossed over at ${r.core_1.slice(0, 12)}…`
+            + ` and ${r.core_2.slice(0, 12)}… (the shared cores)`
+            + (r.at_sites ? ' · both inside sites your files label att, lox or FRT'
+              : ' · neither crossover is in a labelled site: this may be backbone the two share, not a real reaction')));
       }
     } catch (err) {
       out.replaceChildren(el('div', { class: 'alert alert-error', text: err.message }));

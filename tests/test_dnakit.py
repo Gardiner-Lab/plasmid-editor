@@ -541,3 +541,72 @@ def test_map_read_keeps_today_s_single_flank_when_the_rest_is_junk():
     # main hit's own boundary can still land a base or two into it by chance.
     seg = r['segments'][0]
     assert seg['ref_start'] == 100 and abs(seg['ref_end'] - 500) <= 5
+
+
+def _real_gateway():
+    """
+    An LR pair as real plasmids are, unlike ``_gateway()`` above.
+
+    An attL and its attR do NOT carry the same 25 bp: they share only the att core, 15 bp at att1 and
+    19 bp at att2, inside arms of their own. Both plasmids also carry one short stretch of common
+    backbone that is LONGER than the att1 core, as two real vectors do (here 21 bp, as a pUC-derived
+    entry clone and destination share).
+    """
+    rng = random.Random(20261111)
+    draw = lambda n: rand_dna(n, rng=rng)
+    core1, core2 = 'TTTGTACAAAAAAGC', 'CAGCTTTCTTGTACAAAGT'     # what att1 / att2 partners share
+    shared_bb = draw(21)                                        # common backbone, longer than core1
+    gene, ccdb, entry_bb, dest_bb = draw(600), draw(1500), draw(900), draw(2400)
+
+    def site(label, core, start):
+        # The shape seqio gives a parsed feature: its /label becomes 'name'.
+        return {'id': model.new_id(), 'name': label, 'type': 'protein_bind', 'strand': 1,
+                'start': start, 'end': start + 60 + len(core) + 60}
+
+    # Each att site is its own arms around the shared core, so only the core is in common.
+    l1, l2 = draw(60) + core1 + draw(60), draw(60) + core2 + draw(60)
+    r1, r2 = draw(60) + core1 + draw(60), draw(60) + core2 + draw(60)
+    entry_seq = l1 + gene + l2 + entry_bb + shared_bb + draw(120)
+    entry = model.make_document('entry clone', entry_seq, True, [
+        site('attL1', core1, 0), site('attL2', core2, len(l1) + len(gene))])
+    dest_seq = r1 + ccdb + r2 + dest_bb + shared_bb + draw(120)
+    dest = model.make_document('destination', dest_seq, True, [
+        site('attR1', core1, 0), site('attR2', core2, len(r1) + len(ccdb))])
+    return entry, dest, gene, ccdb, entry_bb, dest_bb
+
+
+def test_an_lr_with_real_att_sites_works_at_the_default_core():
+    """A real attL/attR pair shares only 15 bp at att1: the default used to find nothing at all."""
+    entry, dest, gene, ccdb, entry_bb, dest_bb = _real_gateway()
+    products = assembly.recombine(entry, dest)          # no min_core: the default must do
+    assert products, 'no product from a pair of real Gateway plasmids'
+
+    clone = products[0]['document']['sequence'] * 2
+    assert gene in clone, 'the expression clone is not first'
+    assert dest_bb in clone, 'it keeps the destination backbone'
+    assert ccdb not in clone and entry_bb not in clone, 'ccdB and the entry backbone are swapped out'
+    assert products[0]['at_sites'] is True
+    # The by-product of the same crossover is reported too.
+    assert any(ccdb in p['document']['sequence'] * 2 and entry_bb in p['document']['sequence'] * 2
+               for p in products), 'the by-product is missing'
+
+
+def test_a_shared_backbone_never_outranks_a_crossover_at_the_att_sites():
+    """The 21 bp the two plasmids share in their backbone is longer than the 15 bp att1 core."""
+    entry, dest, gene, ccdb, _, _ = _real_gateway()
+    products = assembly.recombine(entry, dest)
+    # Products through the annotated att sites come first, however short their cores.
+    at_sites = [p['at_sites'] for p in products]
+    assert at_sites[0] and at_sites[:2] == [True, True]
+    assert at_sites == sorted(at_sites, reverse=True), 'a chance match is listed above a real crossover'
+    # One that crosses over in the shared backbone is still offered, but marked and lower down.
+    assert any(p['at_sites'] is False for p in products)
+
+
+def test_a_crossover_is_at_the_sites_when_only_one_parent_names_them():
+    """A file with no annotation is common; one parent naming its att sites is enough."""
+    entry, dest, gene, _, _, _ = _real_gateway()
+    bare = dict(dest, features=[])
+    products = assembly.recombine(entry, bare)
+    assert products[0]['at_sites'] is True and gene in products[0]['document']['sequence'] * 2
+

@@ -6,6 +6,7 @@ All functions take and return plain documents (see dnakit.model), carrying
 features across into the products.
 """
 
+import re
 from typing import Any, Dict, List, Optional, Tuple
 
 from .model import make_document, new_id, reverse_complement
@@ -268,7 +269,27 @@ def _shared_blocks(a: str, b: str, min_len: int, max_len: int, circular_b: bool,
     return blocks
 
 
-def recombine(donor: Dict[str, Any], acceptor: Dict[str, Any], min_core: int = 20,
+# Features that name a recombination site, to tell a real crossover from a stretch two
+# plasmids merely share (a pUC origin, a resistance gene - often longer than the att core).
+_SITE_LABEL = re.compile(r'\batt[BPLR]\d?\b|\blox[\w-]*|\bFRT\b|\brox\b', re.I)
+
+
+def _at_site(doc: Dict[str, Any], pos: int, length: int) -> bool:
+    """Whether doc[pos:pos+length] touches a feature labelled as a recombination site."""
+    n = len(doc['sequence'])
+    if not n:
+        return False
+    core = {(pos + k) % n for k in range(length)}
+    for f in doc.get('features') or []:
+        if not _SITE_LABEL.search(str(f.get('label') or f.get('name') or '')):
+            continue
+        flen = (f['end'] - f['start']) % n or n
+        if core & {(f['start'] + k) % n for k in range(flen)}:
+            return True
+    return False
+
+
+def recombine(donor: Dict[str, Any], acceptor: Dict[str, Any], min_core: int = 15,
               max_core: int = 60, name: str = 'Recombination product') -> List[Dict[str, Any]]:
     """
     Double crossover through two short shared core sequences, as in
@@ -280,8 +301,15 @@ def recombine(donor: Dict[str, Any], acceptor: Dict[str, Any], min_core: int = 2
     A circular donor is read round its origin, so the piece carried over is the same wherever the
     file happens to start, and both pieces between the cores are offered: in an LR reaction that is
     the expression clone and the by-product. Each product keeps the features of whichever parent
-    contributed the bases. The cores of real systems are 21-25 bp (Gateway att) or 34 bp (loxP, FRT);
-    min_core much below that matches by chance.
+    contributed the bases.
+
+    ``min_core`` is the identity two partner sites must share, which is shorter than the sites
+    themselves: a Gateway attL and its attR share only the att core, 15 bp at att1 and 19 bp at att2,
+    though each att site is 100+ bp. loxP and FRT share all 34 bp. So the default is 15; much below
+    that matches by chance. Two plasmids also share whatever backbone they have in common (a pUC
+    origin, a marker), and such a stretch can be longer than an att core, so products whose both
+    crossovers fall in features named as recombination sites (att, lox, FRT) are listed first and
+    carry ``at_sites``.
     """
     a = donor['sequence'].upper()
     b_fwd = acceptor['sequence'].upper()
@@ -324,15 +352,20 @@ def recombine(donor: Dict[str, Any], acceptor: Dict[str, Any], min_core: int = 2
                     product = b[:bj0] + insert + b[bj1:]
                     feats = (_features_in(acc, 0, bj0) + _shift(feats, bj0, 0, False)
                              + _shift(_features_in(acc, bj1, nb - bj1), bj0 + span, 0, False))
+                # A crossover through a named site in either parent is a real one, so a file that
+                # annotates only one of the two still ranks its products first.
+                at_sites = all(_at_site(donor, c[0], c[2]) or _at_site(acc, c[1], c[2]) for c in (x, y))
                 results.append({
                     'core_1': a[x[0] % na:x[0] % na + x[2]] if x[0] + x[2] <= na else (a + a)[x[0]:x[0] + x[2]],
                     'core_2': a[y[0] % na:y[0] % na + y[2]] if y[0] + y[2] <= na else (a + a)[y[0]:y[0] + y[2]],
+                    'at_sites': at_sites,
                     'acceptor_flipped': flipped, 'length': len(product),
                     'from_donor': span, 'from_acceptor': len(product) - span,
                     'document': make_document(name, product, acceptor_circular, _dedupe_features(feats)),
                 })
-    # The biggest shared cores first; of those, the product that keeps most of the acceptor (its backbone).
-    results.sort(key=lambda r: (-len(r['core_1']) - len(r['core_2']), -r['from_acceptor']))
+    # Crossovers through named sites first (an att core is often shorter than a shared backbone
+    # stretch), then the biggest cores, then the product that keeps most of the acceptor.
+    results.sort(key=lambda r: (not r['at_sites'], -len(r['core_1']) - len(r['core_2']), -r['from_acceptor']))
     seen, unique = set(), []
     for r in results:
         if r['document']['sequence'] not in seen:
