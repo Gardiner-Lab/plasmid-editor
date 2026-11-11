@@ -6,6 +6,20 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.27.0] - 2026-11-11
+
+### Changed
+- **The Gateway cloner finds the att sites and measures their core itself.** There is no longer a core length to
+  set: both sequences are read for att sites of the same number (attL1 with attR1, attB2 with attP2), the pair is
+  compared, and the stretch they actually carry identically becomes the crossover - so it is whatever those two
+  vectors really share, not an assumed 15 or 19 bp. A file saved without annotation falls back to the known att1
+  and att2 cores, and anything with no att sites still works by looking for a shared stretch of 15 bp or more,
+  which covers loxP and FRT. *Set the core length myself* remains, folded away, for anything unusual.
+  - With two att sites found, the reaction is read as the Gateway reaction it is and **only those two products
+    are offered** - the expression clone and the by-product. Crossovers in backbone the two plasmids merely share
+    are no longer listed at all, where before they padded the list and could outrank the real ones.
+  - Each product now says where it crossed: *crossed over at att1 (15 bp) and att2 (19 bp)*.
+
 ## [0.26.0] - 2026-11-11
 
 ### Added

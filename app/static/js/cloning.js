@@ -134,19 +134,25 @@ const Cloning = {
           'Fragments are numbered as the digest lists them, starting at 0. Run a digest in the editor to see them.'));
     } else {
       box.replaceChildren(
-        el('div', { class: 'field-row' },
-          el('div', { class: 'field' },
-            el('label', { for: 'recMin' }, 'Shortest core (bp)'),
-            el('input', { type: 'number', id: 'recMin', value: '15', min: '8', title: 'Shorter than about 12 bp, two sequences match here and there by chance and the matches look like crossovers' })),
-          el('div', { class: 'field' },
-            el('label', { for: 'recMax' }, 'Longest core (bp)'),
-            el('input', { type: 'number', id: 'recMax', value: '60', min: '20',
-                          title: 'Longer shared stretches are backbone the two plasmids have in common (an origin, a marker), not recombination sites' }))),
         el('p', { class: 'hint' },
           'The ', el('b', {}, 'core'), ' is the short stretch of identical DNA that two partner sites share, '
           + 'where the strands cross over. It is much shorter than the site around it: a Gateway attL and attR '
-          + 'are 100+ bp each but share only 15 bp at att1 and 19 bp at att2, while loxP and FRT share all 34 bp. '
-          + 'Leave these as they are unless nothing is found.'));
+          + 'are 100+ bp each but share only 15 bp at att1 and 19 bp at att2, while loxP and FRT share all 34 bp.'),
+        el('p', { class: 'hint' },
+          'Nothing to set: your two sequences are read for att sites of the same number (attL1 with attR1, '
+          + 'attB2 with attP2) and the core is measured on the pair, so it is whatever those vectors really '
+          + 'share. With no att sites, any stretch of 15 bp or more counts, which covers loxP and FRT.'),
+        el('details', { class: 'rec-advanced' },
+          el('summary', {}, 'Set the core length myself'),
+          el('div', { class: 'field-row' },
+            el('div', { class: 'field' },
+              el('label', { for: 'recMin' }, 'Shortest core (bp)'),
+              el('input', { type: 'number', id: 'recMin', value: '', min: '8', placeholder: 'measured',
+                            title: 'Leave it empty to measure the att sites. Below about 12 bp, two sequences match here and there by chance and the matches look like crossovers' })),
+            el('div', { class: 'field' },
+              el('label', { for: 'recMax' }, 'Longest core (bp)'),
+              el('input', { type: 'number', id: 'recMax', value: '60', min: '20',
+                            title: 'Longer shared stretches are backbone the two plasmids have in common (an origin, a marker), not recombination sites' })))));
     }
   },
 
@@ -182,17 +188,23 @@ const Cloning = {
         const res = await API.post('/api/tools/recombine', {
           donor: this.payload(this.picked[0]),
           acceptor: this.payload(this.picked[1]),
-          min_core: Number(document.getElementById('recMin').value) || 15,
+          // Empty: the att sites are measured instead of a length being assumed.
+          min_core: document.getElementById('recMin').value.trim() || null,
           max_core: Number(document.getElementById('recMax').value) || 60,
         });
         // Both halves of a double crossover come back (in Gateway LR: the expression clone and the
         // by-product), so each says how much of it came from where.
         this.showProducts(res.products.map((r) => r.document), null,
-          res.products.map((r) => `${r.length} bp · ${r.from_donor} bp from the donor, `
-            + `${r.from_acceptor} bp from the acceptor · crossed over at ${r.core_1.slice(0, 12)}…`
-            + ` and ${r.core_2.slice(0, 12)}… (the shared cores)`
-            + (r.at_sites ? ' · both inside sites your files label att, lox or FRT'
-              : ' · neither crossover is in a labelled site: this may be backbone the two share, not a real reaction')));
+          res.products.map((r) => {
+            // Where it crossed over: the att sites by name when they were found, else the cores themselves.
+            const where = r.sites && r.sites.length === 2
+              ? `crossed over at ${r.sites[0]} (${r.core_1.length} bp) and ${r.sites[1]} (${r.core_2.length} bp)`
+              : `crossed over at ${r.core_1.slice(0, 12)}… and ${r.core_2.slice(0, 12)}… (the shared cores)`;
+            const caution = (r.sites && r.sites.length === 2) || r.at_sites ? ''
+              : ' · neither crossover is in a labelled site: this may be backbone the two share, not a real reaction';
+            return `${r.length} bp · ${r.from_donor} bp from the donor, `
+              + `${r.from_acceptor} bp from the acceptor · ${where}${caution}`;
+          }));
       }
     } catch (err) {
       out.replaceChildren(el('div', { class: 'alert alert-error', text: err.message }));

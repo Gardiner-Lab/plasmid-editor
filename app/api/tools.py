@@ -488,8 +488,10 @@ def recombine(user):
     try:
         donor = model.normalize_document(data.get('donor') or {})
         acceptor = model.normalize_document(data.get('acceptor') or {})
-        results = assembly.recombine(donor, acceptor, int(data.get('min_core', 15)),
-                                     int(data.get('max_core', 60)),
+        asked = data.get('min_core')
+        results = assembly.recombine(donor, acceptor,
+                                     None if asked in (None, '', 'auto') else int(asked),
+                                     int(data.get('max_core') or 60),
                                      name=data.get('name') or 'Recombination product')
     except (ValueError, TypeError) as exc:
         return _bad(exc)

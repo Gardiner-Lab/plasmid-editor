@@ -134,9 +134,13 @@
         <ol class="steps">
             <li>Pick the <b>donor</b> first (the entry clone, or the attB PCR product), then the
                 <b>acceptor</b> (the destination vector, or pDONR).</li>
-            <li>Leave the <b>shortest core</b> at 15 bp, which is the smallest real one (Gateway att1).
-                Below about 12 bp two sequences match here and there by chance, and the matches look like
-                crossovers.</li>
+            <li><b>Nothing to set.</b> Both sequences are read for att sites of the same number (attL1 with
+                attR1, attB2 with attP2), and the core is measured on the pair, so it is whatever those two
+                vectors really share &mdash; 15 bp at att1 and 19 bp at att2 in the usual ones. A Gateway pair
+                then gives just its two products, the expression clone and the by-product, and each says which
+                att sites it crossed at. Files saved without annotation fall back to the known att1 and att2
+                cores. Without att sites at all, any stretch of 15 bp or more counts, which covers loxP and FRT;
+                <i>Set the core length myself</i> is there for anything unusual.</li>
             <li>Two plasmids also share whatever <b>backbone</b> they have in common &mdash; a pUC origin, a
                 marker &mdash; and such a stretch is often longer than an att core. So products whose
                 crossovers both sit inside features your files label <i>att</i>, <i>lox</i> or <i>FRT</i> are

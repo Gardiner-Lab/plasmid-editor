@@ -594,13 +594,15 @@ def test_an_lr_with_real_att_sites_works_at_the_default_core():
 def test_a_shared_backbone_never_outranks_a_crossover_at_the_att_sites():
     """The 21 bp the two plasmids share in their backbone is longer than the 15 bp att1 core."""
     entry, dest, gene, ccdb, _, _ = _real_gateway()
-    products = assembly.recombine(entry, dest)
-    # Products through the annotated att sites come first, however short their cores.
+    # Asked for a length by hand, every shared stretch is a candidate, the 21 bp of backbone among them.
+    products = assembly.recombine(entry, dest, min_core=15)
     at_sites = [p['at_sites'] for p in products]
     assert at_sites[0] and at_sites[:2] == [True, True]
     assert at_sites == sorted(at_sites, reverse=True), 'a chance match is listed above a real crossover'
     # One that crosses over in the shared backbone is still offered, but marked and lower down.
     assert any(p['at_sites'] is False for p in products)
+    # Left to itself it does not offer them at all: the att pair settles what the reaction is.
+    assert [p['sites'] for p in assembly.recombine(entry, dest)] == [['att1', 'att2'], ['att2', 'att1']]
 
 
 def test_a_crossover_is_at_the_sites_when_only_one_parent_names_them():
@@ -610,3 +612,77 @@ def test_a_crossover_is_at_the_sites_when_only_one_parent_names_them():
     products = assembly.recombine(entry, bare)
     assert products[0]['at_sites'] is True and gene in products[0]['document']['sequence'] * 2
 
+
+
+def test_the_att_sites_are_found_and_their_core_measured():
+    """No core length is given: attL1 is paired with attR1 and the overlap worked out."""
+    entry, dest, gene, ccdb, entry_bb, dest_bb = _real_gateway()
+    a, b = entry['sequence'].upper(), dest['sequence'].upper()
+    cores = {label: length for _, _, length, label in assembly.att_cores(entry, dest, a, b, 60)}
+    assert cores == {'att1': 15, 'att2': 19}, 'the cores were not measured off the annotated sites'
+
+    products = assembly.recombine(entry, dest)      # no min_core at all
+    # A Gateway pair gives its two products and nothing else.
+    assert len(products) == 2, [p['length'] for p in products]
+    assert all(sorted(p['sites']) == ['att1', 'att2'] for p in products)
+    clone = products[0]['document']['sequence'] * 2
+    assert gene in clone and dest_bb in clone
+    assert ccdb not in clone and entry_bb not in clone
+    assert ccdb in products[1]['document']['sequence'] * 2, 'the by-product carries ccdB'
+
+
+def test_att_sites_of_unusual_length_are_taken_as_they_are():
+    """The core is measured, not assumed, so a vector pair sharing more or less still works."""
+    import random as _random
+    rng = _random.Random(7)
+    draw = lambda n: rand_dna(n, rng=rng)
+    core1, core2 = draw(22), draw(17)               # this pair's own cores, neither 15 nor 19
+    gene, ccdb, entry_bb, dest_bb = draw(400), draw(900), draw(700), draw(1500)
+
+    def site(label, core, start):
+        return {'id': model.new_id(), 'name': label, 'type': 'protein_bind', 'strand': 1,
+                'start': start, 'end': start + 40 + len(core) + 40}
+
+    l1, l2 = draw(40) + core1 + draw(40), draw(40) + core2 + draw(40)
+    r1, r2 = draw(40) + core1 + draw(40), draw(40) + core2 + draw(40)
+    entry = model.make_document('entry', l1 + gene + l2 + entry_bb, True, [
+        site('attL1', core1, 0), site('attL2', core2, len(l1) + len(gene))])
+    dest = model.make_document('dest', r1 + ccdb + r2 + dest_bb, True, [
+        site('attR1', core1, 0), site('attR2', core2, len(r1) + len(ccdb))])
+
+    found = {label: (i, length) for i, _, length, label in
+             assembly.att_cores(entry, dest, entry['sequence'], dest['sequence'], 60)}
+    assert set(found) == {'att1', 'att2'}
+    # Neither 15 nor 19: what these two vectors actually share. The arms either side are random,
+    # so the measured stretch may run a base or two past the core planted here.
+    for label, core in (('att1', core1), ('att2', core2)):
+        i, length = found[label]
+        assert length >= len(core), f'{label} measured {length}, shorter than the {len(core)} bp planted'
+        assert core in entry['sequence'][max(0, i - 2):i + length + 2], f'{label} is not the planted core'
+    assert found['att1'][1] != 15 and found['att2'][1] != 19, 'the usual lengths were assumed'
+    products = assembly.recombine(entry, dest)
+    assert products and gene in products[0]['document']['sequence'] * 2
+    assert ccdb not in products[0]['document']['sequence'] * 2
+
+
+def test_files_with_no_annotation_fall_back_to_the_known_att_cores():
+    entry, dest, gene, ccdb, _, _ = _real_gateway()
+    bare_entry, bare_dest = dict(entry, features=[]), dict(dest, features=[])
+    products = assembly.recombine(bare_entry, bare_dest)
+    assert products, 'nothing found without annotation'
+    assert sorted(products[0]['sites']) == ['att1', 'att2']
+    assert gene in products[0]['document']['sequence'] * 2
+    assert ccdb not in products[0]['document']['sequence'] * 2
+
+
+def test_lox_sites_still_work_without_any_att():
+    """No att anywhere: it falls back to looking for a shared stretch, as loxP needs."""
+    lox = 'ATAACTTCGTATAATGTATGCTATACGAAGTTAT'          # 34 bp, shared whole
+    rng = random.Random(11)
+    draw = lambda n: rand_dna(n, rng=rng)
+    gene, acc_bb = draw(300), draw(800)
+    donor = model.make_document('donor', draw(200) + lox + gene + lox + draw(200), True)
+    acceptor = model.make_document('acc', lox + draw(150) + lox + acc_bb, True)
+    products = assembly.recombine(donor, acceptor)
+    assert products and gene in products[0]['document']['sequence'] * 2
+    assert all(p['sites'] == [] for p in products), 'lox sites are not att sites'

@@ -273,6 +273,10 @@ def _shared_blocks(a: str, b: str, min_len: int, max_len: int, circular_b: bool,
 # plasmids merely share (a pUC origin, a resistance gene - often longer than the att core).
 _SITE_LABEL = re.compile(r'\batt[BPLR]\d?\b|\blox[\w-]*|\bFRT\b|\brox\b', re.I)
 
+# What a shared stretch must reach to be taken for a crossover when there is no att pair
+# to measure: lox and FRT share all 34 bp, and below about 12 bp two sequences match by chance.
+DEFAULT_MIN_CORE = 15
+
 
 def _at_site(doc: Dict[str, Any], pos: int, length: int) -> bool:
     """Whether doc[pos:pos+length] touches a feature labelled as a recombination site."""
@@ -289,7 +293,86 @@ def _at_site(doc: Dict[str, Any], pos: int, length: int) -> bool:
     return False
 
 
-def recombine(donor: Dict[str, Any], acceptor: Dict[str, Any], min_core: int = 15,
+# An att site is named for the pair it recombines with: attL1 goes with attR1, attB2
+# with attP2. The number is what has to match, not the letter.
+_ATT_NUMBERED = re.compile(r'\batt[BPLR](\d)\b', re.I)
+
+# The cores of the two sites nearly every Gateway vector carries, for files with no
+# annotation to go on. Measured between a real attL and its attR, which is what the
+# partners share - not the 25 bp of a whole attB site.
+KNOWN_ATT_CORES = {'1': 'TTTGTACAAAAAAGC', '2': 'CAGCTTTCTTGTACAAAGT'}
+
+# A real att core is 15 bp or more; a shorter stretch shared inside two att sites is
+# chance, and taking it for a crossover invents products (it did, in the orientation
+# where attL1 does not in fact pair with attR1).
+MIN_ATT_CORE = 12
+
+
+def _att_spans(doc: Dict[str, Any]) -> Dict[str, List[Tuple[int, int]]]:
+    """Where each numbered att site sits in a document: {'1': [(start, end)], ...}, wrapping allowed."""
+    n = len(doc.get('sequence') or '')
+    out: Dict[str, List[Tuple[int, int]]] = {}
+    for f in doc.get('features') or []:
+        found = _ATT_NUMBERED.search(str(f.get('label') or f.get('name') or ''))
+        if not found or not n:
+            continue
+        length = (f['end'] - f['start']) % n or n
+        out.setdefault(found.group(1), []).append((f['start'] % n, length))
+    return out
+
+
+def _longest_shared(x: str, y: str) -> Tuple[int, int, int]:
+    """The longest stretch x and y have in common: (offset in x, offset in y, length)."""
+    best = (0, 0, 0)
+    if not x or not y:
+        return best
+    previous = [0] * (len(y) + 1)
+    for i in range(1, len(x) + 1):
+        current = [0] * (len(y) + 1)
+        for j in range(1, len(y) + 1):
+            if x[i - 1] == y[j - 1]:
+                current[j] = previous[j - 1] + 1
+                if current[j] > best[2]:
+                    best = (i - current[j], j - current[j], current[j])
+        previous = current
+    return best
+
+
+def att_cores(donor: Dict[str, Any], acceptor: Dict[str, Any], a: str, b: str,
+              max_core: int) -> List[Tuple[int, int, int, str]]:
+    """
+    The crossover points of the att sites these two molecules share, measured rather
+    than assumed: ``[(pos in donor, pos in acceptor, length, 'att1'), ...]``.
+
+    Both files are read for features named attL1, attR2 and so on; where the same
+    number is annotated on each, the two sites are compared and the longest stretch
+    they carry identically is their core - 15 bp at att1 and 19 bp at att2 in the
+    usual vectors, but whatever it really is in these two. A number annotated on only
+    one side, or neither, falls back to the known core for att1 and att2, so a file
+    saved without annotation still works. Anything shorter than 8 bp is ignored.
+    """
+    na, nb = len(a), len(b)
+    donor_spans, acceptor_spans = _att_spans(donor), _att_spans(acceptor)
+    found: Dict[str, Tuple[int, int, int, str]] = {}
+    for number in sorted(set(donor_spans) | set(acceptor_spans) | set(KNOWN_ATT_CORES)):
+        best: Optional[Tuple[int, int, int, str]] = None
+        for astart, alen in donor_spans.get(number, []):
+            for bstart, blen in acceptor_spans.get(number, []):
+                x, y = (a + a)[astart:astart + alen], (b + b)[bstart:bstart + blen]
+                dx, dy, length = _longest_shared(x, y)
+                if MIN_ATT_CORE <= length <= max_core and (best is None or length > best[2]):
+                    best = ((astart + dx) % na, (bstart + dy) % nb, length, f'att{number}')
+        if best is None and number in KNOWN_ATT_CORES:
+            core = KNOWN_ATT_CORES[number]
+            i, j = a.find(core), b.find(core)
+            if i >= 0 and j >= 0:
+                best = (i, j, len(core), f'att{number}')
+        if best:
+            found[number] = best
+    return [found[k] for k in sorted(found)]
+
+
+def recombine(donor: Dict[str, Any], acceptor: Dict[str, Any], min_core: Optional[int] = None,
               max_core: int = 60, name: str = 'Recombination product') -> List[Dict[str, Any]]:
     """
     Double crossover through two short shared core sequences, as in
@@ -305,15 +388,26 @@ def recombine(donor: Dict[str, Any], acceptor: Dict[str, Any], min_core: int = 1
 
     ``min_core`` is the identity two partner sites must share, which is shorter than the sites
     themselves: a Gateway attL and its attR share only the att core, 15 bp at att1 and 19 bp at att2,
-    though each att site is 100+ bp. loxP and FRT share all 34 bp. So the default is 15; much below
-    that matches by chance. Two plasmids also share whatever backbone they have in common (a pUC
-    origin, a marker), and such a stretch can be longer than an att core, so products whose both
-    crossovers fall in features named as recombination sites (att, lox, FRT) are listed first and
-    carry ``at_sites``.
+    though each att site is 100+ bp. loxP and FRT share all 34 bp.
+
+    Left as ``None`` it works that out instead of being told. The two molecules are read for att
+    sites of the same number (attL1 with attR1, attB2 with attP2), the pair is compared, and the
+    stretch they actually carry identically becomes the crossover point, however long it is; a file
+    with no annotation falls back to the known att1 and att2 cores. When two such sites are found the
+    reaction is read as the Gateway reaction it is, and only those crossovers are offered - so the
+    two products are the expression clone and the by-product, and nothing else. Failing that it
+    looks for any shared stretch of 15 bp or more, which covers lox and FRT and anything hand-made.
+
+    Two plasmids also share whatever backbone they have in common (a pUC origin, a marker), and such
+    a stretch can be longer than an att core, so products whose both crossovers fall in features
+    named as recombination sites are listed first and carry ``at_sites``; each says which sites it
+    crossed at in ``sites``.
     """
     a = donor['sequence'].upper()
     b_fwd = acceptor['sequence'].upper()
     na = len(a)
+    automatic = min_core is None
+    floor = DEFAULT_MIN_CORE if automatic else int(min_core)
     donor_circular = bool(donor.get('circular'))
     acceptor_circular = bool(acceptor.get('circular'))
     results = []
@@ -322,7 +416,16 @@ def recombine(donor: Dict[str, Any], acceptor: Dict[str, Any], min_core: int = 1
         nb = len(b)
         acc = (dict(acceptor, sequence=b, features=_flip(acceptor.get('features') or [], nb))
                if flipped else acceptor)
-        blocks = _shared_blocks(a, b, min_core, max_core, acceptor_circular, donor_circular)
+        # The att sites first, measured on these two molecules. Two of them is a Gateway
+        # reaction, and then they are the only crossovers worth offering.
+        att = att_cores(donor, acc, a, b, max_core)
+        named = {(x[0] % na, x[1] % nb, x[2]): x[3] for x in att}
+        if automatic and len(att) >= 2:
+            blocks = [x[:3] for x in att]
+        else:
+            blocks = _shared_blocks(a, b, floor, max_core, acceptor_circular, donor_circular)
+            seen = {(x[0] % na, x[1] % nb, x[2]) for x in blocks}
+            blocks += [x[:3] for x in att if (x[0] % na, x[1] % nb, x[2]) not in seen]
         for x in blocks:
             for y in blocks:
                 if y[1] == x[1] or y[0] % na == x[0] % na:
@@ -355,7 +458,9 @@ def recombine(donor: Dict[str, Any], acceptor: Dict[str, Any], min_core: int = 1
                 # A crossover through a named site in either parent is a real one, so a file that
                 # annotates only one of the two still ranks its products first.
                 at_sites = all(_at_site(donor, c[0], c[2]) or _at_site(acc, c[1], c[2]) for c in (x, y))
+                sites = [named.get((c[0] % na, c[1] % nb, c[2])) for c in (x, y)]
                 results.append({
+                    'sites': [s for s in sites if s],
                     'core_1': a[x[0] % na:x[0] % na + x[2]] if x[0] + x[2] <= na else (a + a)[x[0]:x[0] + x[2]],
                     'core_2': a[y[0] % na:y[0] % na + y[2]] if y[0] + y[2] <= na else (a + a)[y[0]:y[0] + y[2]],
                     'at_sites': at_sites,
@@ -363,9 +468,11 @@ def recombine(donor: Dict[str, Any], acceptor: Dict[str, Any], min_core: int = 1
                     'from_donor': span, 'from_acceptor': len(product) - span,
                     'document': make_document(name, product, acceptor_circular, _dedupe_features(feats)),
                 })
-    # Crossovers through named sites first (an att core is often shorter than a shared backbone
-    # stretch), then the biggest cores, then the product that keeps most of the acceptor.
-    results.sort(key=lambda r: (not r['at_sites'], -len(r['core_1']) - len(r['core_2']), -r['from_acceptor']))
+    # The att pairs first, then crossovers through other named sites (an att core is often
+    # shorter than a shared backbone stretch), then the biggest cores, then the product that
+    # keeps most of the acceptor.
+    results.sort(key=lambda r: (-len(r['sites']), not r['at_sites'],
+                                -len(r['core_1']) - len(r['core_2']), -r['from_acceptor']))
     seen, unique = set(), []
     for r in results:
         if r['document']['sequence'] not in seen:
