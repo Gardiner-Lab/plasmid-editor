@@ -6,6 +6,13 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.26.0] - 2026-11-11
+
+### Added
+- **Export the Map.** The Map view has an **Export…** button: the map as it is on screen, with the enzymes and
+  the selection it is showing, saved as **SVG** (lines rather than pixels, so it stays sharp at any size and can
+  still be taken apart in Illustrator or Inkscape) or as **PNG** at 2x for slides or 4x for posters and printing.
+
 ## [0.25.0] - 2026-11-11
 
 ### Fixed

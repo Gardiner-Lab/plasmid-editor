@@ -360,6 +360,7 @@ const Editor = {
 
     on('tabSequence', () => this.showPane('sequence'));
     on('tabMap', () => this.showPane('map'));
+    on('btnMapExport', () => this.exportMap());
 
     document.getElementById('docName').addEventListener('change', (e) => {
       if (this.doc) { this.doc.name = e.target.value.trim() || 'Untitled'; this.markDirty(); }
@@ -421,6 +422,8 @@ const Editor = {
     document.getElementById('mapPane').hidden = seq;
     document.getElementById('tabSequence').classList.toggle('on', seq);
     document.getElementById('tabMap').classList.toggle('on', !seq);
+    // Exporting belongs to the map, so the button comes and goes with it.
+    document.getElementById('btnMapExport').hidden = seq;
     if (!seq) this.map.render(this.doc, this.sites, this.view.selection);
   },
 
@@ -719,6 +722,68 @@ const Editor = {
   },
 
   /** Save a copy under a new name, or write the sequence out as a file. */
+  /**
+   * The map as a picture file: SVG for a figure, PNG for a slide.
+   *
+   * What is saved is the map as it is on screen, the enzymes and the selection with it,
+   * so what you see is what you get. SVG stays sharp at any size and can be taken apart
+   * in Illustrator or Inkscape; PNG is drawn at 2x or 4x for slides and posters.
+   */
+  exportMap() {
+    const doc = this.doc;
+    const svg = document.getElementById('mapPane').querySelector('svg');
+    if (!doc || !svg) { toast('No map to export', 'error'); return; }
+    const base = (doc.name || 'plasmid-map').replace(/[\\/:*?"<>|]+/g, '-').slice(0, 80);
+    modal({
+      title: 'Export the map',
+      build: (body) => {
+        body.append(
+          el('div', { class: 'field' },
+            el('label', { for: 'meName' }, 'File name'),
+            el('input', { type: 'text', id: 'meName', value: base })),
+          el('div', { class: 'field' },
+            el('label', { for: 'meFormat' }, 'Format'),
+            el('select', { id: 'meFormat' },
+              el('option', { value: 'svg', text: 'SVG - lines, not pixels (figures, Illustrator)' }),
+              el('option', { value: 'png2', text: 'PNG, 2x (slides, Word)' }),
+              el('option', { value: 'png4', text: 'PNG, 4x (posters, printing)' }))),
+          el('p', { class: 'hint', id: 'meHint' },
+            'The map exactly as it is on screen, with the enzymes and selection shown now.'));
+        const fmt = body.querySelector('#meFormat');
+        fmt.addEventListener('change', () => {
+          body.querySelector('#meHint').textContent = fmt.value === 'svg'
+            ? 'Stays sharp at any size, and every part of it can still be moved or recoloured.'
+            : 'A picture on a white ground. Choose 4x if it is going on a poster.';
+        });
+        setTimeout(() => body.querySelector('#meName')?.select(), 0);
+      },
+      buttons: [
+        { label: 'Cancel', kind: 'secondary' },
+        {
+          label: 'Download',
+          onClick: async ({ body }) => {
+            const name = body.querySelector('#meName').value.trim() || base;
+            const format = body.querySelector('#meFormat').value;
+            try {
+              if (format === 'svg') {
+                saveBlob(svgToFile(svg), `${name}.svg`);
+                toast(`Downloaded ${name}.svg`, 'success');
+              } else {
+                const scale = format === 'png4' ? 4 : 2;
+                saveBlob(await svgToPng(svg, scale), `${name}.png`);
+                toast(`Downloaded ${name}.png`, 'success');
+              }
+            } catch (err) {
+              toast(`The map could not be saved: ${err.message}`, 'error');
+              return false;
+            }
+            return true;
+          },
+        },
+      ],
+    });
+  },
+
   saveAs() {
     const doc = this.doc;
     if (!doc || !doc.sequence) { toast('Nothing to save', 'error'); return; }

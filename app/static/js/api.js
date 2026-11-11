@@ -461,6 +461,37 @@ function svgToPng(svg, scale = 2) {
   });
 }
 
+/** Save a Blob to the person's computer under `filename`. */
+function saveBlob(blob, filename) {
+  const objectUrl = URL.createObjectURL(blob);
+  const a = el('a', { href: objectUrl, download: filename });
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(objectUrl);
+}
+
+/**
+ * An on-screen SVG as a standalone file's markup.
+ *
+ * The page's own SVG leans on the document around it: it has no XML namespace of its
+ * own and inherits its font. A file opened in Illustrator or a browser has neither, so
+ * both are written onto the copy, with the width and height the viewBox implies.
+ */
+function svgToFile(svg) {
+  const node = svg.cloneNode(true);
+  node.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+  node.setAttribute('xmlns:xlink', 'http://www.w3.org/1999/xlink');
+  if (!node.getAttribute('font-family')) {
+    node.setAttribute('font-family', 'system-ui, -apple-system, "Segoe UI", Arial, sans-serif');
+  }
+  const box = node.viewBox?.baseVal;
+  if (!node.getAttribute('width') && box?.width) node.setAttribute('width', box.width);
+  if (!node.getAttribute('height') && box?.height) node.setAttribute('height', box.height);
+  return new Blob(['<?xml version="1.0" encoding="UTF-8"?>\n'
+    + new XMLSerializer().serializeToString(node)], { type: 'image/svg+xml;charset=utf-8' });
+}
+
 /** Trigger a download from an API path (handles the Content-Disposition name). */
 async function downloadFrom(path, fallbackName, body) {
   const res = await fetch(url(path), {
