@@ -190,6 +190,11 @@
                 Tm and place, and the product after conversion with the converted bases marked.</li>
             <li>Save a pair to Lab Stocks, annotate where it binds, or add it to the notebook.</li>
         </ol>
+        <p>When no pair passes, or fewer than you asked for, <b>Why no pair passed</b> opens under the
+           results. For each converted strand it counts what every cutoff turned down, from stretches of
+           sequence to primers to pairs, then the genome check, and names the step where the candidates ran
+           out, with the option to change and how. Steps that lose many but were not the cause are listed
+           after it. When pairs do pass, the same counts are under <b>How the primers were chosen</b>.</p>
         <h3>How pairs are ranked</h3>
         <p>As in <i>design_bisulfite_primers.py</i> by Colette L. Picard (2016), which this is rewritten from:
            a score where lower is better, adding the Y and R bases of both primers, the difference between their

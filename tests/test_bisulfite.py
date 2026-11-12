@@ -120,3 +120,24 @@ def test_the_endpoint_designs_in_a_region_or_the_whole_sequence(user_client):
     assert whole.status_code == 200 and whole.get_json()['length'] == len(seq)
     bad = user_client.post('/api/tools/bisulfite-primers', json={'document': doc, 'start': 1600, 'end': 100})
     assert bad.status_code == 400 and 'region' in bad.get_json()['error']
+
+
+def test_every_candidate_is_accounted_for_so_a_failure_can_be_explained(monkeypatch):
+    # With no cap on the pairs kept, every pair's dimer is found, so the counts are complete.
+    monkeypatch.setitem(bisulfite.LIMITS, 'pairs', 10 ** 6)
+    res = bisulfite.design(_plant_like(800), {'max_tm_diff': 1})
+    assert res['filters_complete']
+    for strand, f in res['filters'].items():
+        assert f['stretches'] == f['degenerate'] + f['ambiguous'] + f['primers'] // 2
+        assert f['primers'] == (f['tm_low'] + f['tm_high'] + f['repeat'] + f['hairpin'] + f['homodimer']
+                                + f['forward'] + f['reverse'])
+        assert f['combinations'] == f['forward'] * f['reverse'] == (
+            f['wrong_order'] + f['too_short'] + f['too_long'] + f['tm_diff'] + f['heterodimer'] + f['pairs'])
+        assert f['tm_range'][0] <= f['tm_range'][1]
+    assert sum(f['pairs'] for f in res['filters'].values()) == len(res['pairs'])
+    # With no Y allowed, nothing passes on the top strand: every stretch has a C, and the counts
+    # say so, with the fewest any stretch has, which is what to allow instead.
+    none = bisulfite.design(_plant_like(800), {'strand': 'top', 'max_degenerate': 0})
+    top = none['filters']['top']
+    assert not none['pairs'] and top['degenerate'] == top['stretches'] and top['least_degenerate'] >= 1
+    assert top['primers'] == 0 and top['tm_range'] is None

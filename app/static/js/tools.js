@@ -770,7 +770,7 @@ const Tools = {
       }
     }
     const turnedDown = [...verdicts.values()].filter((v) => !v.ok).length;
-    return { chosen, verdicts, checked: verdicts.size, turnedDown };
+    return { chosen, verdicts, checked: verdicts.size, turnedDown, suggest, options };
   },
 
   bisulfiteResults(doc, res, picks, genome) {
@@ -779,14 +779,116 @@ const Tools = {
       .map(([strand, n]) => `${n.forward} forward and ${n.reverse} reverse on the converted ${strand} strand`);
     const summary = el('p', { class: 'hint' },
       `Primers passing: ${counts.join('; ')}. ${fmt(res.possible_pairs)} pairs of the right product length and Tm. `,
-      genome ? `${fmt(picks.checked)} primers checked against ${genome.name}, ${fmt(picks.turnedDown)} turned down for binding elsewhere too.`
+      genome ? (picks.checked ? `${fmt(picks.checked)} primers checked against ${genome.name}, ${fmt(picks.turnedDown)} turned down for binding elsewhere too.`
+        : `No pair to check against ${genome.name}.`)
         : 'Not checked against a genome: check the pairs you like for other binding sites before ordering.');
+    const why = this.bisulfiteWhy(res, picks, genome);
     if (!picks.chosen.length) {
       return el('div', {}, summary, el('div', { class: 'alert alert-error' },
-        'No pair passes. Try more Y or R bases, a wider Tm or product range, shorter primers, or the other converted strand'
-        + (genome && picks.turnedDown ? `; or a looser off-target cutoff, as ${picks.turnedDown} primers bind ${genome.name} elsewhere too.` : '.')));
+        'No pair passes. Below is where the candidates were lost, and what to change under More options.'), why);
     }
-    return el('div', {}, summary, picks.chosen.map((pair, i) => this.bisulfitePair(doc, pair, i + 1, P, genome ? picks.verdicts : null)));
+    return el('div', {}, summary, why, picks.chosen.map((pair, i) => this.bisulfitePair(doc, pair, i + 1, P, genome ? picks.verdicts : null)));
+  },
+
+  /**
+   * Where the candidates were lost: for each converted strand, how many each cutoff turned down,
+   * from stretches of sequence to primers to pairs, then the genome check; and which option to
+   * change, biggest loss first. Open when no pair, or fewer than asked for, came through.
+   */
+  bisulfiteWhy(res, picks, genome) {
+    const o = res.options;
+    const F = res.filters || {};
+    // What to change: { key, share of that step's candidates lost, tip }. The step where a strand's
+    // candidates ran out is the cause; the others only lose many.
+    const tips = [];
+    const causes = new Set();
+    const loss = (key, lost, of, tip) => { if (lost && of > 0) tips.push({ key, share: lost / of, tip }); };
+    const row = (label, n, of, cls = '') => el('tr', { class: cls || null }, el('td', {}, label),
+      el('td', { class: 'num' }, n === null ? '' : fmt(n)),
+      el('td', { class: 'num' }, n && of ? `${Math.round((100 * n) / of)}%` : ''));
+    const tables = Object.entries(F).map(([strand, f]) => {
+      const base = strand === 'top' ? 'C' : 'G';
+      const code = strand === 'top' ? 'Y' : 'R';
+      const ordered = f.combinations - f.wrong_order;
+      const inRange = ordered - f.too_short - f.too_long;
+      loss(`${strand}:degenerate`, f.degenerate, f.stretches, `“Y or R bases, at most” (now ${o.max_degenerate}): most stretches have more ${base}s than that on the `
+        + `${strand} strand${f.least_degenerate !== null ? `; the fewest in any stretch is ${f.least_degenerate}` : ''}. Allow one or two more, or try the other strand.`);
+      loss(`${strand}:tm_low`, f.tm_low, f.primers, `“Tm, min” (now ${o.min_tm} °C): many primers melt lower${f.tm_range ? ` (they range ${f.tm_range[0]}–${f.tm_range[1]} °C)` : ''}.`
+        + ` Lower it, or allow longer primers (now at most ${o.max_len} nt).`);
+      loss(`${strand}:tm_high`, f.tm_high, f.primers, `“Tm, max” (now ${o.max_tm} °C): many primers melt higher${f.tm_range ? ` (up to ${f.tm_range[1]} °C)` : ''}. Raise it, or allow shorter primers.`);
+      loss(`${strand}:repeat`, f.repeat, f.primers, `“Longest repeat” (now ${o.max_repeat}): many primers have a longer run of one base, or of a 2- or 3-base unit, as AT-rich DNA often does. Raise it to ${o.max_repeat + 1}.`);
+      loss(`${strand}:self`, f.hairpin + f.homodimer, f.primers, `“Hairpin and dimer Tm, at most” (now ${o.max_self_tm} °C): many primers fold back on themselves or pair with a copy of themselves. Raise it a few degrees.`);
+      // Most pairs in a long region are too far apart, whatever the range: only say so when few are in it.
+      if (f.forward && f.reverse && inRange < 20) {
+        tips.push({ key: `${strand}:product`, share: 1 - inRange / 20, tip: `The product range (now ${o.min_product}–${o.max_product} bp): ${inRange ? `only ${fmt(inRange)}` : 'no'} pair${inRange === 1 ? '' : 's'}`
+          + ` of forward and reverse primers lie that far apart in the ${fmt(res.length)} bp searched (${fmt(f.too_short)} closer, ${fmt(f.too_long)} further).`
+          + ' Widen it, or select a longer region.' });
+      }
+      loss(`${strand}:tm_diff`, f.tm_diff, inRange, `“Tm difference, at most” (now ${o.max_tm_diff} °C): the forward and reverse primers melt too far apart. Raise it, or narrow the Tm range.`);
+      loss(`${strand}:heterodimer`, f.heterodimer, f.heterodimer + f.pairs, `“Hairpin and dimer Tm, at most” (now ${o.max_self_tm} °C): the two primers of many pairs pair with each other. Raise it a few degrees.`);
+      // Where this strand's candidates ran out, if they did.
+      const lost = { tm_low: f.tm_low, tm_high: f.tm_high, repeat: f.repeat, self: f.hairpin + f.homodimer };
+      if (!f.primers) causes.add(`${strand}:degenerate`);
+      else if (!f.forward || !f.reverse) causes.add(`${strand}:${Object.keys(lost).reduce((a, b) => (lost[b] > lost[a] ? b : a))}`);
+      else if (!inRange) causes.add(`${strand}:product`);
+      else if (inRange === f.tm_diff) causes.add(`${strand}:tm_diff`);
+      else if (!f.pairs && res.filters_complete) causes.add(`${strand}:heterodimer`);
+      return el('table', { class: 'table bs-why' },
+        el('thead', {}, el('tr', {}, el('th', {}, `Converted ${strand} strand`), el('th', { class: 'num' }, 'Turned down'), el('th', { class: 'num' }, ''))),
+        el('tbody', {},
+          row(`Stretches of ${o.min_len}–${o.max_len} nt`, f.stretches, null, 'bs-stage'),
+          row(`more than ${o.max_degenerate} ${base} (written ${code})`, f.degenerate, f.stretches),
+          f.ambiguous ? row('with N or another ambiguous base', f.ambiguous, f.stretches) : null,
+          row('Primers (forward and reverse of each stretch left)', f.primers, null, 'bs-stage'),
+          row(`Tm below ${o.min_tm} °C`, f.tm_low, f.primers),
+          row(`Tm above ${o.max_tm} °C`, f.tm_high, f.primers),
+          row(`a repeat longer than ${o.max_repeat}`, f.repeat, f.primers),
+          row(`a hairpin above ${o.max_self_tm} °C`, f.hairpin, f.primers),
+          row(`a self-dimer above ${o.max_self_tm} °C`, f.homodimer, f.primers),
+          row(`Passing: ${fmt(f.forward)} forward, ${fmt(f.reverse)} reverse`, null, null, 'bs-pass'),
+          row('Pairs of them, the reverse after the forward', ordered, null, 'bs-stage'),
+          row(`product under ${o.min_product} bp`, f.too_short, ordered),
+          row(`product over ${o.max_product} bp`, f.too_long, ordered),
+          row(`Tms more than ${o.max_tm_diff} °C apart`, f.tm_diff, inRange),
+          row(`a dimer of the two above ${o.max_self_tm} °C${res.filters_complete ? '' : ' (of those checked)'}`, f.heterodimer, inRange - f.tm_diff),
+          row(`Passing: ${res.filters_complete ? '' : 'at least '}${fmt(f.pairs)} pairs`, null, null, 'bs-pass')));
+    });
+    // The genome check: primers turned down for matching elsewhere, the strongest such matches shown.
+    let genomePart = null;
+    if (genome && picks.checked) {
+      const P = res.primers;
+      const down = [...picks.verdicts.values()].filter((v) => !v.ok && v.other)
+        .sort((a, b) => (b.other.length * b.other.identity) - (a.other.length * a.other.identity));
+      loss('genome', picks.turnedDown, picks.checked, `The off-target cutoffs (now a match over more than ${Math.round(100 * picks.options.max_match)}% of the primer`
+        + ` at more than ${picks.options.min_identity}% identity): ${picks.turnedDown} of ${picks.checked} primers checked also match ${genome.name} elsewhere.`
+        + ' Raise either, or design in a stretch less like the rest of the genome.');
+      genomePart = el('div', {},
+        el('p', {}, el('b', {}, `Against ${genome.name}: `), `${fmt(picks.checked)} primers checked, ${fmt(picks.turnedDown)} turned down for matching elsewhere too`
+          + `${down.length ? '. The strongest of those matches:' : '.'}`),
+        down.length ? el('ul', { class: 'hint' }, down.slice(0, 4).map((v) => {
+          const p = P[v.id];
+          return el('li', {}, this.bisulfiteSeq(p.sequence),
+            ` (${fmt(p.start + 1)}–${fmt(p.end)}): ${v.other.length}/${p.length} nt, ${v.other.identity}% identical, at `
+            + `${v.other.chrom}:${fmt(v.other.start)}–${fmt(v.other.end)}${v.off_target > 1 ? `, and ${v.off_target - 1} more` : ''}`);
+        })) : null);
+    }
+    const few = picks.chosen.length < picks.suggest;
+    // Pairs got through every cutoff but not the genome check: that is the cause.
+    if (genome && few && picks.turnedDown && Object.values(F).some((f) => f.pairs)) causes.add('genome');
+    const because = tips.filter((t) => causes.has(t.key));
+    const also = tips.filter((t) => !causes.has(t.key) && t.share >= 0.5).sort((a, b) => b.share - a.share).slice(0, 3);
+    const item = (t) => el('li', {}, `${t.tip} (${Math.round(100 * t.share)}% lost here.)`);
+    return el('details', { class: 'bs-whybox', open: few || null },
+      el('summary', {}, !picks.chosen.length ? 'Why no pair passed'
+        : few ? `Why only ${picks.chosen.length} of the ${picks.suggest} asked for` : 'How the primers were chosen'),
+      few && because.length ? el('div', {}, el('p', {}, el('b', {}, picks.chosen.length ? 'What held it back:' : 'Where they all ran out, and what to change:')),
+        el('ol', { class: 'bs-tips' }, because.map(item))) : null,
+      few && picks.chosen.length && !because.length ? el('p', { class: 'hint' }, 'The pairs that pass overlap those already suggested by more '
+        + 'than 20 nt: this region has room for only so many distinct pairs. Select a longer region for more.') : null,
+      also.length ? el('div', {}, el('p', {}, el('b', {}, few ? 'Also losing many, though not the cause:' : 'Where most candidates are lost:')),
+        el('ul', { class: 'bs-tips' }, also.map(item))) : null,
+      el('div', { class: 'bs-why-tables' }, tables),
+      genomePart);
   },
 
   /** A primer with its Y and R picked out. */

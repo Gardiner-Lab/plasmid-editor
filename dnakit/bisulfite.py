@@ -32,6 +32,7 @@ Browser's job: the editor sends it the pairs in score order and keeps those that
 """
 
 import heapq
+from bisect import bisect_left, bisect_right
 from itertools import groupby
 from typing import Any, Dict, List, Optional
 
@@ -87,15 +88,18 @@ def _tm(primer: str) -> float:
     return round(float(Tm_GC(primer, strict=False, valueset=8)), 1)
 
 
-def _structure(primer: str, ceiling: float) -> Optional[Dict[str, float]]:
-    """Hairpin and self-dimer Tm, the stronger of either form; None as soon as one is over ``ceiling``."""
+def _structure(primer: str, ceiling: float) -> Dict[str, Any]:
+    """
+    Hairpin and self-dimer Tm, the stronger of either form; ``failed`` names the first over
+    ``ceiling`` (the hairpin is cheap to find, the dimer is not, so it is only found if needed).
+    """
     forms = _forms(primer)
     hairpin = round(max(primer3.calc_hairpin(f).tm for f in forms), 1)
-    if hairpin > ceiling:                 # the hairpin is cheap to find, the dimer is not
-        return None
+    if hairpin > ceiling:
+        return {'failed': 'hairpin'}
     homodimer = round(max(primer3.calc_homodimer(f).tm for f in forms), 1)
     if homodimer > ceiling:
-        return None
+        return {'failed': 'homodimer'}
     return {'hairpin': hairpin, 'homodimer': homodimer}
 
 
@@ -125,32 +129,57 @@ def _options(raw: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     return o
 
 
-def _candidates(seq: str, o: Dict[str, Any], strand: str) -> Dict[str, List[Dict[str, Any]]]:
-    """Primers passing the single-primer cutoffs, for one converted strand: forward and reverse."""
+def _candidates(seq: str, o: Dict[str, Any], strand: str, why: Dict[str, Any]) -> Dict[str, List[Dict[str, Any]]]:
+    """
+    Primers passing the single-primer cutoffs, for one converted strand: forward and reverse.
+    ``why`` is filled with how many were turned down at each cutoff, for saying why none passed.
+    """
     avoid = 'C' if strand == 'top' else 'G'          # the base the forward primer's stretch has few of
     other = 'G' if avoid == 'C' else 'C'
     out: Dict[str, List[Dict[str, Any]]] = {'forward': [], 'reverse': []}
+    why.update({'stretches': 0, 'degenerate': 0, 'ambiguous': 0, 'least_degenerate': None, 'primers': 0,
+                'tm_low': 0, 'tm_high': 0, 'tm_range': None, 'repeat': 0, 'hairpin': 0, 'homodimer': 0})
+    tms: List[float] = []
     for length in range(o['min_len'], o['max_len'] + 1):
         for start in range(0, len(seq) - length + 1):
             site = seq[start:start + length]
-            if site.count(avoid) > o['max_degenerate'] or any(c not in 'ACGT' for c in site):
+            why['stretches'] += 1
+            if any(c not in 'ACGT' for c in site):
+                why['ambiguous'] += 1
+                continue
+            n = site.count(avoid)
+            if why['least_degenerate'] is None or n < why['least_degenerate']:
+                why['least_degenerate'] = n
+            if n > o['max_degenerate']:
+                why['degenerate'] += 1
                 continue
             # The forward primer is the converted top strand here; the reverse primer the reverse
             # complement of the same stretch, so its degenerate bases are the complement's.
             for direction, primer in (('forward', _degenerate(site, avoid)),
                                       ('reverse', _degenerate(reverse_complement(site), other))):
+                why['primers'] += 1
                 tm = _tm(primer)
-                if not o['min_tm'] <= tm <= o['max_tm']:
+                tms.append(tm)
+                if tm < o['min_tm']:
+                    why['tm_low'] += 1
+                    continue
+                if tm > o['max_tm']:
+                    why['tm_high'] += 1
                     continue
                 repeat = longest_repeat(primer)
                 if repeat > o['max_repeat']:
+                    why['repeat'] += 1
                     continue
                 s = _structure(primer, o['max_self_tm'])
-                if s is None:
+                if 'failed' in s:
+                    why[s['failed']] += 1
                     continue
                 out[direction].append({'start': start, 'end': start + length, 'length': length, 'site': site,
                                        'sequence': primer, 'tm': tm, **s, 'repeat': repeat,
                                        'degenerate': primer.count('Y') + primer.count('R')})
+    if tms:
+        why['tm_range'] = [min(tms), max(tms)]
+    why['forward'], why['reverse'] = len(out['forward']), len(out['reverse'])
     return out
 
 
@@ -171,7 +200,8 @@ def design(sequence: str, options: Optional[Dict[str, Any]] = None, offset: int 
 
     ``offset`` is where the sequence starts in the document, added to every position returned. Gives
     the options used, how many primers passed, how many pairs passed all but the heterodimer cutoff
-    (``possible_pairs``), and the best ``LIMITS['pairs']`` pairs that pass them all; which of
+    (``possible_pairs``), how many were turned down at each cutoff per strand (``filters``, for saying
+    why none passed), and the best ``LIMITS['pairs']`` pairs that pass them all; which of
     them to suggest (the best that do not overlap one already chosen, and that pass a genome check)
     is the caller's choice, as the pairs that pass a check are only known once it has run.
     """
@@ -188,19 +218,29 @@ def design(sequence: str, options: Optional[Dict[str, Any]] = None, offset: int 
     # add to a score, so this is the least each pair can score.
     possible: List[Dict[str, Any]] = []
     counted: Dict[str, Dict[str, int]] = {}
+    filters: Dict[str, Dict[str, Any]] = {}
     for strand in strands:
-        c = _candidates(seq, o, strand)
+        why: Dict[str, Any] = {}
+        c = _candidates(seq, o, strand, why)
         counted[strand] = {'forward': len(c['forward']), 'reverse': len(c['reverse'])}
+        why.update({'combinations': len(c['forward']) * len(c['reverse']), 'wrong_order': 0, 'too_short': 0,
+                    'too_long': 0, 'tm_diff': 0, 'heterodimer': 0, 'pairs': 0})
+        filters[strand] = why
         reverse = sorted(c['reverse'], key=lambda p: p['end'])
+        ends = [r['end'] for r in reverse]
         for f in c['forward']:
-            for r in reverse:
+            # The reverse primers giving a product of the right length, found by where they end.
+            lo = bisect_left(ends, f['start'] + o['min_product'])
+            hi = bisect_right(ends, f['start'] + o['max_product'])
+            before = bisect_right(ends, f['end'])          # ending before the forward primer does: no product
+            why['wrong_order'] += min(before, lo)
+            why['too_short'] += max(0, lo - before)
+            why['too_long'] += len(reverse) - hi
+            for r in reverse[lo:hi]:
                 product = r['end'] - f['start']
-                if product < o['min_product']:
-                    continue
-                if product > o['max_product']:
-                    break                      # sorted by end: every later one is longer still
                 tm_diff = round(abs(f['tm'] - r['tm']), 1)
                 if tm_diff > o['max_tm_diff']:
+                    why['tm_diff'] += 1
                     continue
                 pair = {'strand': strand, 'forward': f, 'reverse': r, 'product': product,
                         'tm_diff': tm_diff, 'heterodimer': 0.0}
@@ -216,7 +256,9 @@ def design(sequence: str, options: Optional[Dict[str, Any]] = None, offset: int 
             break
         het = _heterodimer(pair['forward']['sequence'], pair['reverse']['sequence'])
         if het > o['max_self_tm']:
+            filters[pair['strand']]['heterodimer'] += 1
             continue
+        filters[pair['strand']]['pairs'] += 1
         pair['heterodimer'] = het
         pair['score'] = score(pair, o)
         item = (-pair['score'], -n, pair)
@@ -241,8 +283,10 @@ def design(sequence: str, options: Optional[Dict[str, Any]] = None, offset: int 
     pairs = [{'strand': p['strand'], 'forward': ref(p['forward'], 'forward', p['strand']),
               'reverse': ref(p['reverse'], 'reverse', p['strand']), 'product': p['product'],
               'tm_diff': p['tm_diff'], 'heterodimer': p['heterodimer'], 'score': p['score']} for p in ranked]
+    # Every pair's dimer was found unless the best were settled first: then the counts are a floor.
+    complete = len(possible) == sum(f['heterodimer'] + f['pairs'] for f in filters.values())
     return {'options': o, 'length': len(seq), 'passed': counted, 'possible_pairs': len(possible),
-            'primers': primers, 'pairs': pairs}
+            'filters': filters, 'filters_complete': complete, 'primers': primers, 'pairs': pairs}
 
 
 def choose(result: Dict[str, Any], suggest: int, passes=lambda primer: True,

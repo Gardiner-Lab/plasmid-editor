@@ -614,3 +614,14 @@ tr.clickable:hover td { background: var(--bg-color); }
 .bs-product .bs-conv { color: var(--base-t); font-weight: 700; }
 .bs-product .bs-primer { text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 2px; }
 .bs-pair details { margin: .35rem 0 .5rem; }
+.bs-whybox { margin: .25rem 0 .75rem; }
+.bs-whybox > summary { cursor: pointer; font-weight: 600; }
+.bs-tips { margin: .25rem 0 .5rem 1.2rem; }
+.bs-tips li { margin-bottom: .25rem; }
+.bs-why-tables { display: flex; flex-wrap: wrap; gap: .75rem; }
+.bs-why { flex: 1 1 18rem; font-size: .85rem; }
+.bs-why th, .bs-why td { padding: .2rem .45rem; }
+.bs-why .num { text-align: right; white-space: nowrap; }
+.bs-why tr.bs-stage td { font-weight: 600; border-top: 2px solid var(--border-color); }
+.bs-why tr.bs-pass td { color: var(--success-color); font-weight: 600; }
+.bs-why tr:not(.bs-stage):not(.bs-pass) td:first-child { padding-left: 1.2rem; color: var(--text-secondary); }
