@@ -6,6 +6,16 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.28.3] - 2026-11-12
+
+### Added
+- **Why no bisulfite pair passed.** When none passes, or fewer than asked for, the results say where the
+  candidates were lost: for each converted strand, how many each cutoff turned down, from stretches of
+  sequence (too many C or G to write as Y or R) to primers (Tm, repeats, hairpins, self-dimers) to pairs
+  (product length, Tm difference, dimers), then the genome check with the strongest matches elsewhere. The
+  step where the candidates ran out is named, with the option to change; other big losses follow. When
+  pairs pass, the same counts are under "How the primers were chosen".
+
 ## [0.28.2] - 2026-11-12
 
 ### Fixed
