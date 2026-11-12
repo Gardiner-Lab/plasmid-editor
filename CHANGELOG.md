@@ -6,6 +6,13 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.28.2] - 2026-11-12
+
+### Fixed
+- **0.28.1 was not published either:** compiling `primer3-py` for arm64 also needs `make`, to build primer3's
+  own programs. The image now installs `build-essential` for that step and removes it after. Otherwise as
+  0.28.0, the first release with bisulfite primers.
+
 ## [0.28.1] - 2026-11-12
 
 ### Fixed

@@ -5,12 +5,13 @@ WORKDIR /app
 RUN useradd -m -u 1000 appuser && mkdir -p /data && chown -R appuser:appuser /app /data
 
 # Biopython ships wheels for both platforms the release builds; primer3-py has none for
-# arm64, so it is compiled there. The compiler is installed for this step only and removed.
+# arm64, so it is compiled there, with make as well as the compiler (its build also makes
+# primer3's own programs). The toolchain is installed for this step only and removed.
 COPY requirements.txt .
-RUN apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev && \
+RUN apt-get update && apt-get install -y --no-install-recommends build-essential && \
     pip install --no-cache-dir -r requirements.txt && \
     pip install --no-cache-dir gunicorn==23.0.0 && \
-    apt-get purge -y gcc libc6-dev && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
+    apt-get purge -y build-essential && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
 
 COPY dnakit/ ./dnakit/
 COPY app/ ./app/
