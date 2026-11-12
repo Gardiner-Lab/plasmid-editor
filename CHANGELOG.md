@@ -6,6 +6,13 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.28.4] - 2026-11-12
+
+### Fixed
+- **Bisulfite primers: each tip says which converted strand it is about.** With both strands searched, one can
+  run out of pairs while the other has some; a tip about the first no longer reads as contradicting the pairs
+  shown.
+
 ## [0.28.3] - 2026-11-12
 
 ### Added
