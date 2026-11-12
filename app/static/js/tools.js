@@ -617,6 +617,273 @@ const Tools = {
     });
   },
 
+  /* --- bisulfite primers ------------------------------------------------ */
+
+  /**
+   * Primers for bisulfite PCR in the selection, or the whole sequence: designed by the editor
+   * (dnakit/bisulfite.py, after Colette Picard's design_bisulfite_primers.py), the best pairs then
+   * checked against a reference genome in the Genome Browser when one is chosen.
+   */
+  async bisulfitePrimers() {
+    const doc = this.doc();
+    if (!doc) return;
+    const sel = Editor.view.selection;
+    const picked = sel && Editor.view.selectionLength() > 0;
+    const region = picked ? { start: sel.start, end: sel.end } : { start: 0, end: doc.sequence.length };
+    if (region.end <= region.start) {
+      toast('Select a region that does not run across the origin', 'error');
+      return;
+    }
+    const length = region.end - region.start;
+    if (length > 10000) {
+      toast('Select at most 10,000 bp to design bisulfite primers in', 'error');
+      return;
+    }
+    const num = (id, label, value, extra = {}) => el('div', { class: 'field' },
+      el('label', { for: id }, label), el('input', { type: 'number', id, value, ...extra }));
+    const opt = (value, label) => el('option', { value }, label);
+    modal({
+      title: 'Bisulfite primers',
+      wide: true,
+      build: (body) => {
+        const val = (id) => body.querySelector(`#${id}`)?.value ?? '';
+        body.append(
+          el('p', { class: 'hint' }, `Designing in ${picked ? `${fmt(region.start + 1)}–${fmt(region.end)}` : 'the whole sequence'} `
+            + `(${fmt(length)} bp). Bisulfite turns unmethylated C into T, so afterwards the two strands no longer match: a pair `
+            + 'amplifies one converted strand, and a C (or G) a primer cannot avoid is written Y (or R), so it anneals whether '
+            + 'that C was methylated or not.'),
+          el('div', { class: 'field-row' },
+            el('div', { class: 'field' }, el('label', { for: 'bsStrand' }, 'Converted strand'),
+              el('select', { id: 'bsStrand' }, opt('both', 'Either'), opt('top', 'Top (C → T)'), opt('bottom', 'Bottom (G → A here)'))),
+            num('bsSuggest', 'Pairs to suggest', 3, { min: 1, max: 20 }),
+            Genome.enabled() ? el('div', { class: 'field' }, el('label', { for: 'bsGenome' }, 'Check against'),
+              el('select', { id: 'bsGenome' }, opt('', 'No genome: not checked'))) : null),
+          el('details', {},
+            el('summary', {}, 'More options'),
+            el('div', { class: 'field-row' },
+              num('bsMinLen', 'Primer length, min', 25), num('bsMaxLen', 'max', 30),
+              num('bsDegen', 'Y or R bases, at most', 2, { min: 0 }),
+              num('bsRepeat', 'Longest repeat', 3, { min: 1, title: 'The longest run of one base, or of a 2- or 3-base unit (ATATAT is 3)' })),
+            el('div', { class: 'field-row' },
+              num('bsMinTm', 'Tm (°C), min', 51, { step: 0.5 }), num('bsOptTm', 'optimal', 58, { step: 0.5 }),
+              num('bsMaxTm', 'max', 64, { step: 0.5 }), num('bsTmDiff', 'Tm difference, at most', 5, { step: 0.5 })),
+            el('div', { class: 'field-row' },
+              num('bsMinProd', 'Product (bp), min', 200), num('bsOptProd', 'optimal', 300), num('bsMaxProd', 'max', 500),
+              num('bsSelfTm', 'Hairpin and dimer Tm, at most', '', { placeholder: 'min Tm − 10', step: 0.5 })),
+            Genome.enabled() ? el('div', { class: 'field-row' },
+              num('bsMatch', 'Off-target: a match over more than this part of the primer', 0.9, { step: 0.05, min: 0.1, max: 1 }),
+              num('bsIdentity', 'more than this % identical', 90, { min: 50, max: 100 })) : null,
+            el('p', { class: 'hint' }, "The defaults and the score that ranks pairs are from Colette Picard's "
+              + 'design_bisulfite_primers.py, except the off-target cutoffs: every chromosome is searched here, where the '
+              + "script in effect searched only the primer's own, and its 75% / 80% then turns down most primers in AT-rich DNA. "
+              + 'Help says what each option does.')),
+          el('div', { class: 'btn-group', style: 'margin-top:.5rem' },
+            el('button', { class: 'btn btn-sm', id: 'bsRun', onclick: () => run() }, 'Design')),
+          el('div', { id: 'bsOut', style: 'margin-top:.75rem' }));
+
+        // The genomes this person may check against; the last one used, else Arabidopsis, comes first.
+        if (Genome.enabled()) {
+          Genome.genomes().then((genomes) => {
+            const select = body.querySelector('#bsGenome');
+            select.append(...genomes.map((g) => opt(g.id, g.assembly_id && g.assembly_id !== g.name ? `${g.name} (${g.assembly_id})` : g.name)));
+            let last = '';
+            try { last = localStorage.getItem('bisulfiteGenome') || ''; } catch (e) { /* no storage */ }
+            const thale = genomes.find((g) => /TAIR|Arabidopsis/i.test(`${g.name} ${g.assembly_id}`));
+            select.value = genomes.some((g) => g.id === last) ? last : (last === 'none' ? '' : thale?.id || '');
+          }).catch(() => { /* no Genome Browser to reach: the check is simply not offered */ });
+        }
+
+        const run = async () => {
+          const out = body.querySelector('#bsOut');
+          const button = body.querySelector('#bsRun');
+          const status = el('span', {}, 'Designing…');
+          out.replaceChildren(el('p', { class: 'hint' }, el('span', { class: 'spin' }), ' ', status));
+          button.disabled = true;
+          try {
+            const options = {
+              strand: val('bsStrand'), min_len: val('bsMinLen'), max_len: val('bsMaxLen'), max_degenerate: val('bsDegen'),
+              max_repeat: val('bsRepeat'), min_tm: val('bsMinTm'), opt_tm: val('bsOptTm'), max_tm: val('bsMaxTm'),
+              max_tm_diff: val('bsTmDiff'), min_product: val('bsMinProd'), opt_product: val('bsOptProd'),
+              max_product: val('bsMaxProd'), max_self_tm: val('bsSelfTm'),
+            };
+            const res = await API.post('/api/tools/bisulfite-primers', {
+              document: Editor.payloadDoc(), start: region.start, end: region.end, options });
+            const suggest = Math.min(20, Math.max(1, Math.round(Number(val('bsSuggest')) || 3)));
+            const select = body.querySelector('#bsGenome');
+            const genome = select?.value ? { id: select.value, name: select.selectedOptions[0].textContent } : null;
+            try { if (select) localStorage.setItem('bisulfiteGenome', select.value || 'none'); } catch (e) { /* no storage */ }
+            if (genome) status.textContent = `Checking the best primers against ${genome.name}…`;
+            const picks = await this.chooseBisulfite(res, suggest, genome,
+              { max_match: Number(val('bsMatch') || 0.9), min_identity: Number(val('bsIdentity') || 90) },
+              (message) => { status.textContent = message; });
+            out.replaceChildren(this.bisulfiteResults(doc, res, picks, genome));
+          } catch (err) {
+            out.replaceChildren(el('div', { class: 'alert alert-error', text: err.message }));
+          } finally {
+            button.disabled = false;
+          }
+        };
+      },
+      buttons: [{ label: 'Close', kind: 'secondary' }],
+    });
+  },
+
+  /**
+   * The pairs to suggest, as the script picks them (dnakit/bisulfite.py choose()): best first,
+   * skipping one whose primers overlap by more than 20 nt a primer already chosen on that strand,
+   * and, with a genome, one either of whose primers binds it elsewhere too. Primers are checked a
+   * batch at a time, only as far down the list as it takes.
+   */
+  async chooseBisulfite(res, suggest, genome, options, onWait) {
+    const P = res.primers;
+    const verdicts = new Map();
+    const chosen = [];
+    const taken = { top: [], bottom: [] };
+    const span = (p) => [p.start, p.end];
+    const overlaps = (pair) => [P[pair.forward], P[pair.reverse]].some((p) => taken[pair.strand]
+      .some(([s, e]) => Math.min(p.end, e) - Math.max(p.start, s) > 20));
+    let i = 0;
+    while (chosen.length < suggest && i < res.pairs.length) {
+      if (genome) {
+        const need = [];
+        for (let j = i; j < res.pairs.length && need.length < 60; j++) {
+          const pair = res.pairs[j];
+          if (overlaps(pair)) continue;
+          for (const id of [pair.forward, pair.reverse]) if (!verdicts.has(id) && !need.includes(id)) need.push(id);
+        }
+        if (need.length) {
+          // The primer's site as it is in the genome, before conversion, as the script BLASTed it.
+          const { primers } = await Genome.checkPrimers(genome.id,
+            need.map((id) => ({ id: String(id), sequence: P[id].site })), options, onWait);
+          for (const v of primers) verdicts.set(Number(v.id), v);
+        }
+      }
+      for (; i < res.pairs.length && chosen.length < suggest; i++) {
+        const pair = res.pairs[i];
+        if (overlaps(pair)) continue;
+        if (genome) {
+          if (!verdicts.has(pair.forward) || !verdicts.has(pair.reverse)) break;     // check the next batch
+          if (!verdicts.get(pair.forward).ok || !verdicts.get(pair.reverse).ok) continue;
+        }
+        chosen.push(pair);
+        taken[pair.strand].push(span(P[pair.forward]), span(P[pair.reverse]));
+      }
+    }
+    const turnedDown = [...verdicts.values()].filter((v) => !v.ok).length;
+    return { chosen, verdicts, checked: verdicts.size, turnedDown };
+  },
+
+  bisulfiteResults(doc, res, picks, genome) {
+    const P = res.primers;
+    const counts = Object.entries(res.passed)
+      .map(([strand, n]) => `${n.forward} forward and ${n.reverse} reverse on the converted ${strand} strand`);
+    const summary = el('p', { class: 'hint' },
+      `Primers passing: ${counts.join('; ')}. ${fmt(res.possible_pairs)} pairs of the right product length and Tm. `,
+      genome ? `${fmt(picks.checked)} primers checked against ${genome.name}, ${fmt(picks.turnedDown)} turned down for binding elsewhere too.`
+        : 'Not checked against a genome: check the pairs you like for other binding sites before ordering.');
+    if (!picks.chosen.length) {
+      return el('div', {}, summary, el('div', { class: 'alert alert-error' },
+        'No pair passes. Try more Y or R bases, a wider Tm or product range, shorter primers, or the other converted strand'
+        + (genome && picks.turnedDown ? `; or a looser off-target cutoff, as ${picks.turnedDown} primers bind ${genome.name} elsewhere too.` : '.')));
+    }
+    return el('div', {}, summary, picks.chosen.map((pair, i) => this.bisulfitePair(doc, pair, i + 1, P, genome ? picks.verdicts : null)));
+  },
+
+  /** A primer with its Y and R picked out. */
+  bisulfiteSeq(seq) {
+    return el('span', { class: 'mono bs-seq' }, [...seq.matchAll(/[YR]+|[^YR]+/g)]
+      .map(([run]) => (/[YR]/.test(run) ? el('span', { class: 'bs-degen' }, run) : run)));
+  },
+
+  /** Where the Genome Browser found a primer: its own site, and the next best match if any. */
+  bisulfiteVerdict(v, primer) {
+    if (!v) return '';
+    const where = (h) => `${h.chrom}:${fmt(h.start)}–${fmt(h.end)} (${h.strand})`;
+    const parts = [v.site ? `binds ${where(v.site)}` : el('span', { class: 'bs-warn' }, 'not found in this genome')];
+    if (v.other) parts.push(`; next best ${v.other.length}/${primer.length} nt, ${v.other.identity}% identical, at ${where(v.other)}`);
+    return el('span', { class: 'hint' }, parts);
+  },
+
+  bisulfitePair(doc, pair, rank, P, verdicts) {
+    const f = P[pair.forward];
+    const r = P[pair.reverse];
+    const strand = pair.strand;
+    const row = (label, p) => el('tr', {},
+      el('th', {}, label), el('td', {}, this.bisulfiteSeq(p.sequence)),
+      el('td', {}, `${p.length} nt`), el('td', {}, `Tm ${p.tm} °C`),
+      el('td', {}, `${fmt(p.start + 1)}–${fmt(p.end)}`),
+      verdicts ? el('td', {}, this.bisulfiteVerdict(verdicts.get(p.id), p)) : null);
+    const sites = [
+      { strand: 1, start: f.start, end: f.end, label: 'Forward primer' },
+      { strand: -1, start: r.start, end: r.end, label: 'Reverse primer' }];
+    const purpose = `bisulfite PCR, converted ${strand} strand`;
+    return el('div', { class: 'bs-pair' },
+      el('div', { class: 'bs-pair-head' }, el('b', {}, `Pair ${rank}`),
+        ` · converted ${strand} strand · ${fmt(pair.product)} bp product · score ${pair.score}`),
+      el('table', { class: 'table bs-table' }, el('tbody', {}, row('Forward', f), row('Reverse', r))),
+      el('p', { class: 'hint' }, `Tm difference ${pair.tm_diff} °C. Strongest hairpin ${Math.max(f.hairpin, r.hairpin)} °C, `
+        + `self-dimer ${Math.max(f.homodimer, r.homodimer)} °C, dimer of the two ${pair.heterodimer} °C.`),
+      this.bisulfiteProduct(doc, pair, f, r),
+      el('div', { class: 'btn-group' },
+        el('button', { class: 'btn btn-sm btn-secondary', onclick: () => Editor.copy(`${f.sequence}\n${r.sequence}`) }, 'Copy both'),
+        Stocks.enabled() ? el('button', {
+          class: 'btn btn-sm', title: 'Add both to the lab\'s primers in Lab Stocks, numbered there; their binding sites take the codes',
+          onclick: (e) => this.savePrimers(e.currentTarget, doc, { forward: f, reverse: r }, sites, { tag: '-BS', purpose }),
+        }, 'Save to primer stock') : null,
+        el('button', {
+          class: 'btn btn-sm btn-secondary',
+          onclick: () => {
+            const doc2 = Editor.doc;
+            Editor.pushUndo();
+            doc2.features.push(...sites.map((site) => {
+              const named = this.primerNaming(site);
+              const note = [named.qualifiers.note, `${purpose}: ${site.strand === 1 ? f.sequence : r.sequence}`].filter(Boolean).join('; ');
+              return { id: `p${site.strand === 1 ? 'f' : 'r'}${Date.now().toString(36)}`, type: 'primer_bind',
+                start: site.start, end: site.end, strand: site.strand, color: FEATURE_COLORS.primer_bind,
+                ...named, qualifiers: { ...named.qualifiers, note } };
+            }));
+            Editor.markDirty();
+            toast('Primer binding sites annotated', 'success');
+          },
+        }, 'Annotate binding sites'),
+        Notebook.button('The primer pair for bisulfite PCR, with its sequences, positions, Tm and product.', async () => ({
+          section: {
+            type: 'section', title: `Bisulfite primers: ${doc.name || 'Untitled'} ${fmt(f.start + 1)}–${fmt(r.end)}`,
+            source: { kind: 'primers', id: doc.id || '', name: doc.name || '' },
+            blocks: [
+              { type: 'text', html: `<p>Primers for bisulfite PCR of ${fmt(f.start + 1)}–${fmt(r.end)} of ${Notebook.plasmid(doc)}, `
+                + `amplifying the converted ${strand} strand: a ${fmt(pair.product)} bp product. Y is C or T, R is G or A.</p>` },
+              Notebook.table('Primers', [['Primer'], ["Sequence 5'→3'"], ['Length', 'number', 'nt'], ['Tm', 'number', '°C'],
+                ['From'], ['To'], ['Ordered', 'check']],
+              [['Forward', f], ['Reverse', r]].map(([name, p]) => [name, p.sequence, p.length, p.tm, p.start + 1, p.end, null])),
+            ],
+          },
+        }))));
+  },
+
+  /** The product as the converted strand reads, its converted bases and the primer sites marked. */
+  bisulfiteProduct(doc, pair, f, r) {
+    const from = pair.strand === 'top' ? 'C' : 'G';
+    const to = pair.strand === 'top' ? 'T' : 'A';
+    const seq = doc.sequence.slice(f.start, r.end).toUpperCase();
+    const box = el('div', { class: 'mono bs-product' });
+    let run = '';
+    let cls = null;
+    const flush = () => { if (run) box.append(cls ? el('span', { class: cls }, run) : run); run = ''; };
+    for (let i = 0; i < seq.length; i++) {
+      const pos = f.start + i;
+      const c = [pos < f.end || pos >= r.start ? 'bs-primer' : '', seq[i] === from ? 'bs-conv' : ''].filter(Boolean).join(' ') || null;
+      if (c !== cls) { flush(); cls = c; }
+      run += seq[i] === from ? to : seq[i];
+    }
+    flush();
+    return el('details', {},
+      el('summary', {}, `The product after conversion (${fmt(seq.length)} bp)`),
+      el('p', { class: 'hint' }, `As this sequence reads, with every ${from} read as ${to} (unmethylated) and marked; a methylated `
+        + `${from} stays ${from}. The primer sites are underlined.${pair.strand === 'bottom' ? ' The converted bottom strand is the complement of this.' : ''}`),
+      box);
+  },
+
   /** A designed primer's feature name: its Lab Stocks code once saved there, else Forward / Reverse primer. */
   primerNaming(site) {
     return site.stock
@@ -628,14 +895,14 @@ const Tools = {
    * Save a designed pair to Lab Stocks, named after the plasmid. Their binding
    * sites, when annotated, are renamed to the codes Lab Stocks gives them.
    */
-  async savePrimers(button, doc, res, sites) {
-    const base = (doc.name || 'primer').slice(0, 60);
+  async savePrimers(button, doc, res, sites, { tag = '', purpose = 'PCR' } = {}) {
+    const base = `${(doc.name || 'primer').slice(0, 60)}${tag}`;
     const target = `${doc.name || ''} ${fmt(sites[0].start + 1)}–${fmt(sites[1].end)}`;
     button.disabled = true;
     try {
       const { primers } = await Stocks.call('POST', '/primers/many', { primers: [
-        { name: `${base}-F`, sequence: res.forward.full || res.forward.sequence, direction: 'forward', target, purpose: 'PCR' },
-        { name: `${base}-R`, sequence: res.reverse.full || res.reverse.sequence, direction: 'reverse', target, purpose: 'PCR' }] });
+        { name: `${base}-F`, sequence: res.forward.full || res.forward.sequence, direction: 'forward', target, purpose },
+        { name: `${base}-R`, sequence: res.reverse.full || res.reverse.sequence, direction: 'reverse', target, purpose }] });
       sites.forEach((site, i) => { site.stock = primers[i]; });
       // The binding sites already annotated on this sequence: named after their codes now.
       const named = Editor.doc === doc ? doc.features.filter((f) => f.type === 'primer_bind'

@@ -105,6 +105,9 @@ def create_app() -> Flask:
             # The Seed Bank: "/seeds" in the suite, for a plasmid's family tree (the
             # lines made with it and their seeds); unset, that link is hidden.
             'seeds_url': os.environ.get('SEEDS_URL', '').strip().rstrip('/'),
+            # The Genome Browser: "/genome" in the suite, where bisulfite primers are checked
+            # against a reference genome; unset, that check is not offered.
+            'genome_url': os.environ.get('GENOME_URL', '').strip().rstrip('/'),
             # Inside the suite, its dashboard has every account and admin control.
             'suite_dashboard': suite_auth.dashboard_url() if suite_auth.enabled() else '',
             'moclo': {

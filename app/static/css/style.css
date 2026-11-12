@@ -600,3 +600,17 @@ tr.clickable:hover td { background: var(--bg-color); }
 .faq dt { font-weight: 600; margin-top: .8rem; }
 .faq dd { margin: .2rem 0 0 1rem; }
 .help section { scroll-margin-top: 4rem; }
+
+/* Bisulfite primers (Tools.bisulfitePrimers): pairs, their Y/R bases, the converted product. */
+.bs-pair { border: 1px solid var(--border-color); border-radius: .5rem; padding: .6rem .75rem; margin-bottom: .75rem; }
+.bs-pair-head { margin-bottom: .35rem; }
+.bs-table th, .bs-table td { padding: .3rem .5rem; vertical-align: top; }
+.bs-table th, .bs-table td:nth-child(-n+5) { white-space: nowrap; }
+.bs-seq { white-space: nowrap; }
+.bs-degen { color: var(--base-c); font-weight: 700; }
+.bs-warn { color: var(--warning-color); }
+.bs-product { font-size: .8rem; line-height: 1.5; overflow-wrap: anywhere; padding: .4rem .5rem;
+    background: var(--bg-color); border-radius: .35rem; }
+.bs-product .bs-conv { color: var(--base-t); font-weight: 700; }
+.bs-product .bs-primer { text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 2px; }
+.bs-pair details { margin: .35rem 0 .5rem; }

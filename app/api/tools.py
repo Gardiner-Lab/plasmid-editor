@@ -3,7 +3,7 @@
 from flask import Blueprint, jsonify, request
 
 from app.services.auth import require_auth
-from dnakit import align, assembly, features, model, primers, restriction, seqio, translate
+from dnakit import align, assembly, bisulfite, features, model, primers, restriction, seqio, translate
 
 tools_bp = Blueprint('tools', __name__)
 
@@ -426,6 +426,29 @@ def design_primers(user):
             min_len=int(data.get('min_len', 18)), max_len=int(data.get('max_len', 32)),
             forward_tail=data.get('forward_tail', ''), reverse_tail=data.get('reverse_tail', ''),
             circular=doc['circular'])
+    except (KeyError, ValueError, TypeError) as exc:
+        return _bad(exc)
+    return jsonify(result), 200
+
+
+@tools_bp.route('/bisulfite-primers', methods=['POST'])
+@require_auth
+def bisulfite_primers(user):
+    """
+    Primer pairs for bisulfite PCR in ``start``..``end`` of the document (all of it when absent).
+
+    The pairs come best first with their primers listed once; the page picks which to suggest,
+    checking them against a genome in the Genome Browser when asked (dnakit/bisulfite.py).
+    """
+    data = _json()
+    try:
+        doc = _document(data)
+        seq = doc['sequence']
+        start = int(data.get('start') or 0)
+        end = int(data['end']) if data.get('end') not in (None, '') else len(seq)
+        if not 0 <= start < end <= len(seq):
+            raise ValueError('select a region within the sequence, not across its origin')
+        result = bisulfite.design(seq[start:end], data.get('options') or {}, offset=start)
     except (KeyError, ValueError, TypeError) as exc:
         return _bad(exc)
     return jsonify(result), 200

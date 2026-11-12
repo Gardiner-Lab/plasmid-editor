@@ -16,6 +16,41 @@ const STOCKS = (document.body?.dataset.stocks || '').replace(/\/$/, '');
 // The Lab Notebook, beside the editor in the suite (NOTEBOOK_URL): a virtual digest can go into a
 // day's page there. Unset, that button is hidden.
 const NOTEBOOK = (document.body?.dataset.notebook || '').replace(/\/$/, '');
+// The Genome Browser, beside the editor in the suite (GENOME_URL): bisulfite primers are checked
+// against one of its reference genomes. Unset, that check is not offered.
+const GENOME = (document.body?.dataset.genome || '').replace(/\/$/, '');
+const Genome = {
+  enabled: () => !!GENOME,
+  async call(method, path, body) {
+    const res = await fetch(`${GENOME}/api${path}`, {
+      method, credentials: 'same-origin',
+      headers: body === undefined ? {} : { 'Content-Type': 'application/json' },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    let data = {};
+    try { data = await res.json(); } catch (e) { /* not JSON */ }
+    if (!res.ok) throw new Error(data.error || `Genome Browser: ${res.status}`);
+    return { status: res.status, data };
+  },
+  /** The reference genomes this person may open: [{id, name, assembly_id, suite, ...}]. */
+  async genomes() { return (await this.call('GET', '/genomes')).data; },
+  /**
+   * Whether each primer binds the genome at one place only: [{id, sequence}] in, a verdict per
+   * primer out. The first check of a genome waits while the Genome Browser prepares it for
+   * searching; onWait(message) says so meanwhile.
+   */
+  async checkPrimers(genomeId, primers, options = {}, onWait = () => {}) {
+    const started = Date.now();
+    for (;;) {
+      const { status, data } = await this.call('POST', `/genomes/${encodeURIComponent(genomeId)}/primer-check`,
+        { primers, ...options });
+      if (status !== 202) return data;
+      if (Date.now() - started > 20 * 60 * 1000) throw new Error('The genome is still being prepared for searching; try again later.');
+      onWait(data.message || 'Preparing the genome for searching…');
+      await new Promise((resolve) => setTimeout(resolve, 5000));
+    }
+  },
+};
 const Stocks = {
   enabled: () => !!STOCKS,
   async call(method, path, body) {

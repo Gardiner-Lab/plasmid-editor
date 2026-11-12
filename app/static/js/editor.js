@@ -1702,6 +1702,7 @@ const Editor = {
     document.getElementById('btnSilent').addEventListener('click', () => Tools.silentSites());
     document.getElementById('btnPrimer').addEventListener('click', () => Tools.designPrimers());
     document.getElementById('btnPcr').addEventListener('click', () => Tools.pcr());
+    document.getElementById('btnBisulfite').addEventListener('click', () => Tools.bisulfitePrimers());
     document.getElementById('btnBlast').addEventListener('click', () => this.blast());
     if (Stocks.enabled()) {
       document.getElementById('btnLabPrimers').hidden = false;

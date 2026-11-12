@@ -6,6 +6,8 @@ bcrypt==4.2.1
 
 # Bioinformatics: sequence I/O, REBASE enzymes, alignment, melting temperatures
 biopython==1.85
+# Hairpin and primer-dimer stability, for bisulfite primers (GPL-2.0-or-later)
+primer3-py==2.4.0
 
 # Testing
 pytest==8.3.4

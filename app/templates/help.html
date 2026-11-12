@@ -19,6 +19,7 @@
         <a href="#cloning">Cloning simulations</a>
         <a href="#gateway">Gateway, Cre-lox and FRT</a>
         <a href="#primers">Primers and PCR</a>
+        <a href="#bisulfite">Bisulfite primers</a>
         <a href="#sequencing">Sequencing reads</a>
         <a href="#clones">Comparing the reads of a clone</a>
         <a href="#calling">Calling a base yourself</a>
@@ -167,6 +168,48 @@
             <li>A designed primer can be saved straight to Lab Stocks, keeping the sequence exactly as
                 designed.</li>
         </ul>
+    </section>
+
+    <section id="bisulfite">
+        <h2>Bisulfite primers</h2>
+        <p>For DNA methylation: bisulfite turns every unmethylated C into U, read as T, and leaves a methylated
+           C as it is. Afterwards the two strands of the DNA no longer match, so a primer pair amplifies one
+           <b>converted strand</b>, top or bottom, never both. A primer is put where its strand has few Cs (or,
+           for the bottom strand, few Gs), and each one it cannot avoid is written <b>Y</b> (C or T) or
+           <b>R</b> (G or A), so the primer anneals whether that C was methylated or not. Bisulfite primers are
+           longer than usual, 25&ndash;30 nt, as converted DNA is mostly three bases.</p>
+        <ol class="steps">
+            <li>Select the region to amplify in, or nothing for the whole sequence (at most 10&nbsp;kb), and
+                choose <b>Bisulfite primers</b> under Analysis.</li>
+            <li>Choose a converted strand, or either, how many pairs to suggest, and a genome to check them
+                against. <b>More options</b> has the primer length, how many Y or R bases a primer may have,
+                the longest repeat (a run of one base, or of a 2- or 3-base unit: ATATAT is 3), the Tm and
+                product ranges, and the ceiling for hairpins and dimers (the minimum Tm less 10&nbsp;&deg;C
+                unless set).</li>
+            <li><b>Design</b>. Pairs come best first. Each shows its primers with the Y and R picked out, their
+                Tm and place, and the product after conversion with the converted bases marked.</li>
+            <li>Save a pair to Lab Stocks, annotate where it binds, or add it to the notebook.</li>
+        </ol>
+        <h3>How pairs are ranked</h3>
+        <p>As in <i>design_bisulfite_primers.py</i> by Colette L. Picard (2016), which this is rewritten from:
+           a score where lower is better, adding the Y and R bases of both primers, the difference between their
+           Tms, how far each Tm is from the optimum and the product from its optimal length (a tenth of a point
+           per bp), a tenth of each hairpin and dimer Tm, and the longest repeat of each, less 3 for each primer
+           with 2 or 3 G or C in its last five bases (a GC clamp). A pair is not suggested when a primer of it
+           overlaps by more than 20 nt one of a pair already suggested for the same strand. Three things differ
+           from the script, each a fix: the maximum product length is applied, which the script read but never
+           used; a reverse primer's hairpin is measured on the primer itself; and a pair's dimer is measured on
+           the real bases, where the script let primer3 read Y and R as bases that cannot pair.</p>
+        <h3>The genome check</h3>
+        <p>With a genome chosen, each primer's site, as it reads before conversion, is searched for with BLAST
+           in the Genome Browser. A primer is turned down when it matches somewhere other than its own site over
+           more than 90% of its length at more than 90% identity; a pair is suggested only when both primers
+           pass. The first check of a genome waits while the Genome Browser prepares it for searching: seconds
+           for Arabidopsis, longer for a large genome. A primer found nowhere passes, marked so: the sequence may
+           be from another genome. The script judged only the second line of BLAST's output, which in effect
+           searched the primer's own chromosome; every chromosome is searched here, so the script's own cutoffs
+           (75% of the primer, 80% identity) turn down most primers in AT-rich DNA, and the defaults are
+           looser. Both can be set under More options.</p>
     </section>
 
     <section id="sequencing">

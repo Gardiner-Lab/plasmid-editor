@@ -614,7 +614,7 @@ def test_the_about_and_help_pages_are_there_and_point_at_each_other(client):
 def test_every_page_reaches_the_suite_and_its_other_tools():
     """The bar must carry the tool switcher, so every tool reaches every other one."""
     from pathlib import Path
-    html = Path('app/templates/base.html').read_text()
+    html = Path('app/templates/base.html').read_text(encoding='utf-8')
     assert 'trellis/modules.js' in html, 'the other tools are not linked from the bar'
 
 
@@ -656,7 +656,7 @@ def test_the_enzyme_filter_redraws_the_table_with_the_servers_own_counts():
     once passed an empty {} it showed every enzyme cutting "6" times.
     """
     from pathlib import Path
-    js = Path('app/static/js/editor.js').read_text()
+    js = Path('app/static/js/editor.js').read_text(encoding='utf-8')
     assert 'this.lastCounts = body.counts || {}' in js, 'the counts the server sent must be kept'
     assert 'renderEnzymeTable(this.lastCounts || {}, this.lastNonCutters || [])' in js, \
         'the filter must redraw with those counts, not with {}'
@@ -902,11 +902,11 @@ def test_every_timestamp_the_editor_shows_goes_through_the_eu_date_helper():
     from pathlib import Path
     for name in ('sequencing.js', 'library.js', 'editor.js', 'admin.js'):
         js = Path('app/static/js') / name
-        text = js.read_text()
+        text = js.read_text(encoding='utf-8')
         for bad in ('.slice(0, 16)', '.slice(0,16)'):
             assert bad not in text, f'{name} renders a raw timestamp with {bad}; use localTime()'
     # The helper itself still writes day-month-year, and keeps its raw fallback.
-    helper = Path('app/static/js/api.js').read_text()
+    helper = Path('app/static/js/api.js').read_text(encoding='utf-8')
     assert 'function localTime(stamp)' in helper
     assert '${pad(d.getDate())}-${pad(d.getMonth() + 1)}-${d.getFullYear()}' in helper
 
@@ -919,7 +919,7 @@ def test_the_editor_asks_lab_stocks_for_every_stock_of_a_plasmid():
     host; these guard the two things that were wrong when it was first written.
     """
     from pathlib import Path
-    js = Path('app/static/js/sequencing.js').read_text()
+    js = Path('app/static/js/sequencing.js').read_text(encoding='utf-8')
     # Lab Stocks answers a listing under the collection's name, not as `records`.
     assert "({ glycerol: stocks = [] } = await Stocks.call('GET', `/glycerol?plasmid=" in js
     # It must run after the panel is on the page, or getElementById finds nothing and it gives up.
@@ -930,10 +930,10 @@ def test_the_editor_asks_lab_stocks_for_every_stock_of_a_plasmid():
     assert 'if (seq.confirmed) this.renderGlycerolStocks' not in js
     # The dialog lives on the shared Stocks helper, so both the sequencing page and the editor tab
     # offer it: a plasmid is looked at in the editor, not only when its reads are judged.
-    api = Path('app/static/js/api.js').read_text()
+    api = Path('app/static/js/api.js').read_text(encoding='utf-8')
     assert 'addDialog(plasmid, onDone)' in api and 'async linkExisting(plasmid, code' in api
     assert 'Stocks.addDialog(' in js, 'the sequencing panel uses the shared dialog'
-    assert 'Stocks.addDialog(' in Path('app/static/js/editor.js').read_text(), 'so does the editor tab'
+    assert 'Stocks.addDialog(' in Path('app/static/js/editor.js').read_text(encoding='utf-8'), 'so does the editor tab'
     # Adding a stock must never rewrite the number the plasmid was confirmed with.
     add = api[api.index('async linkExisting(plasmid, code'):api.index("render(code) {")]
     assert '/confirm' not in add, 'linking a stock must not re-confirm the plasmid'
@@ -946,7 +946,7 @@ def test_a_stock_number_is_matched_however_it_is_padded_and_made_if_it_is_new():
     the first is the same stock, and the second becomes one, keeping the tube's own label.
     """
     from pathlib import Path
-    api = Path('app/static/js/api.js').read_text()
+    api = Path('app/static/js/api.js').read_text(encoding='utf-8')
     assert 'spellings(code)' in api and "padStart(4, '0')" in api, 'zero-padding must be tolerated'
     assert 'async find(code)' in api
     link = api[api.index('async linkExisting(plasmid, code, made = {})'):api.index("A stock's number as a link")]
