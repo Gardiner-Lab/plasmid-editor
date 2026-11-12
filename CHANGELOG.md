@@ -6,6 +6,13 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.28.1] - 2026-11-12
+
+### Fixed
+- **0.28.0 was never published:** its image could not be built for arm64, where `primer3-py` has no
+  ready-made wheel and must be compiled. The image now installs a C compiler for that step and removes
+  it after. Otherwise as 0.28.0.
+
 ## [0.28.0] - 2026-11-12
 
 ### Added

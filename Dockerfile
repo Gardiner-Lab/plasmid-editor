@@ -2,12 +2,15 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# Biopython ships wheels for this platform, so no build toolchain is needed.
 RUN useradd -m -u 1000 appuser && mkdir -p /data && chown -R appuser:appuser /app /data
 
+# Biopython ships wheels for both platforms the release builds; primer3-py has none for
+# arm64, so it is compiled there. The compiler is installed for this step only and removed.
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt && \
-    pip install --no-cache-dir gunicorn==23.0.0
+RUN apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev && \
+    pip install --no-cache-dir -r requirements.txt && \
+    pip install --no-cache-dir gunicorn==23.0.0 && \
+    apt-get purge -y gcc libc6-dev && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
 
 COPY dnakit/ ./dnakit/
 COPY app/ ./app/
