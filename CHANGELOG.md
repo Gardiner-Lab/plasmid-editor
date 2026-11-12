@@ -6,6 +6,20 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.28.0] - 2026-11-12
+
+### Added
+- **Bisulfite primers**, under Analysis: primer pairs for bisulfite PCR, for DNA methylation, in the
+  selection or the whole sequence (up to 10 kb), for either converted strand. Rewritten from Colette L.
+  Picard's `design_bisulfite_primers.py`, with its defaults and its score; hairpins and dimers come from
+  primer3 (`primer3-py`, a new dependency). Each pair shows its primers with Y and R picked out and the
+  product after conversion, and can be saved to Lab Stocks, annotated, or added to the notebook. Three
+  fixes to the script: the maximum product length is applied, a reverse primer's hairpin is measured on
+  the primer itself, and a pair's dimer on real bases rather than Y and R.
+- **Checked against a genome** in the Genome Browser, when the editor is given one (`GENOME_URL`): a
+  pair is suggested only when both primers bind the genome at their own site alone (no other match over
+  90% of the primer at 90% identity, on any chromosome; both can be set).
+
 ## [0.27.0] - 2026-11-11
 
 ### Changed
