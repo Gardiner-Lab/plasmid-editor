@@ -811,8 +811,8 @@ const Tools = {
       const code = strand === 'top' ? 'Y' : 'R';
       const ordered = f.combinations - f.wrong_order;
       const inRange = ordered - f.too_short - f.too_long;
-      loss(`${strand}:degenerate`, f.degenerate, f.stretches, `“Y or R bases, at most” (now ${o.max_degenerate}): most stretches have more ${base}s than that on the `
-        + `${strand} strand${f.least_degenerate !== null ? `; the fewest in any stretch is ${f.least_degenerate}` : ''}. Allow one or two more, or try the other strand.`);
+      loss(`${strand}:degenerate`, f.degenerate, f.stretches, `“Y or R bases, at most” (now ${o.max_degenerate}): most stretches have more ${base}s than that`
+        + `${f.least_degenerate !== null ? `; the fewest in any stretch is ${f.least_degenerate}` : ''}. Allow one or two more, or try the other strand.`);
       loss(`${strand}:tm_low`, f.tm_low, f.primers, `“Tm, min” (now ${o.min_tm} °C): many primers melt lower${f.tm_range ? ` (they range ${f.tm_range[0]}–${f.tm_range[1]} °C)` : ''}.`
         + ` Lower it, or allow longer primers (now at most ${o.max_len} nt).`);
       loss(`${strand}:tm_high`, f.tm_high, f.primers, `“Tm, max” (now ${o.max_tm} °C): many primers melt higher${f.tm_range ? ` (up to ${f.tm_range[1]} °C)` : ''}. Raise it, or allow shorter primers.`);
@@ -877,7 +877,11 @@ const Tools = {
     if (genome && few && picks.turnedDown && Object.values(F).some((f) => f.pairs)) causes.add('genome');
     const because = tips.filter((t) => causes.has(t.key));
     const also = tips.filter((t) => !causes.has(t.key) && t.share >= 0.5).sort((a, b) => b.share - a.share).slice(0, 3);
-    const item = (t) => el('li', {}, `${t.tip} (${Math.round(100 * t.share)}% lost here.)`);
+    // With both strands searched, each tip says which it is about: one strand can run out while the other has pairs.
+    const both = Object.keys(F).length > 1;
+    const item = (t) => el('li', {},
+      both && t.key.includes(':') ? el('b', {}, `Converted ${t.key.split(':')[0]} strand: `) : null,
+      `${t.tip} (${Math.round(100 * t.share)}% lost here.)`);
     return el('details', { class: 'bs-whybox', open: few || null },
       el('summary', {}, !picks.chosen.length ? 'Why no pair passed'
         : few ? `Why only ${picks.chosen.length} of the ${picks.suggest} asked for` : 'How the primers were chosen'),
