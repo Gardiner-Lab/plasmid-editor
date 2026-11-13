@@ -6,6 +6,17 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.28.5] - 2026-11-13
+
+### Added
+- **A NOTICE file** with the credits and the licences of the libraries the image installs. It
+  includes the original header of the script the bisulfite primers are rewritten from,
+  `design_bisulfite_primers v1.0 by Colette L. Picard, 06/05/2016`.
+
+### Fixed
+- **Bisulfite primers: credit.** The Help page, README and code now say the tool is rewritten from
+  v1.1, a later version of Colette L. Picard's v1.0 script, instead of calling v1.1 hers.
+
 ## [0.28.4] - 2026-11-12
 
 ### Fixed
