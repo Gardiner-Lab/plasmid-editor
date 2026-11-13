@@ -267,9 +267,16 @@ If you publish work that used this tool, please cite ApE as the origin of the fe
 ApE is available from <https://jorgensen.biology.utah.edu/wayned/ape/>. This project is not
 affiliated with or endorsed by its author.
 
+The bisulfite primer designer (`dnakit/bisulfite.py`) is rewritten from
+**`design_bisulfite_primers.py`** v1.1, a later version of v1.0 by **Colette L. Picard**
+(06/05/2016): the method, its defaults
+and the score that ranks pairs are hers, with three fixes described on the Help page. If primers
+designed with it go into a paper, please credit her script.
+
 Also used: **Biopython** (Cock PJA et al. 2009, *Bioinformatics* 25:1422–1423) and
 **REBASE** (Roberts RJ et al. 2015, *Nucleic Acids Res* 43:D298–D299) for enzyme data.
 
 ## Licence
 
-GNU General Public License v3.0, matching the MoClo Library Tool. See [LICENSE](LICENSE).
+GNU General Public License v3.0, matching the MoClo Library Tool. See [LICENSE](LICENSE), and
+[NOTICE](NOTICE) for the credits above and the licences of the libraries the image installs.

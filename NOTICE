@@ -1,0 +1,39 @@
+Sequence Editor
+Copyright (C) 2026 Gardiner Lab, Utrecht University
+
+This program is free software: you can redistribute it and/or modify it under
+the terms of the GNU General Public License as published by the Free Software
+Foundation, version 3 or (at your option) any later version. See LICENSE.
+
+The feature set is modelled on ApE (A Plasmid Editor) by M. Wayne Davis. No
+ApE code is used or derived from; its feature-library format and GenBank colour
+qualifiers are followed so that files move between the two programs. Cite:
+    Davis MW, Jorgensen EM (2022). ApE, A Plasmid Editor: A Freely Available DNA
+    Manipulation and Visualization Program. Frontiers in Bioinformatics
+    2:818619. https://doi.org/10.3389/fbinf.2022.818619
+
+Bisulfite primers (dnakit/bisulfite.py) are rewritten from
+design_bisulfite_primers.py v1.1, a later version of a script whose original
+header reads:
+
+design_bisulfite_primers v1.0            by Colette L. Picard, 06/05/2016
+
+    The method, its defaults and the score that ranks primer pairs are hers.
+    The code here is a new implementation, not a copy, with three fixes listed
+    in the module's docstring and on the Help page. The check of each primer
+    against a genome, done by the script with BLAST against TAIR10, is done
+    here by the Genome Browser (see its NOTICE).
+
+    If primers designed with this tool go into a paper, please credit
+    Colette L. Picard's design_bisulfite_primers.py.
+
+No third-party code is bundled in this repository. These Python libraries are
+installed into the image from PyPI (see requirements.txt), each under its own
+licence:
+
+Flask        - BSD 3-clause licence
+bcrypt       - Apache licence 2.0
+Biopython    - Biopython License Agreement / BSD 3-clause licence
+               (sequence I/O, REBASE restriction enzymes, alignment, Tm)
+primer3-py   - GNU General Public License 2.0 or later
+               (hairpin and dimer stability for bisulfite primers)

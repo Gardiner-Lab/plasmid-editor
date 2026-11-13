@@ -18,8 +18,8 @@ stable heterodimer. Pairs are then ranked by a score where lower is better (fewe
 Tms near each other and the optimum, product near its optimal length, weak secondary structure,
 short repeats, a GC clamp).
 
-The method and its score are from ``design_bisulfite_primers.py`` v1.1 by Colette L. Picard (2016),
-rewritten here. Changes from that script, each a fix:
+The method and its score are from ``design_bisulfite_primers.py`` v1.1, a later version of v1.0 by
+Colette L. Picard (06/05/2016), rewritten here. Changes from that script, each a fix:
 
 * the maximum product length is applied (the script read it but never used it);
 * a reverse primer's hairpin and self-dimer are measured on its own sequence; the script measured
