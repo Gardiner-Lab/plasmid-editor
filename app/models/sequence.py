@@ -216,7 +216,9 @@ class StoredSequence:
         seen_labs = user.chair_group_labs()
         with get_connection() as conn:
             return [dict(r, circular=bool(r['circular']), golden_gate=bool(r['golden_gate']),
-                         shared=bool(r['shared']), confirmed=bool(r['confirmed_at']))
+                         shared=bool(r['shared']), confirmed=bool(r['confirmed_at']),
+                         # Its uploader, their labs' leads and lab admins, and administrators.
+                         can_delete=user.oversees(r['owner_id'], owners))
                     for r in conn.execute(sql, args)
                     if user.can_see_sequence(r['owner_id'], owners, seen_labs)]
 

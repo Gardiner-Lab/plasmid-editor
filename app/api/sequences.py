@@ -52,6 +52,11 @@ def _can_add_reads(doc, user) -> bool:
     return _can_change(doc, user) or user.same_lab(User.get_by_id(doc['owner_id']))
 
 
+def _can_remove_read(read, doc, user) -> bool:
+    # Whoever may change the plasmid, and whoever uploaded the read.
+    return _can_change(doc, user) or (bool(read.get('uploaded_by')) and read['uploaded_by'] == user.username)
+
+
 def _not_your_labs():
     return jsonify({'error': "Only the owner's lab adds to this sequence; the rest of the chair group sees it read-only"}), 403
 
@@ -236,9 +241,13 @@ def moclo_unlink(user, sequence_id):
 @sequences_bp.route('/<sequence_id>', methods=['DELETE'])
 @require_auth
 def delete_sequence(user, sequence_id):
-    _, err = _owned_or_404(sequence_id, user, for_write=True)
+    # The person who uploaded it, the lab leads and lab admins of their labs, and administrators.
+    doc, err = _owned_or_404(sequence_id, user)
     if err:
         return err
+    if not _can_change(doc, user):
+        return jsonify({'error': 'Only the person who uploaded this sequence, their lab lead or lab admin, '
+                                 'or an administrator can delete it'}), 403
     StoredSequence.delete(sequence_id)
     return jsonify({'ok': True}), 200
 
@@ -716,6 +725,7 @@ def sequencing_history(user, sequence_id):
     for r in reads:
         diffs = (r.get('alignment') or {}).get('differences') or []
         r['difference_count'] = len(diffs)
+        r['can_remove'] = _can_remove_read(r, doc, user)
     sequence = {k: doc[k] for k in ('id', 'name', 'sequence', 'circular', 'shared', 'confirmed',
                                     'confirmed_at', 'confirmed_by', 'confirmed_clone',
                                     'glycerol_stock')}
@@ -761,9 +771,12 @@ def delete_read(user, read_id):
     read = Read.get(read_id, include_trace=False)
     if read is None:
         return jsonify({'error': 'Read not found'}), 404
-    _, err = _owned_or_404(read['sequence_id'], user, for_write=True)
+    doc, err = _sequencing_viewable_or_404(read['sequence_id'], user)
     if err:
         return err
+    if not _can_remove_read(read, doc, user):
+        return jsonify({'error': "Only the person who uploaded this read, the plasmid's owner, their lab lead "
+                                 'or lab admin, or an administrator can remove it'}), 403
     Read.delete(read_id)
     withdrawn = StoredSequence.withdraw_unsupported(read['sequence_id'])
     return jsonify({'ok': True, 'confirmation_withdrawn': bool(withdrawn),

@@ -6,6 +6,17 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.28.6] - 2026-11-17
+
+### Changed
+- **Who deletes a sequence is clear on the Library page.** The delete button shows only on the
+  sequences you may delete: those you uploaded, those of the members of a lab you lead or are lab
+  admin of, and, for an administrator, all. It used to show on every row and fail for the rest.
+- **Sequencing reads are removed by whoever uploaded them,** as well as by the plasmid's owner,
+  their lab lead or lab admin and administrators. A lab mate who added reads to someone's plasmid
+  can now take their own back out.
+- A refused delete says who may do it.
+
 ## [0.28.5] - 2026-11-13
 
 ### Added

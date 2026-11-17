@@ -150,8 +150,8 @@ There are three roles, set on the **Admin** page (`/admin`):
 | Role | Can |
 | --- | --- |
 | Administrator | Everything: add, rename and remove labs; set, change and clear each lab's code; give people roles and move them between labs; open and change anyone's plasmids. |
-| Lab lead | Act as an administrator for their own lab: open and change its members' plasmids, including private ones, and confirm their sequencing. See their lab's members and its code, to hand out. **Cannot** change codes, labs or roles. |
-| Member | Their own work, and whatever others share. |
+| Lab lead | Act as an administrator for their own lab: open, change and delete its members' plasmids, including private ones, and confirm their sequencing. In the lab suite a lab admin counts as a lab lead here. See their lab's members and its code, to hand out. **Cannot** change codes, labs or roles. |
+| Member | Their own work, and whatever others share. They delete the sequences they uploaded, and remove the sequencing reads they uploaded, also on a lab mate's plasmid. |
 
 Administrator status is shared with the MoClo tool, so an administrator here is one there too.
 Lab lead is this editor's own role; in the MoClo tool a lab lead is an ordinary account. The

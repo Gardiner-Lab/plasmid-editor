@@ -147,3 +147,40 @@ def test_feature_entries_of_someone_who_left_reach_their_labs_lead(chair, client
     conn.close()
     assert 'anaTag' in names('lead') and 'anaTag' in names('boss')
     assert 'anaTag' not in names('ben') and 'anaTag' not in names('tom')
+
+
+def test_a_sequence_is_deleted_by_its_uploader_their_lab_admin_and_administrators(chair, client, tmp_dbs):
+    # The suite keeps a lab admin as a lab lead with lab_admin set.
+    conn = sqlite3.connect(f"{tmp_dbs['dir']}/suite.db")
+    conn.execute("UPDATE lab_members SET lab_admin = 1 WHERE username = 'lead'")
+    conn.commit()
+    conn.close()
+    pids = {n: _make(client, n)['id'] for n in ('pOne', 'pTwo', 'pThree')}
+    flag = lambda name: {s['name']: s['can_delete'] for s in
+                         client.get('/api/sequences', headers=who(name)).get_json()['sequences']}
+    # Ana uploaded them; Ben is her lab mate, Zoe in the chair group: they only look.
+    assert [flag(n)['pOne'] for n in ('ana', 'lead', 'boss', 'ben', 'zoe')] == [True, True, True, False, False]
+    delete = lambda name, pid: client.delete(f'/api/sequences/{pid}', headers=who(name))
+    assert delete('ben', pids['pOne']).status_code == 403
+    assert 'uploaded' in delete('zoe', pids['pOne']).get_json()['error']
+    assert delete('tom', pids['pOne']).status_code == 403
+    assert [delete(n, pids[p]).status_code for n, p in
+            (('ana', 'pOne'), ('lead', 'pTwo'), ('boss', 'pThree'))] == [200, 200, 200]
+    assert not client.get('/api/sequences', headers=who('ana')).get_json()['sequences']
+
+
+def test_a_read_is_removed_by_whoever_uploaded_it(chair, client):
+    pid = _make(client, 'pReads')['id']
+    upload = lambda name, fn: client.post(f'/api/sequences/{pid}/reads', headers=who(name),
+                                          data={'file': (io.BytesIO(READ), fn)},
+                                          content_type='multipart/form-data').get_json()['reads'][0]['id']
+    anas, bens = upload('ana', 'a.fasta'), upload('ben', 'b.fasta')
+    removable = lambda name: {r['id']: r['can_remove'] for r in
+                              client.get(f'/api/sequences/{pid}/sequencing', headers=who(name)).get_json()['reads']}
+    assert removable('ben') == {anas: False, bens: True}
+    assert removable('ana') == {anas: True, bens: True}
+    assert removable('zoe') == {anas: False, bens: False}
+    remove = lambda name, rid: client.delete(f'/api/sequences/reads/{rid}', headers=who(name)).status_code
+    assert (remove('ben', anas), remove('zoe', bens), remove('tom', bens)) == (403, 403, 403)
+    assert remove('ben', bens) == 200
+    assert remove('lead', anas) == 200

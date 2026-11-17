@@ -67,14 +67,18 @@ class User:
         """In a lab together: any of one's labs is one of the other's."""
         return bool(other is not None and self.lab_names() & other.lab_names())
 
-    def oversees(self, owner_id: str) -> bool:
-        """May act for this owner: an admin for anyone, a lab lead for the members of the labs they lead."""
-        if self.is_admin:
+    def oversees(self, owner_id: str, owners: Optional[Dict[str, 'User']] = None) -> bool:
+        """
+        May act for this owner: themselves; an admin for anyone; a lab lead (or
+        lab admin, which the suite stores as a lead) for the members of the labs
+        they lead. owners is an id -> User map, passed in when checking many.
+        """
+        if self.is_admin or owner_id == self.id:
             return True
         led = self.lab_names(led_only=True)
         if not led:
             return False
-        other = User.get_by_id(owner_id)
+        other = owners.get(owner_id) if owners is not None else User.get_by_id(owner_id)
         return bool(other is not None and led & other.lab_names())
 
     def chair_group_labs(self) -> set:

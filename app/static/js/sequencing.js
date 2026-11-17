@@ -529,7 +529,8 @@ const Sequencing = {
         title: r.verdict === 'sufficient' ? 'Judged sufficient' : 'Judged not sufficient',
       }, r.verdict === 'sufficient' ? '✓' : '✗') : null,
       this.statusBadge(r),
-      this.reference.can_change
+      // The plasmid's owner, their lab lead or lab admin, administrators, and whoever uploaded the read.
+      (r.can_remove ?? this.reference.can_change)
         ? el('button', { class: 'tool-btn rmap-remove', title: 'Remove read', onclick: () => this.remove(r) }, glyph('trash'))
         : null));
 

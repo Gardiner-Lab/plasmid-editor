@@ -81,7 +81,10 @@ const Library = {
           onclick: () => downloadFrom(`/api/sequences/${s.id}/export/genbank`, `${s.name}.gb`).catch((e) => toast(e.message, 'error')) }, '⤓ gb'),
         el('button', { class: 'tool-btn', title: 'Download SnapGene (.dna)',
           onclick: () => downloadFrom(`/api/sequences/${s.id}/export/snapgene`, `${s.name}.dna`).catch((e) => toast(e.message, 'error')) }, '⤓ dna'),
-        el('button', { class: 'tool-btn', title: 'Delete', onclick: () => this.remove(s) }, glyph('trash'))))));
+        // Its uploader, their lab lead or lab admin, and administrators delete it.
+        s.can_delete
+          ? el('button', { class: 'tool-btn', title: 'Delete', onclick: () => this.remove(s) }, glyph('trash'))
+          : null))));
   },
 
   async remove(s) {
