@@ -562,6 +562,25 @@ tr.clickable:hover td { background: var(--bg-color); }
 .footer { border-top: 1px solid var(--border-color); background: var(--card-bg); padding: 1rem 0; font-size: .8125rem; color: var(--text-secondary); }
 .footer a { color: var(--text-secondary); text-decoration: underline; }
 
+/* My sequences: adding at the top, then one list of the lab's sequences and the
+   MoClo library, which grows with the page instead of scrolling in a box. */
+.add-bar { display: flex; align-items: center; justify-content: space-between; gap: .75rem 1.5rem; flex-wrap: wrap; }
+.add-bar-text { display: flex; flex-direction: column; gap: .15rem; }
+.add-bar-status { flex-basis: 100%; }
+.add-bar-status:empty { display: none; }
+.library-filters { display: flex; flex-wrap: wrap; gap: .5rem .75rem; align-items: center; margin-bottom: .5rem; }
+.library-filters input[type=search] { flex: 1 1 16rem; min-width: 12rem; width: auto; }
+.library-filters select { flex: 0 1 auto; width: auto; }
+.library-filters .checkbox { white-space: nowrap; }
+.library-table { overflow-x: auto; }   /* only on a phone-sized screen */
+.library-table table { table-layout: auto; }
+.library-table td { vertical-align: top; }
+.library-table td:nth-child(2) { overflow-wrap: anywhere; min-width: 8rem; }
+.library-table .item-meta { white-space: normal; }
+.library-table .row-actions .tool-btn { padding: .25rem .35rem; }
+.library-table td .badge { margin: 0 .15rem .15rem 0; }
+.library-table tr.moclo-row td:first-child { border-left: 3px solid var(--tt-green-line, #9ca3af); }
+.library-more { text-align: center; margin-top: .5rem; }
 .grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr)); gap: 1rem; align-items: start; }
 .spin { display: inline-block; width: .9rem; height: .9rem; border: 2px solid var(--border-color); border-top-color: var(--primary-color); border-radius: 50%; animation: spin .7s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }

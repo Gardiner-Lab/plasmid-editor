@@ -22,10 +22,16 @@ def status(user):
 @moclo_bp.route('/parts', methods=['GET'])
 @require_auth
 def parts(user):
-    return jsonify({'parts': moclo_bridge.list_parts(
-        search=request.args.get('search', ''),
-        part_type=request.args.get('part_type', ''),
-        visible=MocloViewer(user).sees)}), 200
+    viewer = MocloViewer(user)
+    found = moclo_bridge.list_parts(search=request.args.get('search', ''),
+                                    part_type=request.args.get('part_type', ''), visible=viewer.sees)
+    return jsonify({'parts': [_whose(viewer, p, p.get('contributor'), p.get('lab_source')) for p in found]}), 200
+
+
+def _whose(viewer, item, owner, lab_source=None):
+    """Who added it, and whether it is yours or your lab's (for the My sequences filters)."""
+    item['owner'], item['mine'], item['my_lab'] = viewer.whose(owner, lab_source)
+    return item
 
 
 NOT_YOURS = 'This belongs to a lab outside your chair group'
@@ -51,7 +57,9 @@ def part(user, part_id):
 @moclo_bp.route('/plasmids', methods=['GET'])
 @require_auth
 def plasmids(user):
-    return jsonify({'plasmids': moclo_bridge.list_plasmids(visible=MocloViewer(user).sees)}), 200
+    viewer = MocloViewer(user)
+    return jsonify({'plasmids': [_whose(viewer, p, p.get('owner'))
+                                 for p in moclo_bridge.list_plasmids(visible=viewer.sees)]}), 200
 
 
 @moclo_bp.route('/plasmids/<kind>/<plasmid_id>', methods=['GET'])

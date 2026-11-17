@@ -2,74 +2,79 @@
 {% block title %}My sequences &middot; Sequence Editor{% endblock %}
 
 {% block content %}
-<div class="grid-2">
-    <div>
-        <div class="card">
-            <div class="card-header">
-                <div class="card-title" title="Your labs' sequences, and read-only those of the other labs in your chair group">Chair group sequence library</div>
-                <div class="btn-group">
-                    <button class="btn btn-sm btn-secondary" id="btnBundle">Download selected</button>
-                    <a class="btn btn-sm" href="{{ url_for('editor_page') }}">Open editor</a>
-                </div>
-            </div>
-            <div class="field-row">
-                <div class="field"><input type="search" id="search" placeholder="Search by name or description"></div>
-                <div class="field" style="flex:0 0 auto">
-                    <label class="checkbox"><input type="checkbox" id="chkMine"> <span>Only mine</span></label>
-                </div>
-                <div class="field" style="flex:0 0 auto">
-                    <label class="checkbox"><input type="checkbox" id="chkGG"> <span>Golden Gate ready</span></label>
-                </div>
-            </div>
-            <div class="table-scroll">
-                <table>
-                    <thead>
-                        <tr>
-                            <th style="width:1.5rem"></th>
-                            <th>Name</th>
-                            <th class="num">Length</th>
-                            <th>Topology</th>
-                            <th>Sequencing</th>
-                            <th>Tags</th>
-                            <th>Updated</th>
-                            <th></th>
-                        </tr>
-                    </thead>
-                    <tbody id="rows"></tbody>
-                </table>
-            </div>
+<!-- Adding comes first, where people look for it. -->
+<div class="card add-bar">
+    <div class="add-bar-text">
+        <div class="card-title">Add a sequence</div>
+        <span class="hint">GenBank, FASTA, EMBL, SnapGene (.dna), ApE (.ape) or plain sequence. Or start one in the editor.</span>
+    </div>
+    <div class="btn-group">
+        <label class="btn" for="uploadInput">
+            <img class="tt-glyph" src="{{ url_for('static', filename='trellis/glyphs/open.svg') }}" alt=""> Choose files to import
+            <input type="file" id="uploadInput" multiple hidden
+                   accept=".gb,.gbk,.genbank,.ape,.embl,.fa,.fasta,.fna,.seq,.txt,.dna">
+        </label>
+        <a class="btn btn-secondary" href="{{ url_for('editor_page') }}">Open editor</a>
+    </div>
+    <div id="uploadStatus" class="add-bar-status"></div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <div class="card-title" title="Your labs' sequences, those of the other labs in your chair group (read-only), and the MoClo library">Sequence library</div>
+        <div class="btn-group">
+            <span class="badge" id="mocloStatus" title="The shared MoClo Library Tool database">MoClo: checking…</span>
+            <button class="btn btn-sm btn-secondary" id="btnBundle">Download selected</button>
         </div>
     </div>
-
-    <div>
-        <div class="card">
-            <div class="card-header">
-                <div class="card-title">MoClo library</div>
-                <span class="badge" id="mocloStatus">checking…</span>
-            </div>
-            <p class="hint">
-                Parts, backbones and assembled plasmids from the shared MoClo Library Tool database.
-                Open one here to edit, align sequencing reads against it, or use it in a cloning simulation.
-            </p>
-            <div class="field"><input type="search" id="mocloSearch" placeholder="Search MoClo parts"></div>
-            <div class="panel-scroll">
-                <ul class="item-list" id="mocloList"></ul>
-            </div>
-        </div>
-
-        <div class="card">
-            <div class="card-title" style="margin-bottom:.5rem">Add a sequence</div>
-            <p class="hint" style="margin-bottom:.75rem">
-                GenBank, FASTA, EMBL, SnapGene (.dna), ApE (.ape) or plain sequence.
-            </p>
-            <label class="btn btn-secondary" for="uploadInput" style="width:100%">
-                <img class="tt-glyph" src="{{ url_for('static', filename='trellis/glyphs/open.svg') }}" alt=""> Choose files to import
-                <input type="file" id="uploadInput" multiple hidden
-                       accept=".gb,.gbk,.genbank,.ape,.embl,.fa,.fasta,.fna,.seq,.txt,.dna">
-            </label>
-            <div id="uploadStatus" style="margin-top:.5rem"></div>
-        </div>
+    <div class="library-filters">
+        <input type="search" id="search" placeholder="Search by name or description" aria-label="Search">
+        <select id="source" aria-label="Which sequences">
+            <option value="">Lab sequences and MoClo</option>
+            <option value="ours">Lab sequences only</option>
+            <option value="moclo">MoClo library only</option>
+        </select>
+        <select id="partType" aria-label="Part type">
+            <option value="">Every type</option>
+            <option value="NonCodingPromoter">Promoter</option>
+            <option value="Coding">CDS (coding)</option>
+            <option value="NonCodingTerminator">Terminator</option>
+            <option value="NonCodingIntron">Intron</option>
+            <option value="NonCodingOther">Other / unknown part</option>
+            <option value="ExpressionCassette">Expression cassette</option>
+            <option value="backbone">Backbone</option>
+            <option value="plasmid">Assembled plasmid</option>
+            <option value="none">Not a MoClo part</option>
+        </select>
+        <select id="sort" aria-label="Sort by">
+            <option value="updated">Newest first</option>
+            <option value="name">Name A–Z</option>
+            <option value="type">Part type (promoter, CDS, terminator…)</option>
+            <option value="length">Longest first</option>
+        </select>
+        <label class="checkbox"><input type="checkbox" id="chkMine"> <span>Only mine</span></label>
+        <label class="checkbox"><input type="checkbox" id="chkLab"> <span>Only my lab</span></label>
+        <label class="checkbox"><input type="checkbox" id="chkGG"> <span>Golden Gate ready</span></label>
     </div>
+    <div class="hint" id="libraryCount"></div>
+    <div class="library-table">
+        <table>
+            <thead>
+                <tr>
+                    <th style="width:1.5rem"></th>
+                    <th>Name</th>
+                    <th>Type</th>
+                    <th class="num">Length</th>
+                    <th>Sequencing</th>
+                    <th>By</th>
+                    <th>Updated</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody id="rows"></tbody>
+        </table>
+    </div>
+    <div class="library-more"><button class="btn btn-sm btn-secondary" id="btnMore" hidden>Show more</button></div>
 </div>
 {% endblock %}
 

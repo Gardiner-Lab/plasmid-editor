@@ -218,7 +218,11 @@ class StoredSequence:
             return [dict(r, circular=bool(r['circular']), golden_gate=bool(r['golden_gate']),
                          shared=bool(r['shared']), confirmed=bool(r['confirmed_at']),
                          # Its uploader, their labs' leads and lab admins, and administrators.
-                         can_delete=user.oversees(r['owner_id'], owners))
+                         can_delete=user.oversees(r['owner_id'], owners),
+                         # For the My sequences filters and its By column.
+                         owner=owners[r['owner_id']].username if r['owner_id'] in owners else None,
+                         mine=r['owner_id'] == user_id,
+                         my_lab=r['owner_id'] == user_id or user.same_lab(owners.get(r['owner_id'])))
                     for r in conn.execute(sql, args)
                     if user.can_see_sequence(r['owner_id'], owners, seen_labs)]
 

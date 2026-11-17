@@ -6,6 +6,19 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.28.7] - 2026-11-17
+
+### Changed
+- **My sequences is one list.** The lab's sequences and the MoClo library (parts, backbones and assembled
+  plasmids) are listed together, instead of MoClo in a narrow column beside them. A MoClo record already opened
+  here shows once, as the lab's linked copy. The list grows with the page instead of scrolling in a box of its
+  own, shows 100 rows at a time, and fits without scrolling sideways.
+- **Add a sequence is at the top of the page,** with Open editor beside it.
+- **Filters and sorting:** which list (lab, MoClo or both); part type, as in the MoClo tool (promoter, CDS,
+  terminator, intron, other or unknown part, expression cassette, backbone, assembled plasmid, or not a MoClo
+  part); **Only mine**, and a new **Only my lab**; Golden Gate ready. Sort by newest, name, part type
+  (promoter, CDS, terminator...) or length. A **By** column says who added each.
+
 ## [0.28.6] - 2026-11-17
 
 ### Changed

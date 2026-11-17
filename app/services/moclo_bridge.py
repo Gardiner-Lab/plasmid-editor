@@ -85,8 +85,9 @@ def list_parts(search: str = '', part_type: str = '', limit: int = 500,
     try:
         if not _table_exists(conn, 'parts'):
             return []
+        added = 'upload_date' if 'upload_date' in _columns(conn, 'parts') else 'NULL'
         sql = ('SELECT id, name, part_type, overhang_5prime, overhang_3prime, length(sequence) AS length, '
-               'lab_source, contributor, description, plasmid_id, level, unit FROM parts WHERE 1=1')
+               f'lab_source, contributor, description, plasmid_id, level, unit, {added} AS added FROM parts WHERE 1=1')
         args: List[Any] = []
         if search:
             sql += ' AND (name LIKE ? OR IFNULL(description, "") LIKE ? OR IFNULL(plasmid_id, "") LIKE ?)'
@@ -165,7 +166,8 @@ def list_plasmids(visible=None) -> List[Dict[str, Any]]:
             for r in conn.execute(sql):
                 if visible is not None and not visible(kind, r['id'], r['owner']):
                     continue
-                out.append({'id': r['id'], 'name': r['name'], 'length': r['length'], 'kind': kind})
+                out.append({'id': r['id'], 'name': r['name'], 'length': r['length'], 'kind': kind,
+                            'owner': r['owner']})
     finally:
         conn.close()
     return out

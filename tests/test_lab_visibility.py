@@ -184,3 +184,12 @@ def test_a_read_is_removed_by_whoever_uploaded_it(chair, client):
     assert (remove('ben', anas), remove('zoe', bens), remove('tom', bens)) == (403, 403, 403)
     assert remove('ben', bens) == 200
     assert remove('lead', anas) == 200
+
+
+def test_my_sequences_says_whose_each_sequence_is(chair, client):
+    _make(client, 'pAna')
+    _make(client, 'pBen', owner='ben')
+    _make(client, 'pZoe', owner='zoe')
+    rows = {s['name']: s for s in client.get('/api/sequences', headers=who('ana')).get_json()['sequences']}
+    assert {n: (r['owner'], r['mine'], r['my_lab']) for n, r in rows.items()} == {
+        'pAna': ('ana', True, True), 'pBen': ('ben', False, True), 'pZoe': ('zoe', False, False)}

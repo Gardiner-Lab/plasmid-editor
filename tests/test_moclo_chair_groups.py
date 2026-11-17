@@ -114,3 +114,18 @@ def test_the_demo_sees_its_own_and_the_shipped_kits(library, client):
     # Its own (markedKit is Tom's), the toolkit and a shipped kit; not Ana's, marked by an administrator.
     assert _parts(client, 'tom') == {'tomCDS', 'markedKit', 'toolkitFiller', 'anaOld'}
     assert 'anaCDS' in _parts(client, 'zoe')
+
+
+def test_my_sequences_says_whose_each_moclo_record_is(library, client):
+    # For the Only mine and Only my lab filters: the username, also for a part recorded by user id.
+    parts = {p['name']: p for p in client.get('/api/moclo/parts', headers=who('ana')).get_json()['parts']}
+    assert (parts['anaCDS']['owner'], parts['anaCDS']['mine'], parts['anaCDS']['my_lab']) == ('ana', True, True)
+    assert (parts['anaOld']['owner'], parts['anaOld']['mine']) == ('ana', True)
+    assert (parts['toolkitFiller']['mine'], parts['toolkitFiller']['my_lab']) == (False, False)
+    assert parts['markedKit']['my_lab'] is False
+    assert 'added' in parts['anaCDS']
+    zoe = {p['name']: p for p in client.get('/api/moclo/parts', headers=who('zoe')).get_json()['parts']}
+    assert (zoe['anaCDS']['mine'], zoe['anaCDS']['my_lab']) == (False, False)   # her chair group, not her lab
+    backbones = {p['name']: p for p in client.get('/api/moclo/plasmids', headers=who('ana')).get_json()['plasmids']}
+    assert (backbones['pAnaBackbone']['owner'], backbones['pAnaBackbone']['mine']) == ('ana', True)
+    assert backbones['pToolkitBackbone']['my_lab'] is False

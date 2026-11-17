@@ -57,6 +57,7 @@ class MocloViewer:
 
     def __init__(self, user):
         self.username = getattr(user, 'username', None)
+        self.lab = getattr(user, 'lab_source', None)
         people = suite_labs.memberships()
         self.everything = bool(getattr(user, 'is_admin', False)) or not people
         self._labs_of = {name: {lab.casefold() for lab, _ in entry.get('labs', []) if lab}
@@ -74,6 +75,20 @@ class MocloViewer:
         self.demo = bool(demo and own) and all(group_of.get(lab) == demo for lab in own)
         seen_groups = mine if self.demo else mine | {frm for frm, to in shares if to in mine}
         self.labs = own | {lab for lab, group in group_of.items() if group in seen_groups}
+
+    def whose(self, owner: Optional[str], lab_source: Optional[str] = None):
+        """
+        (username, mine, in one of my labs) for a record's owner, for the My
+        sequences filters. Outside the suite a part's lab_source stands in for
+        its contributor's labs. The built-in toolkit is nobody's.
+        """
+        username = self._names.get(owner, owner) if owner else None
+        if not username or username == SYSTEM:
+            return username, False, False
+        mine = username == self.username
+        own = self._labs_of.get(self.username) or ({self.lab.casefold()} if self.lab else set())
+        theirs = self._labs_of.get(username) or ({lab_source.casefold()} if lab_source else set())
+        return username, mine, mine or bool(own & theirs)
 
     def sees(self, kind: str, record_id: str, owner: Optional[str]) -> bool:
         """owner: a part's contributor, a backbone's or plasmid's owner_id (older parts: a user id)."""
