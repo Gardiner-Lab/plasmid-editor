@@ -31,6 +31,8 @@ test-js:
 	for f in app/static/js/*.js; do node --check "$$f"; done
 	node tests/js/helpers.test.js
 	node tests/js/sequencing.test.js
+	node tests/js/structure.test.js
+	node tests/js/assemblyview.test.js
 
 test-all: test test-js
 

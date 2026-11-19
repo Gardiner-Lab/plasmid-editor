@@ -570,6 +570,8 @@ const Tools = {
               row('Forward', res.forward),
               row('Reverse', res.reverse),
               el('p', { class: 'hint' }, `Product: ${fmt(res.product_length)} bp`),
+              res.forward?.sequence && res.reverse?.sequence
+                ? Structure.panel(res.forward.full || res.forward.sequence, res.reverse.full || res.reverse.sequence) : null,
               el('div', { class: 'btn-group' },
                 el('button', {
                   class: 'btn btn-sm btn-secondary',
@@ -593,21 +595,26 @@ const Tools = {
                     toast('Primer binding sites annotated', 'success');
                   },
                 }, 'Annotate binding sites'),
-                Notebook.button('The primer pair, with its sequences, tails, lengths, Tm and GC.', async () => ({
-                  section: {
-                    type: 'section', title: `Primers: ${doc.name || 'Untitled'} ${fmt(sel.start + 1)}–${fmt(sel.end)}`,
-                    source: { kind: 'primers', id: doc.id || '', name: doc.name || '' },
-                    blocks: [
-                      { type: 'text', html: `<p>Primers designed to amplify ${fmt(sel.start + 1)}–${fmt(sel.end)} of `
-                        + `${Notebook.plasmid(doc)}: a ${fmt(res.product_length)} bp product.</p>` },
-                      Notebook.table('Primers', [['Primer'], ["Sequence 5'→3'"], ["5' tail"], ['Length', 'number', 'nt'],
-                        ['Tm', 'number', '°C'], ['GC', 'number', '%'], ['Ordered', 'check']],
-                      [['Forward', res.forward, 'pFTail'], ['Reverse', res.reverse, 'pRTail']].filter(([, p]) => p?.sequence)
-                        .map(([name, p, tail]) => [name, p.full || p.sequence, document.getElementById(tail).value || '',
-                          (p.full || p.sequence).length, p.tm, p.gc, null])),
-                    ],
-                  },
-                }))));
+                Notebook.button('The primer pair, with its sequences, tails, lengths, Tm and GC, and its hairpins and dimers drawn.', async () => {
+                  const drawn = await Structure.notebook(res.forward.full || res.forward.sequence, res.reverse.full || res.reverse.sequence, 0);
+                  return {
+                    pictures: [drawn.picture],
+                    section: {
+                      type: 'section', title: `Primers: ${doc.name || 'Untitled'} ${fmt(sel.start + 1)}–${fmt(sel.end)}`,
+                      source: { kind: 'primers', id: doc.id || '', name: doc.name || '' },
+                      blocks: [
+                        { type: 'text', html: `<p>Primers designed to amplify ${fmt(sel.start + 1)}–${fmt(sel.end)} of `
+                          + `${Notebook.plasmid(doc)}: a ${fmt(res.product_length)} bp product.</p>` },
+                        Notebook.table('Primers', [['Primer'], ["Sequence 5'→3'"], ["5' tail"], ['Length', 'number', 'nt'],
+                          ['Tm', 'number', '°C'], ['GC', 'number', '%'], ['Ordered', 'check']],
+                        [['Forward', res.forward, 'pFTail'], ['Reverse', res.reverse, 'pRTail']].filter(([, p]) => p?.sequence)
+                          .map(([name, p, tail]) => [name, p.full || p.sequence, document.getElementById(tail).value || '',
+                            (p.full || p.sequence).length, p.tm, p.gc, null])),
+                        ...drawn.blocks,
+                      ],
+                    },
+                  };
+                })));
           } catch (err) {
             out.replaceChildren(el('div', { class: 'alert alert-error', text: err.message }));
           }
@@ -673,8 +680,8 @@ const Tools = {
             Genome.enabled() ? el('div', { class: 'field-row' },
               num('bsMatch', 'Off-target: a match over more than this part of the primer', 0.9, { step: 0.05, min: 0.1, max: 1 }),
               num('bsIdentity', 'more than this % identical', 90, { min: 50, max: 100 })) : null,
-            el('p', { class: 'hint' }, "The defaults and the score that ranks pairs are from Colette Picard's "
-              + 'design_bisulfite_primers.py, except the off-target cutoffs: every chromosome is searched here, where the '
+            el('p', { class: 'hint' }, 'The defaults and the score that ranks pairs are from design_bisulfite_primers.py v1.1, a later '
+              + "version of Colette Picard's v1.0, except the off-target cutoffs: every chromosome is searched here, where the "
               + "script in effect searched only the primer's own, and its 75% / 80% then turns down most primers in AT-rich DNA. "
               + 'Help says what each option does.')),
           el('div', { class: 'btn-group', style: 'margin-top:.5rem' },
@@ -929,6 +936,7 @@ const Tools = {
       el('table', { class: 'table bs-table' }, el('tbody', {}, row('Forward', f), row('Reverse', r))),
       el('p', { class: 'hint' }, `Tm difference ${pair.tm_diff} °C. Strongest hairpin ${Math.max(f.hairpin, r.hairpin)} °C, `
         + `self-dimer ${Math.max(f.homodimer, r.homodimer)} °C, dimer of the two ${pair.heterodimer} °C.`),
+      Structure.panel(f.sequence, r.sequence, { bisulfite: true }),
       this.bisulfiteProduct(doc, pair, f, r),
       el('div', { class: 'btn-group' },
         el('button', { class: 'btn btn-sm btn-secondary', onclick: () => Editor.copy(`${f.sequence}\n${r.sequence}`) }, 'Copy both'),
@@ -952,19 +960,24 @@ const Tools = {
             toast('Primer binding sites annotated', 'success');
           },
         }, 'Annotate binding sites'),
-        Notebook.button('The primer pair for bisulfite PCR, with its sequences, positions, Tm and product.', async () => ({
-          section: {
-            type: 'section', title: `Bisulfite primers: ${doc.name || 'Untitled'} ${fmt(f.start + 1)}–${fmt(r.end)}`,
-            source: { kind: 'primers', id: doc.id || '', name: doc.name || '' },
-            blocks: [
-              { type: 'text', html: `<p>Primers for bisulfite PCR of ${fmt(f.start + 1)}–${fmt(r.end)} of ${Notebook.plasmid(doc)}, `
-                + `amplifying the converted ${strand} strand: a ${fmt(pair.product)} bp product. Y is C or T, R is G or A.</p>` },
-              Notebook.table('Primers', [['Primer'], ["Sequence 5'→3'"], ['Length', 'number', 'nt'], ['Tm', 'number', '°C'],
-                ['From'], ['To'], ['Ordered', 'check']],
-              [['Forward', f], ['Reverse', r]].map(([name, p]) => [name, p.sequence, p.length, p.tm, p.start + 1, p.end, null])),
-            ],
-          },
-        }))));
+        Notebook.button('The primer pair for bisulfite PCR, with its sequences, positions, Tm and product, and its hairpins and dimers drawn.', async () => {
+          const drawn = await Structure.notebook(f.sequence, r.sequence, 0, { bisulfite: true });
+          return {
+            pictures: [drawn.picture],
+            section: {
+              type: 'section', title: `Bisulfite primers: ${doc.name || 'Untitled'} ${fmt(f.start + 1)}–${fmt(r.end)}`,
+              source: { kind: 'primers', id: doc.id || '', name: doc.name || '' },
+              blocks: [
+                { type: 'text', html: `<p>Primers for bisulfite PCR of ${fmt(f.start + 1)}–${fmt(r.end)} of ${Notebook.plasmid(doc)}, `
+                  + `amplifying the converted ${strand} strand: a ${fmt(pair.product)} bp product. Y is C or T, R is G or A.</p>` },
+                Notebook.table('Primers', [['Primer'], ["Sequence 5'→3'"], ['Length', 'number', 'nt'], ['Tm', 'number', '°C'],
+                  ['From'], ['To'], ['Ordered', 'check']],
+                [['Forward', f], ['Reverse', r]].map(([name, p]) => [name, p.sequence, p.length, p.tm, p.start + 1, p.end, null])),
+                ...drawn.blocks,
+              ],
+            },
+          };
+        })));
   },
 
   /** The product as the converted strand reads, its converted bases and the primer sites marked. */

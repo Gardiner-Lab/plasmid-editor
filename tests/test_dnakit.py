@@ -686,3 +686,20 @@ def test_lox_sites_still_work_without_any_att():
     products = assembly.recombine(donor, acceptor)
     assert products and gene in products[0]['document']['sequence'] * 2
     assert all(p['sites'] == [] for p in products), 'lox sites are not att sites'
+
+
+def test_ligation_records_each_join():
+    """A ligation product says where its fragments met and on which sticky end, for the page to draw."""
+    vec = rand_dna(800) + 'GAATTC' + rand_dna(200)
+    ins = rand_dna(50) + 'GAATTC' + rand_dna(300) + 'GAATTC' + rand_dna(50)
+    vdoc = model.make_document('vec', vec, True)
+    idoc = model.make_document('ins', ins, False)
+    ifr = [i for i, f in enumerate(assembly.fragments_from(idoc, ['EcoRI'])) if f['left'] and f['right']][0]
+    prod = assembly.restriction_ligation(vdoc, ['EcoRI'], 0, idoc, ['EcoRI'], ifr)[0]
+    js = prod['junctions']
+    # Two fragments, so two joins: the second into the first, and the circle closing.
+    assert len(js) == len(prod['assembly']) == 2
+    assert all(j['overhang'] == 'AATT' and j['kind'] == "5'" and j['enzymes'] == ['EcoRI'] for j in js)
+    assert [j['left'] for j in js] == ['vec', 'ins'] and [j['right'] for j in js] == ['ins', 'vec']
+    # Each join is where the next fragment starts, and the last one closes the circle.
+    assert [j['at'] for j in js] == [prod['assembly'][1]['start'], len(prod['sequence'])]

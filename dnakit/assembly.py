@@ -128,6 +128,13 @@ def ligate(fragments: List[Dict[str, Any]], name: str = 'Ligation product',
             seq += fr['top']
         doc = make_document(name, seq, True, _dedupe_features(feats))
         doc['assembly'] = parts
+        # Each join, the last fragment's to the first's closing the circle: the sticky end the two
+        # share, for the page to draw. The ends match, so either fragment's describes the join.
+        doc['junctions'] = [{'left': a_['source'], 'right': b_['source'], 'overhang': a_['right']['overhang'],
+                             'kind': a_['right']['kind'], 'enzymes': sorted({a_['right']['enzyme'], b_['left']['enzyme']}),
+                             'at': b_start, 'flipped': b_['reversed']}
+                            for a_, b_, b_start in zip(path, path[1:] + path[:1],
+                                                       [p['start'] for p in parts][1:] + [len(seq)])]
         out.append(doc)
     return out
 

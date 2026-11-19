@@ -121,6 +121,15 @@
                 fragment of each, and see the ligation products.</li>
             <li><b>Recombination</b> &mdash; see below.</li>
         </ul>
+        <p>Every product is also drawn. <b>The parts it was made of</b> start apart, slide together end to
+           end and, when the product is circular, bend round until the ends meet; the legend names each
+           part and hovering one names it on the picture. <b>Junctions, close up</b> draws each join: for
+           Gibson the homology the two fragments share, kept once in the product, paired and with the
+           melting temperature of that overlap on a scale; for a ligation the sticky end the two fragments
+           share, with the two nicks the ligase seals marked in red, staggered as the overhang dictates. A
+           recombination draws the crossover itself: the donor over the acceptor, the two shared cores
+           marked, and the strands changing partners at each. If your browser is set to reduce motion,
+           each picture is drawn once, finished, instead of animating.</p>
     </section>
 
     <section id="gateway">
@@ -160,7 +169,11 @@
         <h2>Primers and PCR</h2>
         <ul>
             <li><b>Design primers</b> for the selected region, to a melting temperature you choose, with tails
-                added for the cloning method you are using.</li>
+                added for the cloning method you are using. <b>Hairpins and dimers, drawn</b> under the pair
+                shows the most stable hairpin and self-dimer of each primer and the dimer of the two, as
+                primer3 finds them, with the Tm and &Delta;G of each and the strongest of the five flagged. A
+                hairpin is drawn whole and folded, a dimer as a close-up of its two strands; the tails are
+                included, since a Type IIS site or an overhang is often what makes a primer fold.</li>
             <li><b>Simulate PCR</b> with a forward and reverse primer, allowing mismatches, to see the product
                 and its size before ordering anything.</li>
             <li><b>Lab primers</b> shows which of the lab's primers, from Lab Stocks, bind the open sequence and
@@ -195,6 +208,10 @@
            sequence to primers to pairs, then the genome check, and names the step where the candidates ran
            out, with the option to change and how. Steps that lose many but were not the cause are listed
            after it. When pairs do pass, the same counts are under <b>How the primers were chosen</b>.</p>
+        <p>Under each pair, <b>Hairpins and dimers, drawn</b> shows the most stable hairpin and self-dimer of
+           each primer and the dimer of the two, with the Tm and &Delta;G of each. A degenerate primer is
+           drawn as whichever form, fully converted or unmethylated, makes the more stable structure, and the
+           picture says which.</p>
         <h3>How pairs are ranked</h3>
         <p>As in <i>design_bisulfite_primers.py</i> v1.1, which this is rewritten from, a later version of
            v1.0 by Colette L. Picard (06/05/2016):

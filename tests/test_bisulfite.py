@@ -141,3 +141,23 @@ def test_every_candidate_is_accounted_for_so_a_failure_can_be_explained(monkeypa
     top = none['filters']['top']
     assert not none['pairs'] and top['degenerate'] == top['stretches'] and top['least_degenerate'] >= 1
     assert top['primers'] == 0 and top['tm_range'] is None
+
+
+def test_structures_drawn():
+    """The strongest hairpin and dimers of a pair, with primer3's drawing, for both primer kinds."""
+    from dnakit import primers
+    # CCCCGGGG is its own reverse complement: a stem round a 5-base loop, and a self-dimer.
+    hairpinning = 'CCCCGGGGAAAAACCCCGGGG'
+    plain = primers.structures(hairpinning, 'ACGTACGTACGTACGTAC')
+    assert set(plain) == {'forward', 'reverse', 'heterodimer'}
+    hp = plain['forward']['hairpin']
+    assert hp and hp['form'] is None and hp['lines'] and isinstance(hp['tm'], float)
+    assert plain['forward']['homodimer']['lines']
+    # Degenerate primers are drawn as their stronger form, named.
+    bs = primers.structures('CCYYGGRRAAAAACCYYGGRR', 'AARTTTRAAATTTAA', bisulfite.labelled_forms)
+    drawn = [s for s in (bs['forward']['hairpin'], bs['forward']['homodimer']) if s]
+    assert drawn and all(s['form'] in ('converted', 'unconverted') for s in drawn)
+    with pytest.raises(ValueError):
+        primers.structures('ACGY', 'ACGT')            # Y only for bisulfite primers
+    with pytest.raises(ValueError):
+        primers.structures('A' * 61, 'ACGT')          # over primer3's 60 nt

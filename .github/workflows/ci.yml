@@ -25,3 +25,5 @@ jobs:
           node tests/js/helpers.test.js
           node tests/js/sequencing.test.js
           node tests/js/seqview.test.js
+          node tests/js/structure.test.js
+          node tests/js/assemblyview.test.js

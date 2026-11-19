@@ -204,18 +204,47 @@ const Cloning = {
               : ' · neither crossover is in a labelled site: this may be backbone the two share, not a real reaction';
             return `${r.length} bp · ${r.from_donor} bp from the donor, `
               + `${r.from_acceptor} bp from the acceptor · ${where}${caution}`;
-          }));
+          }),
+          // Where each crossover sits in the two parents, so the swap can be drawn.
+          res.products.map((r) => this.crossoverPlan(r)));
       }
     } catch (err) {
       out.replaceChildren(el('div', { class: 'alert alert-error', text: err.message }));
     }
   },
 
-  showProducts(products, junctions, notes) {
+  /**
+   * Where a recombination's two cores lie in the donor and the acceptor, and where the donor's
+   * stretch ends up in the product: what AssemblyView.crossover draws. Null if a core cannot be
+   * placed (the product came from the flipped acceptor, whose coordinates are not the ones here).
+   */
+  crossoverPlan(r) {
+    const donor = this.picked[0];
+    const acceptor = this.picked[1];
+    if (!donor || !acceptor || r.acceptor_flipped) return null;
+    const find = (doc, core) => {
+      const hay = (doc.sequence || '').toUpperCase();
+      const at = hay.indexOf(core.toUpperCase());
+      // A core across the origin of a circular parent is found in the doubled sequence.
+      return at >= 0 ? at : (doc.circular ? (hay + hay).indexOf(core.toUpperCase()) : -1);
+    };
+    const d = [find(donor, r.core_1), find(donor, r.core_2)];
+    const a = [find(acceptor, r.core_1), find(acceptor, r.core_2)];
+    if ([...d, ...a].some((x) => x < 0)) return null;
+    return {
+      donor: { name: donor.label || donor.name, length: donor.sequence.length, at: d },
+      acceptor: { name: acceptor.label || acceptor.name, length: acceptor.sequence.length, at: a },
+      // The product keeps the acceptor's start, then the donor's stretch, then the rest.
+      product: { name: r.document.name, length: r.length, at: [Math.min(...a), Math.min(...a) + r.from_donor] },
+      sites: r.sites,
+    };
+  },
+
+  showProducts(products, junctions, notes, plans) {
     const out = document.getElementById('result');
     const nodes = [];
     if (junctions) {
-      nodes.push(el('h4', { style: 'font-size:.9rem;margin-bottom:.35rem' }, 'Junctions'),
+      nodes.push(el('details', { class: 'av-table' }, el('summary', {}, 'Junctions, as a table'),
         el('table', {},
           el('thead', {}, el('tr', {},
             el('th', {}, 'Left'), el('th', {}, 'Right'), el('th', { class: 'num' }, 'Overlap'),
@@ -224,7 +253,7 @@ const Cloning = {
             el('td', { text: j.left }), el('td', { text: j.right }),
             el('td', { class: 'num', text: `${j.overlap} bp` }),
             el('td', { class: 'num', text: j.tm ? `${j.tm} °C` : '–' }),
-            el('td', { text: j.flipped ? 'yes' : 'no' }))))));
+            el('td', { text: j.flipped ? 'yes' : 'no' })))))));
     }
     if (!products || !products.length || !products[0]) {
       nodes.push(el('div', { class: 'alert alert-warning' }, 'No product was formed.'));
@@ -240,6 +269,15 @@ const Cloning = {
           ? el('div', { class: 'hint' }, p.assembly
             .map((a) => `${a.source}${a.reversed ? ' (rev)' : ''} ${fmt(a.length)} bp`).join(' → '))
           : null,
+        // The parts coming together, and each join close up.
+        p.assembly?.length
+          ? AssemblyView.storyboard(p.assembly.map((a) => ({ name: a.source, length: a.length, reversed: a.reversed })),
+                                    p.circular)
+          : null,
+        // A Gibson run makes one product, so its junctions are that product's; a ligation
+        // carries each product's own.
+        AssemblyView.junctions(p.junctions || junctions, p.junctions ? 'sticky' : 'gibson'),
+        plans?.[i] ? AssemblyView.crossover(plans[i]) : null,
         el('div', { class: 'btn-group', style: 'margin-top:.5rem' },
           el('button', {
             class: 'btn btn-sm',

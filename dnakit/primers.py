@@ -2,8 +2,9 @@
 Oligo tools: melting temperature, primer binding sites, PCR simulation and primer design.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
+import primer3
 from Bio.SeqUtils import MeltingTemp as mt
 
 from .model import clean_sequence, reverse_complement
@@ -153,3 +154,52 @@ def design_primers(template: str, start: int, end: int, target_tm: float = 60.0,
     return {'forward': fwd, 'reverse': rev,
             'product_length': len(ftail) + len(region) + len(rtail),
             'product': ftail + region + reverse_complement(rtail)}
+
+
+# primer3's thermodynamic alignment takes oligos up to 60 nt.
+STRUCTURE_MAX = 60
+
+
+def _drawn(found: List[Tuple[str, Any]]) -> Optional[Dict[str, Any]]:
+    """The most stable of primer3's results that found a structure, with primer3's drawing of it."""
+    best = None
+    for form, r in found:
+        if r.structure_found and (best is None or r.tm > best[1].tm):
+            best = (form, r)
+    if best is None:
+        return None
+    form, r = best
+    return {'tm': round(r.tm, 1), 'dg': round(r.dg / 1000, 2), 'form': form or None,
+            'lines': list(r.ascii_structure_lines or [])}
+
+
+def structures(forward: str, reverse: str,
+               forms: Optional[Callable[[str], List[Tuple[str, str]]]] = None) -> Dict[str, Any]:
+    """
+    The strongest hairpin and self-dimer of each primer, and the dimer of the two, as primer3
+    finds and draws them (``lines``, its ASCII drawing); each is None when primer3 finds none.
+
+    ``forms`` turns a degenerate primer into the concrete sequences it is measured as, each with
+    a label (bisulfite primers: converted and unconverted); the strongest of them is the one drawn.
+    """
+    allowed = set('ACGTYR' if forms else 'ACGT')
+    forms = forms or (lambda s: [('', s)])
+    seqs = {}
+    for name, raw in (('forward', forward), ('reverse', reverse)):
+        s = clean_sequence(raw or '').upper()
+        if not s:
+            raise ValueError(f'the {name} primer is empty')
+        if set(s) - allowed:
+            raise ValueError(f'the {name} primer has bases other than {"".join(sorted(allowed))}')
+        if len(s) > STRUCTURE_MAX:
+            raise ValueError(f'the {name} primer is {len(s)} nt; primer3 draws structures of oligos up to {STRUCTURE_MAX} nt')
+        seqs[name] = forms(s)
+    out: Dict[str, Any] = {}
+    for name, fs in seqs.items():
+        out[name] = {
+            'hairpin': _drawn([(f, primer3.calc_hairpin(s, output_structure=True)) for f, s in fs]),
+            'homodimer': _drawn([(f, primer3.calc_homodimer(s, output_structure=True)) for f, s in fs]),
+        }
+    out['heterodimer'] = _drawn([(f, primer3.calc_heterodimer(a, b, output_structure=True))
+                                 for (f, a), (_, b) in zip(seqs['forward'], seqs['reverse'])])
+    return out

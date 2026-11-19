@@ -953,3 +953,13 @@ def test_a_stock_number_is_matched_however_it_is_padded_and_made_if_it_is_new():
     assert "await this.call('POST', '/glycerol'" in link, 'an unknown number makes a stock'
     assert 'Tube label: ${typed}' in link, "and keeps what was typed as the tube's label"
     assert 'Add it there first' not in link, 'the old dead end is gone'
+
+
+def test_primer_structures(user_client):
+    r = user_client.post('/api/tools/primer-structures',
+                         json={'forward': 'CCCCGGGGAAAAACCCCGGGG', 'reverse': 'ACGTACGTACGTACGTAC'})
+    assert r.status_code == 200
+    assert {'forward', 'reverse', 'heterodimer'} <= set(r.get_json())
+    r = user_client.post('/api/tools/primer-structures', json={'forward': 'ACGYRT', 'reverse': 'ACGT', 'bisulfite': True})
+    assert r.status_code == 200
+    assert user_client.post('/api/tools/primer-structures', json={'forward': '', 'reverse': 'ACGT'}).status_code == 400

@@ -454,6 +454,22 @@ def bisulfite_primers(user):
     return jsonify(result), 200
 
 
+@tools_bp.route('/primer-structures', methods=['POST'])
+@require_auth
+def primer_structures(user):
+    """
+    The strongest hairpin and self-dimer of each of two primers and the dimer of the pair, with
+    primer3's drawing of each. ``bisulfite`` true takes Y and R, measured converted and unconverted.
+    """
+    data = _json()
+    try:
+        forms = bisulfite.labelled_forms if data.get('bisulfite') else None
+        result = primers.structures(str(data.get('forward') or ''), str(data.get('reverse') or ''), forms)
+    except (ValueError, TypeError) as exc:
+        return _bad(exc)
+    return jsonify(result), 200
+
+
 # ---------------------------------------------------------------------------
 # Assembly
 # ---------------------------------------------------------------------------

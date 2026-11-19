@@ -6,6 +6,30 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.29.0] - 2026-11-19
+
+### Added
+- **Hairpins and dimers, drawn,** under each pair from Design primers (tails included) and Bisulfite
+  primers: the strongest hairpin and self-dimer of each primer and the dimer of the two, as primer3 finds
+  them. A hairpin is drawn whole, folded: its backbone through every base, the stem a ladder, the loop
+  closing it. A dimer is a close-up of its two strands. Paired bases are joined, thicker for G–C; each
+  structure carries its Tm and ΔG, and the strongest of the five is flagged. A bisulfite primer is drawn
+  converted or unconverted, whichever is the more stable. Worked out on demand
+  (`POST /api/tools/primer-structures`), and **Add to notebook** from either tool now puts the drawings in
+  as a picture, with a table of their Tm and ΔG.
+- **Cloning, seen rather than read.** Every product on the Cloning page now shows **the parts it was made
+  of**: they start apart, slide together end to end and, when the product is circular, the strip bends
+  round until the two ends meet, with a legend and a Replay; and **Junctions, close up**, each join drawn — a Gibson overlap with the homology shaded, paired
+  and its Tm on a scale, or a ligation's sticky end with the two nicks the ligase seals marked. A
+  recombination also draws **the crossover itself**: donor over acceptor, the two shared cores marked, and
+  the strands changing partners at each. All of it holds still when the browser asks for reduced motion.
+- `assembly.ligate` records each join on the product (`junctions`): the sticky end the two fragments
+  shared, its kind, the enzymes that cut it, and where it falls in the product.
+
+### Changed
+- **The bisulfite options credit the script more precisely:** its defaults and score come from
+  `design_bisulfite_primers.py` v1.1, a later version of Colette Picard's v1.0, as Help and `NOTICE` say.
+
 ## [0.28.7] - 2026-11-17
 
 ### Changed

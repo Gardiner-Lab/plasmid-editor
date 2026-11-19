@@ -45,15 +45,19 @@ re-implemented independently; see [Attribution](#attribution).
 - Find DNA by IUPAC pattern on both strands, or a peptide in all six frames
 - Auto-annotation from a feature library (ApE library files import and export unchanged)
 - Oligo properties (nearest-neighbour Tm, GC), primer binding sites, **PCR simulation** with
-  5′ tails, and primer design for a selected region
+  5′ tails, and primer design for a selected region, with each pair's **hairpins and dimers drawn**
+  (primer3): a hairpin folded whole, a dimer as a close-up, each with its Tm and ΔG
 - **BLAST** at NCBI: the selection, or the whole sequence when nothing is selected, opens in
   NCBI's nucleotide BLAST form in a new tab
 
 ### Cloning simulation
 - **Golden Gate** one-pot assembly with a per-part log explaining any part that is not used
+- Every product **drawn as it is made**: the parts start apart, slide together and bend into a ring,
+  with each junction close up — a Gibson overlap and its Tm, or a ligation's sticky end and its nicks
 - **Gibson / overlap assembly**, flipping fragments automatically and reporting junction Tm
 - **Restriction + ligation** of a vector and insert, giving both insert orientations
-- **Site-specific recombination**: Gateway BP/LR, Cre-lox and FLP-FRT style double crossovers
+- **Site-specific recombination**: Gateway BP/LR, Cre-lox and FLP-FRT style double crossovers,
+  with the crossover drawn: the two shared cores, and the strands changing partners at each
 - Golden Gate assembly is planned in the MoClo Library Tool, which has the parts library and
   overhang compatibility checking; the Cloning page links straight there
 

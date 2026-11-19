@@ -72,6 +72,11 @@ def _forms(primer: str) -> List[str]:
     return [primer.replace('Y', 'T').replace('R', 'A'), primer.replace('Y', 'C').replace('R', 'G')]
 
 
+def labelled_forms(primer: str) -> List[tuple]:
+    """:func:`_forms` named, for drawing a primer's structures (dnakit/primers.py structures)."""
+    return list(zip(('converted', 'unconverted'), _forms(primer)))
+
+
 def longest_repeat(primer: str) -> int:
     """The longest run of one base, or of a 2- or 3-base unit, in either form of the primer."""
     longest = 0
