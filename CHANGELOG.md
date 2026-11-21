@@ -6,6 +6,8 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.29.1] - 2026-11-21
+
 ### Fixed
 - **A simulated PCR sent to the Lab Notebook names its primers.** The day's page carried the two
   primer sequences and nothing else, so what had actually been used could only be worked out by
