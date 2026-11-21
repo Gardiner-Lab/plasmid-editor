@@ -33,6 +33,7 @@ test-js:
 	node tests/js/sequencing.test.js
 	node tests/js/structure.test.js
 	node tests/js/assemblyview.test.js
+	node tests/js/pcr-notebook.test.js
 
 test-all: test test-js
 

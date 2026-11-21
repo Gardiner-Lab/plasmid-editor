@@ -6,6 +6,16 @@ and the project uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- **A simulated PCR sent to the Lab Notebook names its primers.** The day's page carried the two
+  primer sequences and nothing else, so what had actually been used could only be worked out by
+  reading the bases back — the name of the primer picked in the dialog was kept in the box's tooltip
+  and went no further. The Primers table now has a **Name** column beside the sequence, and the
+  opening line says which primers the PCR was run with. A primer from Lab Stocks is linked to its
+  entry there, so the day shows up on the primer in Lab Stocks. A primer typed in by hand is named
+  too when it is one of the primers found on the sequence; one that matches nothing is still listed
+  by its sequence, as before.
+
 ## [0.29.0] - 2026-11-19
 
 ### Added

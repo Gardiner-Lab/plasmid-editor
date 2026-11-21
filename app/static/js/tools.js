@@ -377,8 +377,20 @@ const Tools = {
 
   /** A simulated PCR as a notebook section: the template's map with the products on it, the primers, the products. */
   async pcrSection(doc, res) {
-    const forward = document.getElementById('pcrF').value.trim().toUpperCase();
-    const reverse = document.getElementById('pcrR').value.trim().toUpperCase();
+    const fBox = document.getElementById('pcrF');
+    const rBox = document.getElementById('pcrR');
+    const forward = fBox.value.trim().toUpperCase();
+    const reverse = rBox.value.trim().toUpperCase();
+    // The primer's name as well as its sequence: a day's page is read by name, and a sequence
+    // alone says nothing. One of the lab's primers is linked to Lab Stocks, so the day shows on it
+    // there; one typed in by hand and known to nothing has no name to give.
+    const nameOf = (box) => box.dataset.primerName || '';
+    const named = (box) => {
+      const name = nameOf(box);
+      const code = box.dataset.primerCode || '';
+      return code ? `[${name.replace(/[[\]\n]/g, ' ')}](stock:${code})` : name;
+    };
+    const withNames = [nameOf(fBox), nameOf(rBox)].filter(Boolean);
     const marked = { ...doc, features: [...(doc.features || []), ...res.products.map((p, i) => ({
       name: `PCR product${res.products.length > 1 ? ` ${i + 1}` : ''} ${fmt(p.length)} bp`,
       type: 'misc_feature', start: p.template_start, end: p.template_end, strand: 1, color: '#f59e0b' }))] };
@@ -387,12 +399,16 @@ const Tools = {
         type: 'section', title: `PCR: ${doc.name || 'Untitled'} → ${res.products.map((p) => `${fmt(p.length)} bp`).join(', ')}`,
         source: { kind: 'pcr', id: doc.id || '', name: doc.name || '' },
         blocks: [
-          { type: 'text', html: `<p>PCR on ${Notebook.plasmid(doc)}, simulated in the Sequence Editor (at least `
+          { type: 'text', html: `<p>PCR on ${Notebook.plasmid(doc)}`
+            + (withNames.length ? ` with ${Notebook.esc(withNames.join(' and '))}` : '')
+            + ', simulated in the Sequence Editor (at least '
             + `${Notebook.esc(document.getElementById('pcrAnneal').value)} nt of 3&#39; match, `
             + `${Notebook.esc(document.getElementById('pcrMis').value)} mismatches allowed).</p>`
             + Notebook.picture(0, `Where the products lie on ${doc.name || 'the template'}`) },
-          Notebook.table('Primers', [['Primer'], ["Sequence 5'→3'"], ['Length', 'number', 'nt'], ['Tm', 'number', '°C']],
-            [['Forward', forward, res.forward.length, res.forward.tm], ['Reverse', reverse, res.reverse.length, res.reverse.tm]]),
+          Notebook.table('Primers',
+            [['Primer'], ['Name'], ["Sequence 5'→3'"], ['Length', 'number', 'nt'], ['Tm', 'number', '°C']],
+            [['Forward', named(fBox), forward, res.forward.length, res.forward.tm],
+             ['Reverse', named(rBox), reverse, res.reverse.length, res.reverse.tm]]),
           Notebook.table('Products', [['Product'], ['Length', 'number', 'bp'], ['From', 'number'], ['To', 'number'],
             ['Seen on the gel', 'check']], res.products.map((p, i) => [i + 1, p.length, p.template_start + 1, p.template_end, null])),
         ],
@@ -1177,13 +1193,32 @@ const Tools = {
       build: (body) => {
         // The primers already on the sequence: a click puts one in the forward or reverse box.
         const onSeq = el('div', { class: 'pcr-primers' }, el('span', { class: 'spin' }));
+        // The primers found here, so a primer typed in by hand is still known by name.
+        let known = [];
+        // A box remembers which primer is in it, so the notebook can name it and link it.
+        const remember = (box, p) => {
+          box.title = p ? p.name : '';
+          if (p) {
+            box.dataset.primerName = p.name;
+            if (p.code) box.dataset.primerCode = p.code; else delete box.dataset.primerCode;
+          } else {
+            delete box.dataset.primerName;
+            delete box.dataset.primerCode;
+          }
+        };
         const use = (p) => {
           const box = document.getElementById(p.strand === 1 ? 'pcrF' : 'pcrR');
           box.value = p.sequence;
-          box.title = p.name;
+          remember(box, p);
           toast(`${p.name} as the ${p.strand === 1 ? 'forward' : 'reverse'} primer`, 'success', 1500);
         };
+        // Typed or pasted: its name follows if it is one of the primers found on this sequence.
+        const typed = (e) => {
+          const seq = e.target.value.trim().toUpperCase();
+          remember(e.target, known.find((p) => p.sequence.toUpperCase() === seq) || null);
+        };
         this.primersOnSequence(doc).then((found) => {
+          known = found;
           if (!found.length) {
             onSeq.replaceChildren(el('p', { class: 'hint' }, 'No primers on this sequence: annotate primer_bind features, '
               + (Stocks.enabled() ? 'or none of the lab\'s primers in Lab Stocks bind it. ' : '') + 'Or paste primers below.'));
@@ -1206,10 +1241,10 @@ const Tools = {
           onSeq,
           el('div', { class: 'field' },
             el('label', { for: 'pcrF' }, 'Forward primer'),
-            el('input', { type: 'text', id: 'pcrF', class: 'mono', placeholder: 'ACGT…' })),
+            el('input', { type: 'text', id: 'pcrF', class: 'mono', placeholder: 'ACGT…', oninput: typed })),
           el('div', { class: 'field' },
             el('label', { for: 'pcrR' }, 'Reverse primer'),
-            el('input', { type: 'text', id: 'pcrR', class: 'mono', placeholder: 'ACGT…' })),
+            el('input', { type: 'text', id: 'pcrR', class: 'mono', placeholder: 'ACGT…', oninput: typed })),
           el('div', { class: 'field-row' },
             el('div', { class: 'field' },
               el('label', { for: 'pcrAnneal' }, "3' match required (nt)"),
